@@ -15,3 +15,4 @@ export * from "./schemas/finance.ts";
 export * from "./schemas/settings.ts";
 export * from "./schemas/users.ts";
 export * from "./status.ts";
+export * from "./insights.ts";

@@ -8,6 +8,7 @@ import { invoiceBundleRoutes } from "./modules/invoice-bundles/routes.ts";
 import { accountRoutes, cashRoutes } from "./modules/cash/routes.ts";
 import { contactRoutes } from "./modules/contacts/routes.ts";
 import { expenseRoutes } from "./modules/expenses/routes.ts";
+import { insightRoutes } from "./modules/insights/routes.ts";
 import { productRoutes } from "./modules/products/routes.ts";
 import { salesRoutes } from "./modules/sales/routes.ts";
 import { settingsRoutes } from "./modules/settings/routes.ts";
@@ -37,7 +38,8 @@ export function createApp(db: Db) {
     .route("/accounts", accountRoutes)
     .route("/cash", cashRoutes)
     .route("/expenses", expenseRoutes)
-    .route("/contacts", contactRoutes);
+    .route("/contacts", contactRoutes)
+    .route("/", insightRoutes);
 }
 
 export type AppType = ReturnType<typeof createApp>;
