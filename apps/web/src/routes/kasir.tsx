@@ -154,28 +154,27 @@ function Register({ catalog }: { catalog: Catalog }) {
     await queueSale({ sale, receipt });
     await write("lastReceipt", receipt);
     printReceipt(receipt, shop, prefs.paper);
-    toast(`${number} tersimpan · kembalian Rp ${(paid - totals.total).toLocaleString("id-ID")}`, "up");
     reset();
     focusSearch();
   }
 
-  async function park() {
+  // State first, storage after: a quick second F8 must already see the emptied cart.
+  function park() {
     if (cart.lines.length === 0) {
       if (parked.length > 0) setDialog("parked");
       return;
     }
     const entry: ParkedCart = { id: uuidv7(), parkedAt: new Date().toISOString(), cart };
-    await change("parked", (list = []) => [...list, entry]);
     setParked((list) => [...list, entry]);
     reset();
-    toast("Transaksi ditahan");
+    void change("parked", (list = []) => [...list, entry]);
   }
 
-  async function restore(entry: ParkedCart) {
-    await change("parked", (list = []) => list.filter((p) => p.id !== entry.id));
+  function restore(entry: ParkedCart) {
     setParked((list) => list.filter((p) => p.id !== entry.id));
     dispatch({ type: "load", cart: entry.cart });
     focusSearch();
+    void change("parked", (list = []) => list.filter((p) => p.id !== entry.id));
   }
 
   const reprint = (receipt: ReceiptData) => printReceipt(receipt, shop, prefs.paper);
@@ -195,7 +194,7 @@ function Register({ catalog }: { catalog: Catalog }) {
       requestAnimationFrame(() => tenderRef.current?.focus());
     } else if (e.key === "F6") setMethod("qris");
     else if (e.key === "F7") setMethod("transfer");
-    else if (e.key === "F8") void park();
+    else if (e.key === "F8") park();
     else if (e.key === "F9") setDialog("history");
     else if (e.key === "F10") void reprintLast();
     else if (e.key === "Delete" && e.ctrlKey) {
@@ -358,7 +357,7 @@ function Register({ catalog }: { catalog: Catalog }) {
           }}
         />
       )}
-      {dialog === "parked" && <ParkedDialog parked={parked} onRestore={(p) => void restore(p)} onClose={focusSearch} />}
+      {dialog === "parked" && <ParkedDialog parked={parked} onRestore={restore} onClose={focusSearch} />}
       {dialog === "history" && <HistoryDialog pending={outbox.pending} onReprint={reprint} onClose={focusSearch} />}
       {dialog === "problems" && <ProblemsDialog problems={outbox.problems} onClose={focusSearch} />}
       {dialog === "prefs" && (

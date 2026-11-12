@@ -29,10 +29,10 @@ export function CartTable({
             <tr className="border-b border-line text-left">
               <th className={cx(th, "w-7 pl-4")}>#</th>
               <th className={th}>Produk</th>
-              <th className={cx(th, "text-right")}>Harga</th>
+              <th className={cx(th, "w-28 text-right")}>Harga</th>
               <th className={cx(th, "w-[120px] text-right")}>Qty</th>
-              <th className={cx(th, "text-right")}>Diskon</th>
-              <th className={cx(th, "pr-4 text-right")}>Jumlah</th>
+              <th className={cx(th, "w-24 text-right")}>Diskon</th>
+              <th className={cx(th, "w-32 pr-4 text-right")}>Jumlah</th>
             </tr>
           </thead>
           <tbody>
