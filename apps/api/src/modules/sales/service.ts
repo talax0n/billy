@@ -7,7 +7,6 @@ import {
   computeTotals,
   deriveInvoiceStatus,
   DomainError,
-  type lookupQuery,
   matchesStatusFilter,
   rupiah,
   type salesInvoiceInput,
@@ -36,36 +35,6 @@ import { likePattern } from "../../lib/search.ts";
 type PaymentFields = Omit<z.output<typeof salesPaymentInput>, "date">;
 
 /** Contacts are owned by the contacts module; sales only reads customers for its pickers. */
-export async function lookupCustomers(db: Db, { q }: z.output<typeof lookupQuery>) {
-  return db
-    .select({
-      id: contacts.id,
-      code: contacts.code,
-      name: contacts.name,
-      address: contacts.address,
-      phone: contacts.phone,
-      paymentTermsDays: contacts.paymentTermsDays,
-    })
-    .from(contacts)
-    .where(
-      and(
-        eq(contacts.kind, "customer"),
-        eq(contacts.active, true),
-        q ? or(ilike(contacts.name, likePattern(q)), ilike(contacts.code, likePattern(q))) : undefined,
-      ),
-    )
-    .orderBy(asc(contacts.name))
-    .limit(20);
-}
-
-export async function lookupAccounts(db: Db) {
-  return db
-    .select({ id: accounts.id, code: accounts.code, name: accounts.name, kind: accounts.kind })
-    .from(accounts)
-    .where(eq(accounts.active, true))
-    .orderBy(asc(accounts.code));
-}
-
 /** Paid is derived: the sum of an invoice's non-voided payments (data-model ground rule 5). */
 const paidByInvoice = (db: Db) =>
   db

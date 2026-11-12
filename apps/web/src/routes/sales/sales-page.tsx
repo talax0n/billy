@@ -8,9 +8,9 @@ import { Select } from "../../components/ui/field.tsx";
 import { EmptyState, FilterRow, PageBody, PageHeader, StatTile } from "../../components/ui/page.tsx";
 import { api, unwrap } from "../../lib/api.ts";
 import { cx } from "../../lib/cx.ts";
-import { CustomerPicker } from "./customer-picker.tsx";
+import { type Contact, LookupPicker, lookups } from "../../components/lookup-picker.tsx";
 import { InvoiceSheet } from "./invoice-sheet.tsx";
-import { type Customer, type Period, periodLabel, periodRange, periods } from "./queries.ts";
+import { type Period, periodLabel, periodRange, periods } from "./queries.ts";
 
 
 const statusLabels: Record<SalesStatusFilter, string> = {
@@ -25,8 +25,7 @@ const statusLabels: Record<SalesStatusFilter, string> = {
 export function SalesPage() {
   const [period, setPeriod] = useState<Period>("month");
   const [status, setStatus] = useState<SalesStatusFilter | "">("");
-  const [customer, setCustomer] = useState<Customer | null>(null);
-  const [pickerKey, setPickerKey] = useState(0);
+  const [customer, setCustomer] = useState<Contact | null>(null);
   const paged = usePagedQuery(["sales", "list", period, status, customer?.id], (params) =>
     unwrap(
       api.sales.$get({
@@ -77,16 +76,13 @@ export function SalesPage() {
             ))}
           </Select>
           <div className="w-56">
-            <CustomerPicker key={pickerKey} value={customer} onChange={setCustomer} placeholder="Semua pelanggan" />
+            <LookupPicker kind="customer" lookup={lookups.customer} value={customer} onChange={setCustomer} placeholder="Semua pelanggan" />
           </div>
           {customer && (
             <Button
               size="sm"
               variant="ghost"
-              onClick={() => {
-                setCustomer(null);
-                setPickerKey((k) => k + 1);
-              }}
+              onClick={() => setCustomer(null)}
             >
               Hapus filter pelanggan
             </Button>

@@ -1,4 +1,4 @@
-import { idParam, lookupQuery, salesInvoiceInput, salesListQuery, salesPaymentInput, voidInput } from "@billy/core";
+import { idParam, salesInvoiceInput, salesListQuery, salesPaymentInput, voidInput } from "@billy/core";
 import { Hono } from "hono";
 import { z } from "zod";
 import { backOffice } from "../../auth/require-role.ts";
@@ -9,8 +9,6 @@ import {
   getInvoice,
   listInvoices,
   listReceivables,
-  lookupAccounts,
-  lookupCustomers,
   recordPayment,
   voidInvoice,
   voidPayment,
@@ -20,8 +18,6 @@ const paymentParam = z.object({ id: z.uuid(), paymentId: z.uuid() });
 
 export const salesRoutes = new Hono<AppEnv>()
   .use(backOffice())
-  .get("/customers", validate("query", lookupQuery), async (c) => c.json(await lookupCustomers(c.var.db, c.req.valid("query"))))
-  .get("/accounts", async (c) => c.json(await lookupAccounts(c.var.db)))
   .get("/receivables", async (c) => c.json(await listReceivables(c.var.db)))
   .get("/", validate("query", salesListQuery), async (c) => c.json(await listInvoices(c.var.db, c.req.valid("query"))))
   .post("/", validate("json", salesInvoiceInput), async (c) =>

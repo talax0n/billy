@@ -20,7 +20,8 @@ import { api, unwrap } from "../../lib/api.ts";
 import { useForm } from "../../lib/form.ts";
 import { useServerError } from "./actions.ts";
 import { Amount, formatPercent, paymentMethodLabels, Segmented, TotalsPanel } from "./bits.tsx";
-import { type Account, LookupPicker, lookups, type Product, type Supplier, useLookup } from "./lookups.tsx";
+import { AccountSelect } from "../cash/account-select.tsx";
+import { LookupPicker, lookups, type Product, type Contact, useLookup } from "../../components/lookup-picker.tsx";
 
 type Line = PurchaseInput["lines"][number];
 
@@ -61,8 +62,7 @@ export function PurchaseForm({ onSaved, onCancel }: { onSaved: (id: string) => v
   const formId = useId();
   const form = useForm(purchaseInput, emptyPurchase());
   const v = form.values;
-  const [supplier, setSupplier] = useState<Supplier | null>(null);
-  const [account, setAccount] = useState<Account | null>(null);
+  const [supplier, setSupplier] = useState<Contact | null>(null);
   const [productsById, setProductsById] = useState<Record<string, Product>>({});
   const [lineDiscounts, setLineDiscounts] = useState(false);
   const [taxText, setTaxText] = useState("11");
@@ -259,7 +259,7 @@ export function PurchaseForm({ onSaved, onCancel }: { onSaved: (id: string) => v
                 form.set(
                   "payment",
                   ev.target.checked
-                    ? { accountId: account?.id ?? "", date: v.date, amount: totals?.total ?? 0, method: "transfer", note: "" }
+                    ? { accountId: "", date: v.date, amount: totals?.total ?? 0, method: "transfer", note: "" }
                     : undefined,
                 )
               }
@@ -270,16 +270,11 @@ export function PurchaseForm({ onSaved, onCancel }: { onSaved: (id: string) => v
             <div className="grid grid-cols-2 gap-x-3 gap-y-4 rounded-xl border border-line p-4">
               <Field label="Dari akun" error={e["payment.accountId"]}>
                 {(p) => (
-                  <LookupPicker
+                  <AccountSelect
                     {...p}
-                    kind="account"
-                    lookup={lookups.account}
-                    value={account}
+                    value={v.payment!.accountId}
                     placeholder="Kas atau rekening"
-                    onChange={(row) => {
-                      setAccount(row);
-                      setPayment({ accountId: row?.id ?? "" });
-                    }}
+                    onChange={(accountId) => setPayment({ accountId })}
                   />
                 )}
               </Field>

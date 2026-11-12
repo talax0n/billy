@@ -44,30 +44,6 @@ function matchAllTerms(haystack: SQL, q: string): SQL | undefined {
   return terms.length ? and(...terms.map((term) => ilike(haystack, likePattern(term)))) : undefined;
 }
 
-export function lookupSuppliers(db: Db, q: string) {
-  return db
-    .select({ id: contacts.id, code: contacts.code, name: contacts.name, paymentTermsDays: contacts.paymentTermsDays })
-    .from(contacts)
-    .where(
-      and(
-        eq(contacts.kind, "supplier"),
-        eq(contacts.active, true),
-        matchAllTerms(sql`${contacts.name} || ' ' || ${contacts.code}`, q),
-      ),
-    )
-    .orderBy(asc(contacts.name))
-    .limit(20);
-}
-
-export function lookupAccounts(db: Db, q: string) {
-  return db
-    .select({ id: accounts.id, code: accounts.code, name: accounts.name, kind: accounts.kind })
-    .from(accounts)
-    .where(and(eq(accounts.active, true), matchAllTerms(sql`${accounts.name} || ' ' || ${accounts.code}`, q)))
-    .orderBy(asc(accounts.name))
-    .limit(20);
-}
-
 /** Paid = sum of non-voided payments (data-model ground rule 5). */
 function invoiceQuery(db: Db) {
   const paidByInvoice = db

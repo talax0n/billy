@@ -1,5 +1,4 @@
 import { businessDate, formatRupiah, type PurchasePaymentInput, purchasePaymentInput, type Rupiah } from "@billy/core";
-import { useState } from "react";
 import { Button } from "../../components/ui/button.tsx";
 import { Dialog } from "../../components/ui/dialog.tsx";
 import { DateInput, Field, Input, MoneyInput } from "../../components/ui/field.tsx";
@@ -8,7 +7,7 @@ import { api, unwrap } from "../../lib/api.ts";
 import { useForm } from "../../lib/form.ts";
 import { useRefreshAfterPosting, useServerError } from "./actions.ts";
 import { paymentMethodLabels, Segmented } from "./bits.tsx";
-import { type Account, LookupPicker, lookups } from "./lookups.tsx";
+import { AccountSelect } from "../cash/account-select.tsx";
 
 export interface PayableInvoice {
   id: string;
@@ -34,7 +33,6 @@ export function PaymentDialog({ invoice, onClose }: { invoice: PayableInvoice | 
 function PaymentForm({ invoice, onDone }: { invoice: PayableInvoice; onDone: () => void }) {
   const refresh = useRefreshAfterPosting();
   const server = useServerError();
-  const [account, setAccount] = useState<Account | null>(null);
   const initial: PurchasePaymentInput = { accountId: "", date: businessDate(), amount: invoice.outstanding, method: "transfer", note: "" };
   const form = useForm(purchasePaymentInput, initial);
   const v = form.values;
@@ -50,17 +48,7 @@ function PaymentForm({ invoice, onDone }: { invoice: PayableInvoice; onDone: () 
     <form onSubmit={submit} noValidate className="flex flex-col gap-4">
       <Field label="Dari akun" error={form.errors.accountId}>
         {(p) => (
-          <LookupPicker
-            {...p}
-            kind="account"
-            lookup={lookups.account}
-            value={account}
-            placeholder="Kas atau rekening"
-            onChange={(row) => {
-              setAccount(row);
-              form.set("accountId", row?.id ?? "");
-            }}
-          />
+          <AccountSelect {...p} value={v.accountId} placeholder="Kas atau rekening" onChange={(id) => form.set("accountId", id)} />
         )}
       </Field>
       <Field label="Jumlah" hint={`Sisa hutang ${formatRupiah(invoice.outstanding)}`} error={form.errors.amount}>

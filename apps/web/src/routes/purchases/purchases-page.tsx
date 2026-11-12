@@ -12,7 +12,7 @@ import { EmptyState, FilterRow, PageBody, PageHeader, StatTile } from "../../com
 import { api, unwrap } from "../../lib/api.ts";
 import { cx } from "../../lib/cx.ts";
 import { Amount, timeOfDay } from "./bits.tsx";
-import { LookupPicker, lookups, type Supplier } from "./lookups.tsx";
+import { LookupPicker, lookups, type Contact } from "../../components/lookup-picker.tsx";
 import { type Period, PeriodFilter, periodLabel, periodQuery, presetPeriod } from "./period-filter.tsx";
 import { PurchaseForm } from "./purchase-form.tsx";
 import { PurchaseSheet } from "./purchase-sheet.tsx";
@@ -36,7 +36,7 @@ export function PurchasesPage() {
 
   const [period, setPeriod] = useState<Period>(() => presetPeriod("month"));
   const [status, setStatus] = useState<StatusFilter | "">("");
-  const [supplier, setSupplier] = useState<Supplier | null>(null);
+  const [supplier, setSupplier] = useState<Contact | null>(null);
   const filters = { ...periodQuery(period), ...(status && { status }), ...(supplier && { supplierId: supplier.id }) };
 
   const paged = usePagedQuery(["purchases", "list", filters], (params) =>

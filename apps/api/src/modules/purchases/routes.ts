@@ -1,6 +1,5 @@
 import {
   idParam,
-  lookupQuery,
   paginationQuery,
   purchaseInput,
   purchaseListQuery,
@@ -18,8 +17,6 @@ import {
   listPayables,
   listPurchases,
   listSupplierPayables,
-  lookupAccounts,
-  lookupSuppliers,
   payPurchase,
   voidPayment,
   voidPurchase,
@@ -28,8 +25,6 @@ import {
 /** Supplier invoices (Pembelian), their payments, and open payables (Hutang). */
 export const purchaseRoutes = new Hono<AppEnv>()
   .use(backOffice())
-  .get("/suppliers", validate("query", lookupQuery), async (c) => c.json(await lookupSuppliers(c.var.db, c.req.valid("query").q)))
-  .get("/accounts", validate("query", lookupQuery), async (c) => c.json(await lookupAccounts(c.var.db, c.req.valid("query").q)))
   .get("/payables", validate("query", paginationQuery), async (c) => c.json(await listPayables(c.var.db, c.req.valid("query"))))
   .get("/payables/:supplierId", validate("param", z.object({ supplierId: z.uuid() })), async (c) =>
     c.json(await listSupplierPayables(c.var.db, c.req.valid("param").supplierId)),

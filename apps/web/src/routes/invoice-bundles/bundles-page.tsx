@@ -12,8 +12,7 @@ import { EmptyState, PageBody, PageHeader } from "../../components/ui/page.tsx";
 import { toast } from "../../components/ui/toast.tsx";
 import { api, unwrap } from "../../lib/api.ts";
 import { useForm } from "../../lib/form.ts";
-import { CustomerPicker } from "../sales/customer-picker.tsx";
-import type { Customer } from "../sales/queries.ts";
+import { type Contact, LookupPicker, lookups } from "../../components/lookup-picker.tsx";
 
 type Bundle = InferResponseType<(typeof api)["invoice-bundles"][":id"]["$get"], 200>;
 
@@ -64,7 +63,7 @@ export function BundlesPage() {
 
 function NewBundleSheet({ onSaved, onClose }: { onSaved: (id: string) => void; onClose: () => void }) {
   const queryClient = useQueryClient();
-  const [customer, setCustomer] = useState<Customer | null>(null);
+  const [customer, setCustomer] = useState<Contact | null>(null);
   const form = useForm(invoiceBundleInput, { customerId: "", date: businessDate(), note: "", invoiceIds: [] });
   const invoices = useQuery({
     queryKey: ["sales", "list", "open", customer?.id],
@@ -86,12 +85,15 @@ function NewBundleSheet({ onSaved, onClose }: { onSaved: (id: string) => void; o
       <form onSubmit={submit} noValidate className="flex flex-col gap-4">
         <Field label="Pelanggan" error={form.errors.customerId}>
           {(p) => (
-            <CustomerPicker
+            <LookupPicker
               {...p}
+              kind="customer"
+              lookup={lookups.customer}
               value={customer}
+              placeholder="Cari pelanggan…"
               onChange={(c) => {
                 setCustomer(c);
-                form.setValues((v) => ({ ...v, customerId: c.id, invoiceIds: [] }));
+                form.setValues((v) => ({ ...v, customerId: c?.id ?? "", invoiceIds: [] }));
               }}
             />
           )}

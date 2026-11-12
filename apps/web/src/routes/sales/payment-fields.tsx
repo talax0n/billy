@@ -1,7 +1,6 @@
 import { formatRupiah, paymentMethodLabels, paymentMethods, type PaymentMethod, rupiah } from "@billy/core";
-import { useQuery } from "@tanstack/react-query";
 import { Field, Input, MoneyInput, Select } from "../../components/ui/field.tsx";
-import { accountsQuery } from "./queries.ts";
+import { AccountSelect } from "../cash/account-select.tsx";
 
 export interface PaymentValues {
   accountId: string;
@@ -26,20 +25,12 @@ export function PaymentFields({
   errorPrefix?: string;
   outstanding: number;
 }) {
-  const accounts = useQuery(accountsQuery);
   const error = (key: keyof PaymentValues) => errors[`${errorPrefix}${key}`];
   return (
     <div className="grid grid-cols-2 gap-x-3 gap-y-4">
       <Field label="Masuk ke akun" error={error("accountId")}>
         {(p) => (
-          <Select {...p} value={values.accountId} onChange={(e) => onChange({ accountId: e.target.value })}>
-            <option value="">Pilih akun…</option>
-            {accounts.data?.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-              </option>
-            ))}
-          </Select>
+          <AccountSelect {...p} value={values.accountId} onChange={(accountId) => onChange({ accountId })} />
         )}
       </Field>
       <Field label="Metode" error={error("method")}>

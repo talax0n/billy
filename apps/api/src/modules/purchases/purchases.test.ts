@@ -330,14 +330,7 @@ describe("payables", () => {
   });
 });
 
-describe("lookups and roles", () => {
-  it("searches suppliers and accounts on the server", async () => {
-    const suppliers = await call("/api/purchases/suppliers?q=kuas", { cookie });
-    expect(await suppliers.json()).toEqual([{ id: otherSupplierId, code: "S-002", name: "CV Kuas Makmur", paymentTermsDays: 30 }]);
-    const accountRows = await call("/api/purchases/accounts?q=kas", { cookie });
-    expect(await accountRows.json()).toMatchObject([{ id: accountId, name: "Kas Toko" }]);
-  });
-
+describe("roles", () => {
   it("is closed to kasir", async () => {
     const { cookie: kasir } = await signIn("kasir");
     expect((await call("/api/purchases", { cookie: kasir })).status).toBe(403);

@@ -20,9 +20,8 @@ import { controlClass, DateInput, Field, Input, MoneyInput, Select } from "../..
 import { toast } from "../../components/ui/toast.tsx";
 import { api, ApiError, unwrap } from "../../lib/api.ts";
 import { cx } from "../../lib/cx.ts";
-import { CustomerPicker } from "./customer-picker.tsx";
+import { type Contact, LookupPicker, lookups } from "../../components/lookup-picker.tsx";
 import { PaymentFields, type PaymentValues } from "./payment-fields.tsx";
-import type { Customer } from "./queries.ts";
 
 interface LineProduct {
   id: string;
@@ -75,7 +74,7 @@ function tryTotals(lines: Line[], kind: DiscountKind, value: number): { totals: 
  */
 export function InvoiceForm({ onSaved }: { onSaved: (id: string) => void }) {
   const queryClient = useQueryClient();
-  const [customer, setCustomer] = useState<Customer | null>(null);
+  const [customer, setCustomer] = useState<Contact | null>(null);
   const [date, setDate] = useState(businessDate());
   const [termsDays, setTermsDays] = useState(0);
   const [lines, setLines] = useState<Line[]>(() => [blankLine()]);
@@ -147,12 +146,15 @@ export function InvoiceForm({ onSaved }: { onSaved: (id: string) => void }) {
       <section className="grid grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))] gap-3">
         <Field label="Pelanggan" error={errors.customerId}>
           {(p) => (
-            <CustomerPicker
+            <LookupPicker
               {...p}
+              kind="customer"
+              lookup={lookups.customer}
               value={customer}
+              placeholder="Cari pelanggan…"
               onChange={(c) => {
                 setCustomer(c);
-                setTermsDays(c.paymentTermsDays);
+                if (c) setTermsDays(c.paymentTermsDays);
               }}
             />
           )}

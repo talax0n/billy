@@ -1,26 +1,25 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import type { InferResponseType } from "hono/client";
 import { type ReactNode, useEffect, useState } from "react";
-import { Combobox } from "../../components/ui/combobox.tsx";
-import { api, unwrap } from "../../lib/api.ts";
+import { api, unwrap } from "../lib/api.ts";
+import { Combobox } from "./ui/combobox.tsx";
 
-export type Supplier = InferResponseType<typeof api.purchases.suppliers.$get, 200>[number];
-export type Account = InferResponseType<typeof api.purchases.accounts.$get, 200>[number];
+export type Contact = InferResponseType<typeof api.contacts.lookup.$get, 200>[number];
 export type Product = InferResponseType<typeof api.products.$get, 200>["rows"][number];
 
 const qty = new Intl.NumberFormat("id-ID");
 
 /** The searchable record types: each searches on the server, so a 4.000-product catalog stays fast. */
 export const lookups = {
-  supplier: {
-    search: (q: string) => unwrap(api.purchases.suppliers.$get({ query: { q } })),
-    label: (s: Supplier) => s.name,
-    hint: (s: Supplier) => s.code,
+  customer: {
+    search: (q: string) => unwrap(api.contacts.lookup.$get({ query: { q, kind: "customer" } })),
+    label: (c: Contact) => c.name,
+    hint: (c: Contact) => c.code,
   },
-  account: {
-    search: (q: string) => unwrap(api.purchases.accounts.$get({ query: { q } })),
-    label: (a: Account) => a.name,
-    hint: (a: Account) => a.code,
+  supplier: {
+    search: (q: string) => unwrap(api.contacts.lookup.$get({ query: { q, kind: "supplier" } })),
+    label: (c: Contact) => c.name,
+    hint: (c: Contact) => c.code,
   },
   product: {
     search: async (q: string) => (await unwrap(api.products.$get({ query: { q, pageSize: "20" } }))).rows,

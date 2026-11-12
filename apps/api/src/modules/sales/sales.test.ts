@@ -216,15 +216,11 @@ describe("lists", () => {
     ]);
   });
 
-  it("looks up customers only", async () => {
-    const body = (await (await call("/api/sales/customers?q=a", { cookie })).json()) as Json[];
-    expect(body.map((c) => c.code)).toEqual(["P-001"]);
-  });
 });
 
 it("refuses the kasir role", async () => {
   const kasir = await signIn("kasir");
-  for (const path of ["/api/sales", "/api/sales/receivables", "/api/sales/customers"]) {
+  for (const path of ["/api/sales", "/api/sales/receivables"]) {
     expect((await call(path, { cookie: kasir.cookie })).status).toBe(403);
   }
   const res = await call("/api/sales", { method: "POST", cookie: kasir.cookie, body: invoiceBody() });
