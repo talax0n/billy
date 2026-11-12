@@ -12,6 +12,7 @@ import {
   accounts,
   cashEntries,
   categories,
+  contacts,
   type Db,
   posLines,
   posSales,
@@ -33,7 +34,8 @@ const visibleTo = (user: SessionUser): SQL | undefined =>
   user.role === "kasir" ? eq(posSales.cashierId, user.id) : undefined;
 
 /**
- * Everything the cashier device caches to keep selling offline. Cost prices stay on the server.
+ * Everything the cashier device caches to keep selling offline: products, accounts and the
+ * active customers for the F3 picker. Cost prices stay on the server.
  * `lastNumber` is the device's highest receipt number today, so a device whose local counter
  * was wiped continues after it instead of colliding.
  */
@@ -50,7 +52,7 @@ export async function getCatalog(db: Db) {
     .from(settings);
   if (!shop) throw new DomainError("not_found", "Pengaturan toko belum dibuat");
 
-  const [productRows, accountRows, [last]] = await Promise.all([
+  const [productRows, accountRows, customerRows, [last]] = await Promise.all([
     db
       .select({
         id: products.id,
@@ -75,6 +77,11 @@ export async function getCatalog(db: Db) {
       .where(eq(accounts.active, true))
       .orderBy(asc(accounts.code)),
     db
+      .select({ id: contacts.id, code: contacts.code, name: contacts.name })
+      .from(contacts)
+      .where(and(eq(contacts.kind, "customer"), eq(contacts.active, true)))
+      .orderBy(asc(contacts.name)),
+    db
       .select({ number: posSales.number })
       .from(posSales)
       .where(like(posSales.number, `${shop.deviceCode}-${docPeriod(businessDate())}-%`))
@@ -82,7 +89,7 @@ export async function getCatalog(db: Db) {
       .limit(1),
   ]);
 
-  return { products: productRows, accounts: accountRows, shop, lastNumber: last?.number ?? null };
+  return { products: productRows, accounts: accountRows, customers: customerRows, shop, lastNumber: last?.number ?? null };
 }
 
 /**
@@ -101,6 +108,12 @@ export async function recordSale(db: Db, input: PosSale, cashierId: string) {
 
     const [account] = await tx.select({ active: accounts.active }).from(accounts).where(eq(accounts.id, input.accountId));
     if (!account?.active) throw new DomainError("invalid", "Akun pembayaran tidak ditemukan atau nonaktif");
+
+    if (input.customerId) {
+      // A customer deactivated after the device cached it still counts: the sale already happened.
+      const [customer] = await tx.select({ kind: contacts.kind }).from(contacts).where(eq(contacts.id, input.customerId));
+      if (customer?.kind !== "customer") throw new DomainError("invalid", "Pelanggan tidak ditemukan");
+    }
 
     const productIds = [...new Set(input.lines.map((l) => l.productId))];
     const catalog = await tx

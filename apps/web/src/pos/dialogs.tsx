@@ -9,7 +9,7 @@ import { toast } from "../components/ui/toast.tsx";
 import { api, unwrap } from "../lib/api.ts";
 import { cx } from "../lib/cx.ts";
 import type { CartLine } from "./cart.ts";
-import type { Catalog, ParkedCart, QueuedSale, SyncProblem } from "./local.ts";
+import type { Catalog, CatalogCustomer, ParkedCart, QueuedSale, SyncProblem } from "./local.ts";
 import { dismissProblem, retryProblem } from "./outbox.ts";
 import { accountFor, type PosPreferences } from "./preferences.ts";
 import { methodLabels, type ReceiptData, receiptFromSale } from "./receipt.tsx";
@@ -290,6 +290,68 @@ export function HistoryDialog({
         {sales.isPending && <p className="py-6 text-center text-muted">Memuat…</p>}
         {sales.isError && <p className="py-6 text-center text-muted">Riwayat server tidak bisa dimuat saat offline.</p>}
         {sales.data?.rows.length === 0 && pending.length === 0 && <p className="py-6 text-center text-muted">Belum ada transaksi.</p>}
+      </div>
+    </Dialog>
+  );
+}
+
+/**
+ * F3: the customer on this receipt, searched from the customers cached with the catalog so it
+ * works offline. The first row is always "Umum", the walk-in default.
+ */
+export function CustomerDialog({
+  customers,
+  onSave,
+  onClose,
+}: {
+  customers: CatalogCustomer[];
+  onSave: (customer: CatalogCustomer | null) => void;
+  onClose: () => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [highlight, setHighlight] = useState(0);
+  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const matches = customers.filter((c) => terms.every((t) => `${c.name} ${c.code}`.toLowerCase().includes(t))).slice(0, 8);
+  const options: (CatalogCustomer | null)[] = [null, ...matches];
+  return (
+    <Dialog open onClose={onClose} title="Pelanggan" description="Kosongkan untuk pelanggan umum.">
+      <div className="flex flex-col gap-3">
+        <Input
+          autoFocus
+          aria-label="Cari pelanggan"
+          placeholder="Cari nama atau kode pelanggan"
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setHighlight(e.target.value.trim() ? 1 : 0);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+              e.preventDefault();
+              const step = e.key === "ArrowDown" ? 1 : -1;
+              setHighlight((h) => (h + step + options.length) % options.length);
+            } else if (e.key === "Enter") {
+              e.preventDefault();
+              onSave(options[highlight] ?? null);
+            }
+          }}
+        />
+        <ul role="listbox" aria-label="Pelanggan" className="flex flex-col">
+          {options.map((c, i) => (
+            <li key={c?.id ?? "umum"} role="option" aria-selected={i === highlight}>
+              <button
+                type="button"
+                onClick={() => onSave(c)}
+                onMouseEnter={() => setHighlight(i)}
+                className={cx("flex w-full justify-between rounded-lg px-3 py-2 text-left", i === highlight && "bg-line-2")}
+              >
+                <span>{c?.name ?? "Umum"}</span>
+                <span className="text-muted">{c?.code ?? "tanpa nama"}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+        {terms.length > 0 && matches.length === 0 && <p className="text-muted">Tidak ada pelanggan yang cocok.</p>}
       </div>
     </Dialog>
   );

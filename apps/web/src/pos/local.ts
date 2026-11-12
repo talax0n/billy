@@ -8,6 +8,7 @@ import type { ReceiptData } from "./receipt.tsx";
 
 export type Catalog = InferResponseType<typeof api.pos.catalog.$get, 200>;
 export type CatalogProduct = Catalog["products"][number];
+export type CatalogCustomer = Catalog["customers"][number];
 
 /** A sale waiting for upload, with the receipt it printed so it can be reprinted offline. */
 export interface QueuedSale {
@@ -81,6 +82,22 @@ export async function allocateNumber(deviceCode: string, serverLast: string | nu
     return { deviceCode, period: next.period, value: next.value };
   });
   return number;
+}
+
+/**
+ * Takes the sold quantities off the cached stock, in memory (`setCatalog`) and on the device,
+ * so the next search already shows them. The server's figure replaces it on the next refresh.
+ */
+export async function deductSold(lines: readonly { productId: string; qty: number }[], setCatalog: (fn: (c: Catalog) => Catalog) => void) {
+  const sold = new Map<string, number>();
+  for (const line of lines) sold.set(line.productId, (sold.get(line.productId) ?? 0) + line.qty);
+  const deduct = (catalog: Catalog): Catalog => ({
+    ...catalog,
+    products: catalog.products.map((p) => (sold.has(p.id) ? { ...p, stock: p.stock - sold.get(p.id)! } : p)),
+  });
+  setCatalog(deduct);
+  const cached = await read("catalog");
+  if (cached) await write("catalog", deduct(cached));
 }
 
 /**

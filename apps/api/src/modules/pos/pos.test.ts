@@ -1,5 +1,5 @@
 import { uuidv7 } from "@billy/core";
-import { accounts, cashEntries, posLines, posSales, products, settings, stockMovements } from "@billy/db";
+import { accounts, cashEntries, contacts, posLines, posSales, products, settings, stockMovements } from "@billy/db";
 import { asc, eq } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 import { createTestApp } from "../../testing.ts";
@@ -156,6 +156,23 @@ describe("POST /api/pos/sales", () => {
     expect(effects.cash.map(({ amount }) => amount)).toEqual([60_000]);
   });
 
+  it("stores the customer picked with F3 and refuses one that is not a customer", async () => {
+    const [customer, supplier] = (await db
+      .insert(contacts)
+      .values([
+        { code: "P-001", name: "CV Bangun Jaya", kind: "customer" },
+        { code: "S-001", name: "PT Pemasok", kind: "supplier" },
+      ])
+      .returning({ id: contacts.id })) as [{ id: string }, { id: string }];
+    const sale = saleBody({ number: "K1-261113-0007", customerId: customer.id });
+    expect((await post(kasir, sale)).status).toBe(201);
+    const [stored] = await db.select({ customerId: posSales.customerId }).from(posSales).where(eq(posSales.id, sale.id));
+    expect(stored).toEqual({ customerId: customer.id });
+
+    const wrong = await post(kasir, saleBody({ number: "K1-261113-0008", customerId: supplier.id }));
+    expect([wrong.status, await wrong.json()]).toEqual([422, { error: "Pelanggan tidak ditemukan" }]);
+  });
+
   it("refuses an inactive product with 422", async () => {
     const retired = await createProduct("OLD-1", "Cat Lama", 50_000, 40_000, 5);
     await db.update(products).set({ active: false }).where(eq(products.id, retired));
@@ -273,11 +290,12 @@ describe("GET /api/pos/catalog", () => {
       categoryName: null,
       sellPrice: 78_000,
       minStock: 2,
-      // 10 opening − 2 × 5 sales + 2 back from the void
-      stock: 2,
+      // 10 opening − 2 × 6 sales + 2 back from the void
+      stock: 0,
     });
     expect(body).toMatchObject({
       accounts: [{ id: cashAccount, name: "Kas Toko", kind: "cash" }],
+      customers: [{ id: expect.any(String), code: "P-001", name: "CV Bangun Jaya" }],
       shop: { shopName: "Toko Uji", receiptFooter: "Terima kasih", deviceCode: "K9" },
       lastNumber: `K9-${period}-0007`,
     });

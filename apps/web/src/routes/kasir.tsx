@@ -11,6 +11,7 @@ import { setTheme } from "../lib/theme.ts";
 import { cartReducer, emptyCart } from "../pos/cart.ts";
 import { CartTable } from "../pos/cart-table.tsx";
 import {
+  CustomerDialog,
   HistoryDialog,
   LineDiscountDialog,
   NoteDialog,
@@ -19,7 +20,7 @@ import {
   ProblemsDialog,
   TxDiscountDialog,
 } from "../pos/dialogs.tsx";
-import { allocateNumber, type Catalog, catalogQuery, change, type ParkedCart, peekNumber, read, write } from "../pos/local.ts";
+import { allocateNumber, type Catalog, catalogQuery, change, deductSold, type ParkedCart, peekNumber, read, write } from "../pos/local.ts";
 import { onFlushed, type OutboxSnapshot, queueSale, startOutbox, useOutbox } from "../pos/outbox.ts";
 import { PayPanel } from "../pos/pay-panel.tsx";
 import { accountFor, usePosPreferences } from "../pos/preferences.ts";
@@ -28,7 +29,7 @@ import { exactMatch, SearchBox, searchProducts } from "../pos/search.tsx";
 import { cacheAppShell } from "../pos/shell.ts";
 import { Chip, Kbd } from "../pos/ui.tsx";
 
-type DialogName = "lineDiscount" | "note" | "txDiscount" | "parked" | "history" | "problems" | "prefs";
+type DialogName = "customer" | "lineDiscount" | "note" | "txDiscount" | "parked" | "history" | "problems" | "prefs";
 
 /** Full-screen cashier. Works from the device cache, so it keeps selling while offline. */
 export function KasirPage() {
@@ -63,6 +64,7 @@ export function KasirPage() {
 }
 
 function Register({ catalog }: { catalog: Catalog }) {
+  const queryClient = useQueryClient();
   const { data: me } = useSuspenseQuery(meQuery);
   const outbox = useOutbox();
   const [prefs, savePrefs] = usePosPreferences();
@@ -129,7 +131,7 @@ function Register({ catalog }: { catalog: Catalog }) {
       id: uuidv7(),
       number,
       soldAt,
-      customerId: null,
+      customerId: cart.customer?.id ?? null,
       lines: cart.lines.map(({ productId, qty, unitPrice, discountAmount, note }) => ({ productId, qty, unitPrice, discountAmount, note })),
       discount: cart.discount,
       method,
@@ -152,6 +154,7 @@ function Register({ catalog }: { catalog: Catalog }) {
       change: rupiah(paid - totals.total),
     };
     await queueSale({ sale, receipt });
+    await deductSold(sale.lines, (fn) => queryClient.setQueryData(catalogQuery.queryKey, (c) => c && fn(c)));
     await write("lastReceipt", receipt);
     printReceipt(receipt, shop, prefs.paper);
     reset();
@@ -188,6 +191,7 @@ function Register({ catalog }: { catalog: Catalog }) {
   const onGlobalKey = useEffectEvent((e: globalThis.KeyboardEvent) => {
     if (dialog) return;
     if (e.key === "F2") focusSearch();
+    else if (e.key === "F3") setDialog("customer");
     else if (e.key === "F4") setDialog("txDiscount");
     else if (e.key === "F5") {
       setMethod("cash");
@@ -248,6 +252,8 @@ function Register({ catalog }: { catalog: Catalog }) {
       <TopBar
         catalog={catalog}
         nextNumber={nextNumber}
+        customerName={cart.customer?.name ?? "Umum"}
+        onCustomer={() => setDialog("customer")}
         cashierName={me?.name ?? ""}
         outbox={outbox}
         backOffice={me?.role !== "kasir"}
@@ -311,6 +317,7 @@ function Register({ catalog }: { catalog: Catalog }) {
         {(
           [
             ["F2", "cari"],
+            ["F3", "pelanggan"],
             ["F4", "diskon"],
             ["F8", parked.length ? `tahan transaksi (${parked.length} ditahan)` : "tahan transaksi"],
             ["F9", "riwayat"],
@@ -327,6 +334,17 @@ function Register({ catalog }: { catalog: Catalog }) {
         </span>
       </div>
 
+      {dialog === "customer" && (
+        <CustomerDialog
+          // A catalog cached by an older version of the app has no customers yet.
+          customers={catalog.customers ?? []}
+          onClose={focusSearch}
+          onSave={(customer) => {
+            dispatch({ type: "customer", customer });
+            focusSearch();
+          }}
+        />
+      )}
       {dialog === "lineDiscount" && line && (
         <LineDiscountDialog
           line={line}
@@ -378,6 +396,8 @@ function Register({ catalog }: { catalog: Catalog }) {
 function TopBar({
   catalog,
   nextNumber,
+  customerName,
+  onCustomer,
   cashierName,
   outbox,
   backOffice,
@@ -386,6 +406,8 @@ function TopBar({
 }: {
   catalog: Catalog;
   nextNumber: string;
+  customerName: string;
+  onCustomer: () => void;
   cashierName: string;
   outbox: OutboxSnapshot;
   backOffice: boolean;
@@ -414,8 +436,8 @@ function TopBar({
       <Chip>
         No. <strong className="font-medium text-ink tabular-nums">{nextNumber}</strong>
       </Chip>
-      <Chip>
-        Pelanggan <strong className="font-medium text-ink">Umum</strong>
+      <Chip onClick={onCustomer} title="Ganti pelanggan (F3)">
+        Pelanggan <strong className="font-medium text-ink">{customerName}</strong>
       </Chip>
       <span className="flex-1" />
       <SyncChip outbox={outbox} />

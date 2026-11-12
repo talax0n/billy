@@ -1,5 +1,5 @@
 import { type Discount, rupiah, type Rupiah } from "@billy/core";
-import type { CatalogProduct } from "./local.ts";
+import type { CatalogCustomer, CatalogProduct } from "./local.ts";
 
 export interface CartLine {
   productId: string;
@@ -19,9 +19,11 @@ export interface Cart {
   discount: Discount;
   /** Index of the selected line, the target of + − D N Del. */
   selected: number;
+  /** Picked with F3; null is the walk-in customer "Umum". Optional because carts parked before F3 existed lack it. */
+  customer?: CatalogCustomer | null;
 }
 
-export const emptyCart: Cart = { lines: [], discount: { kind: "none", value: 0 }, selected: -1 };
+export const emptyCart: Cart = { lines: [], discount: { kind: "none", value: 0 }, selected: -1, customer: null };
 
 export type CartAction =
   | { type: "add"; product: CatalogProduct }
@@ -31,6 +33,7 @@ export type CartAction =
   | { type: "note"; index: number; note: string }
   | { type: "remove"; index: number }
   | { type: "txDiscount"; discount: Discount }
+  | { type: "customer"; customer: CatalogCustomer | null }
   | { type: "load"; cart: Cart };
 
 const patch = (cart: Cart, index: number, change: Partial<CartLine>): Cart => ({
@@ -71,6 +74,8 @@ export function cartReducer(cart: Cart, action: CartAction): Cart {
     }
     case "txDiscount":
       return { ...cart, discount: action.discount };
+    case "customer":
+      return { ...cart, customer: action.customer };
     case "load":
       return action.cart;
   }
