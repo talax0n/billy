@@ -50,7 +50,8 @@ export const periodQuery = ({ from, to }: Period) => ({ ...(from && { from }), .
 export function PeriodFilter({ value, onChange }: { value: Period; onChange: (period: Period) => void }) {
   return (
     <>
-      <Select className="w-44"
+      <Select
+        className="w-44"
         aria-label="Periode"
         value={value.preset}
         onChange={(e) => {
