@@ -10,7 +10,7 @@ import { api, unwrap } from "../../lib/api.ts";
 import { cx } from "../../lib/cx.ts";
 import { type Contact, LookupPicker, lookups } from "../../components/lookup-picker.tsx";
 import { InvoiceSheet } from "./invoice-sheet.tsx";
-import { type Period, periodLabel, periodRange, periods } from "./queries.ts";
+import { type Period, PeriodFilter, periodLabel, periodQuery, presetPeriod } from "../../components/period-filter.tsx";
 
 
 const statusLabels: Record<SalesStatusFilter, string> = {
@@ -23,7 +23,7 @@ const statusLabels: Record<SalesStatusFilter, string> = {
 };
 
 export function SalesPage() {
-  const [period, setPeriod] = useState<Period>("month");
+  const [period, setPeriod] = useState<Period>(() => presetPeriod("month"));
   const [status, setStatus] = useState<SalesStatusFilter | "">("");
   const [customer, setCustomer] = useState<Contact | null>(null);
   const paged = usePagedQuery(["sales", "list", period, status, customer?.id], (params) =>
@@ -33,7 +33,7 @@ export function SalesPage() {
           q: params.q,
           page: String(params.page),
           pageSize: String(params.pageSize),
-          ...periodRange(period),
+          ...periodQuery(period),
           ...(status && { status }),
           ...(customer && { customerId: customer.id }),
         },
@@ -43,7 +43,7 @@ export function SalesPage() {
   /** null: closed; "new": create form; a string: the invoice shown. */
   const [open, setOpen] = useState<string | null>(null);
   const summary = paged.query.data?.summary;
-  const windowNote = `${periodLabel(period)}${status ? ` · ${statusLabels[status]}` : ""}${customer ? ` · ${customer.name}` : ""}`;
+  const windowNote = `Faktur ${periodLabel(period)}${status ? ` · ${statusLabels[status]}` : ""}${customer ? ` · ${customer.name}` : ""}`;
   const money = (v: number | undefined) => (v === undefined ? "—" : formatRupiah(rupiah(v)));
 
   return (
@@ -60,13 +60,7 @@ export function SalesPage() {
       />
       <PageBody>
         <FilterRow aside={summary && `${summary.count} faktur`}>
-          <Select className="w-44" aria-label="Periode" value={period} onChange={(e) => setPeriod(e.target.value as Period)}>
-            {Object.entries(periods).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </Select>
+          <PeriodFilter value={period} onChange={setPeriod} />
           <Select className="w-40" aria-label="Status" value={status} onChange={(e) => setStatus(e.target.value as SalesStatusFilter | "")}>
             <option value="">Semua status</option>
             {salesStatusFilters.map((s) => (

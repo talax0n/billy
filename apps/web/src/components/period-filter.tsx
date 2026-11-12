@@ -1,5 +1,5 @@
 import { addDays, type BusinessDate, businessDate, formatDate } from "@billy/core";
-import { DateInput, Select } from "../../components/ui/field.tsx";
+import { DateInput, Select } from "./ui/field.tsx";
 
 export const periodPresets = {
   month: "Bulan ini",

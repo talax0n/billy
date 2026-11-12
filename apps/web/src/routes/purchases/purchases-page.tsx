@@ -13,7 +13,7 @@ import { api, unwrap } from "../../lib/api.ts";
 import { cx } from "../../lib/cx.ts";
 import { Amount, timeOfDay } from "./bits.tsx";
 import { LookupPicker, lookups, type Contact } from "../../components/lookup-picker.tsx";
-import { type Period, PeriodFilter, periodLabel, periodQuery, presetPeriod } from "./period-filter.tsx";
+import { type Period, PeriodFilter, periodLabel, periodQuery, presetPeriod } from "../../components/period-filter.tsx";
 import { PurchaseForm } from "./purchase-form.tsx";
 import { PurchaseSheet } from "./purchase-sheet.tsx";
 

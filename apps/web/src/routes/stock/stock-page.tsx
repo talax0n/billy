@@ -14,7 +14,7 @@ import { StockAdjustDialog } from "../products/stock-adjust-dialog.tsx";
 import { StockQty } from "../products/stock-qty.tsx";
 import { timeOfDay } from "../purchases/bits.tsx";
 import { LookupPicker, lookups } from "../../components/lookup-picker.tsx";
-import { type Period, PeriodFilter, periodQuery, presetPeriod } from "../purchases/period-filter.tsx";
+import { type Period, PeriodFilter, periodQuery, presetPeriod } from "../../components/period-filter.tsx";
 import { sourceDocuments } from "./source-documents.ts";
 
 type Reason = (typeof stockReasons)[number];
