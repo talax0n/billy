@@ -31,6 +31,7 @@ self.addEventListener("fetch", (event) => {
         }
         return response;
       })
-      .catch(async () => (await caches.match(request.mode === "navigate" ? "/" : request)) ?? Response.error()),
+      // ignoreVary: the shell files were cached by the page without the Origin header a module script sends.
+      .catch(async () => (await caches.match(request.mode === "navigate" ? "/" : request, { ignoreVary: true })) ?? Response.error()),
   );
 });
