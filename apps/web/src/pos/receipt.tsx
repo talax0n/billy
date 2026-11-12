@@ -3,6 +3,7 @@ import type { InferResponseType } from "hono/client";
 import { useEffect, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import type { api } from "../lib/api.ts";
+import { desktop } from "../lib/desktop.ts";
 
 /** Everything a receipt shows. Built from the cart at sale time, or from a stored sale for reprints. */
 export interface ReceiptData {
@@ -59,7 +60,7 @@ const stamp = new Intl.DateTimeFormat("id-ID", { dateStyle: "short", timeStyle: 
 
 /**
  * A thermal receipt (58 or 80 mm). Monospace and black on white whatever the theme, because
- * it is paper. Standalone so the Electron shell can render it for silent printing later.
+ * it is paper.
  */
 export function Receipt({ receipt: r, shop, width = 80 }: { receipt: ReceiptData; shop: ReceiptShop; width?: PaperWidth }) {
   const row = "flex justify-between gap-2";
@@ -156,13 +157,13 @@ interface PrintJob {
 let job: PrintJob | null = null;
 const listeners = new Set<() => void>();
 
-/** Prints a receipt through the browser dialog. Mount `<ReceiptPrinter />` once on the page. */
+/** Prints a receipt: silently in the desktop app, else through the browser dialog. Mount `<ReceiptPrinter />` once on the page. */
 export function printReceipt(receipt: ReceiptData, shop: ReceiptShop, width: PaperWidth = 80) {
   job = { receipt, shop, width };
   for (const listener of listeners) listener();
 }
 
-/** Renders the pending print job outside the app root and calls `window.print()` once it is in the DOM. */
+/** Renders the pending print job outside the app root and prints the page once it is in the DOM. */
 export function ReceiptPrinter() {
   const current = useSyncExternalStore(
     (listener) => {
@@ -172,7 +173,10 @@ export function ReceiptPrinter() {
     () => job,
   );
   useEffect(() => {
-    if (current) window.print();
+    if (!current) return;
+    // A failed silent print (printer offline, wrong name) falls back to the dialog, so the cashier can pick another.
+    if (desktop) desktop.printReceipt().catch(() => window.print());
+    else window.print();
   }, [current]);
   if (!current) return null;
   return createPortal(

@@ -6,7 +6,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "turbo run dev",
+    "dev": "turbo run dev --filter=!@billy/desktop",
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",

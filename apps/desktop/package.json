@@ -1,0 +1,22 @@
+{
+  "name": "@billy/desktop",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Billy kasir and bookkeeping",
+  "type": "module",
+  "main": "dist/main.js",
+  "scripts": {
+    "dev": "tsc -p . && BILLY_DEV_URL=${BILLY_DEV_URL:-http://localhost:5173} electron .",
+    "build": "tsc -p .",
+    "package": "turbo run build --filter=@billy/desktop && electron-builder",
+    "typecheck": "tsc -p . --noEmit && tsc -p e2e",
+    "smoke": "node e2e/smoke.ts"
+  },
+  "devDependencies": {
+    "@billy/web": "workspace:*",
+    "@types/node": "26.6.6",
+    "electron": "45.3.1",
+    "electron-builder": "26.18.0",
+    "playwright": "1.65.0"
+  }
+}

@@ -7,7 +7,8 @@ Internal bookkeeping and point-of-sale app for Toko Cat Sumber Karya. It replace
 | Path | What it is |
 |---|---|
 | `apps/api` | Hono API, served under `/api`. Deploys to Vercel. |
-| `apps/web` | Vite + React SPA. The Electron app will wrap this build. |
+| `apps/web` | Vite + React SPA. Runs in the browser and inside `apps/desktop`. |
+| `apps/desktop` | Electron shell around the web build: silent receipt printing, on-disk offline storage. |
 | `packages/core` | Domain rules (money, totals, status, numbering, dates) and the zod schemas shared by API and web. |
 | `packages/db` | Drizzle schema, migrations, `createDb()`, first-run seed. |
 | `docs/` | Legacy discovery, tech stack, data model, and UI direction. Read these first. |
@@ -36,6 +37,18 @@ After changing `packages/db/src/schema.ts`, generate a migration:
 ```sh
 pnpm --filter @billy/db generate
 ```
+
+## Desktop app
+
+The desktop app serves `apps/web/dist` from `app://billy/` and forwards `app://billy/api/*` to the API, so the web app's relative `/api` calls and its session cookie work unchanged. The API origin is `BILLY_API_URL`, else `apiUrl` in `settings.json` in the app's userData folder, else `http://localhost:8787`.
+
+```sh
+pnpm --filter @billy/desktop dev      # Electron on the Vite dev server (start `pnpm dev` first)
+pnpm --filter @billy/desktop package  # build, then installer in apps/desktop/release (dmg on macOS, NSIS on Windows); add `-- --dir` for an unpacked app
+pnpm --filter @billy/desktop smoke    # after `pnpm build`: login, silent print, offline sale across a restart (needs pdftotext)
+```
+
+Start the kasir PC with `--kiosk` to open `/kasir` fullscreen. F11 toggles fullscreen. Pick the receipt printer in the cashier settings (Printer struk).
 
 ## Adding a module
 

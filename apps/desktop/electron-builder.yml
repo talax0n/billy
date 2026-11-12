@@ -1,0 +1,20 @@
+appId: id.sumberkarya.billy
+productName: Billy
+directories:
+  output: release
+files:
+  - dist/**
+  - package.json
+extraResources:
+  - from: ../web/dist
+    to: web
+mac:
+  target: dmg
+  category: public.app-category.business
+  identity: null
+win:
+  target: nsis
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+publish: null

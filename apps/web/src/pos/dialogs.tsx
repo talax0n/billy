@@ -8,6 +8,7 @@ import { Field, Input, MoneyInput, Select } from "../components/ui/field.tsx";
 import { toast } from "../components/ui/toast.tsx";
 import { api, unwrap } from "../lib/api.ts";
 import { cx } from "../lib/cx.ts";
+import { desktop } from "../lib/desktop.ts";
 import type { CartLine } from "./cart.ts";
 import type { Catalog, CatalogCustomer, ParkedCart, QueuedSale, SyncProblem } from "./local.ts";
 import { dismissProblem, retryProblem } from "./outbox.ts";
@@ -103,7 +104,7 @@ export function TxDiscountDialog({ discount, onSave, onClose }: { discount: Disc
   );
 }
 
-/** Which account each method pays into, and the receipt paper. Stored on this device only. */
+/** Which account each method pays into, the receipt paper, and on desktop the receipt printer. Stored on this device only. */
 export function PreferencesDialog({
   prefs,
   accounts,
@@ -119,9 +120,20 @@ export function PreferencesDialog({
     paper: prefs.paper,
     accounts: Object.fromEntries(posMethods.map((m) => [m, accountFor(m, prefs, accounts)?.id])),
   }));
+  const printers = useQuery({
+    queryKey: ["desktop-printers"],
+    enabled: desktop !== undefined,
+    gcTime: 0, // re-read on every open: the saved printer changes from this dialog
+    queryFn: async () => ({ list: await desktop!.listPrinters(), saved: await desktop!.receiptPrinter() }),
+  });
+  const [printer, setPrinter] = useState<string>();
+  function save() {
+    if (desktop && printer !== undefined) void desktop.setReceiptPrinter(printer);
+    onSave(draft);
+  }
   return (
     <Dialog open onClose={onClose} title="Pengaturan kasir" description="Berlaku untuk perangkat ini saja.">
-      <DialogForm submitLabel="Simpan" onSubmit={() => onSave(draft)}>
+      <DialogForm submitLabel="Simpan" onSubmit={save}>
         {posMethods.map((m: PosMethod) => (
           <Field key={m} label={`${methodLabels[m]} masuk ke`}>
             {(p) => (
@@ -147,6 +159,20 @@ export function PreferencesDialog({
             </Select>
           )}
         </Field>
+        {desktop && (
+          <Field label="Printer struk">
+            {(p) => (
+              <Select {...p} value={printer ?? printers.data?.saved ?? ""} onChange={(e) => setPrinter(e.target.value)}>
+                <option value="">Printer bawaan sistem</option>
+                {printers.data?.list.map((d) => (
+                  <option key={d.name} value={d.name}>
+                    {d.displayName}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+        )}
       </DialogForm>
     </Dialog>
   );
