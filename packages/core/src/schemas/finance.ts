@@ -1,0 +1,10 @@
+import { z } from "zod";
+import { businessDateInput, paginationQuery, rupiahInput, text } from "./common.ts";
+const amount = rupiahInput.refine((value) => value > 0, "Jumlah harus lebih besar dari nol");
+export const accountInput = z.object({ code: z.string().trim().min(1).max(40), name: z.string().trim().min(1).max(200), kind: z.enum(["cash", "bank", "ewallet"]), active: z.boolean().default(true) });
+export const manualCashInput = z.object({ accountId: z.uuid(), date: businessDateInput, direction: z.enum(["in", "out"]), amount, note: z.string().trim().min(1).max(500) });
+export const transferInput = z.object({ fromAccountId: z.uuid(), toAccountId: z.uuid(), date: businessDateInput, amount, note: text(500), proofUrl: z.url().nullable().optional() });
+export const expenseInput = z.object({ accountId: z.uuid(), date: businessDateInput, amount, category: z.string().trim().min(1).max(100), description: text(500), proofUrl: z.url().nullable().optional() });
+export const voidInput = z.object({ reason: z.string().trim().min(1).max(500) });
+export const cashBookQuery = paginationQuery.extend({ from: businessDateInput.optional(), to: businessDateInput.optional(), direction: z.enum(["in", "out"]).optional(), category: z.enum(["sale", "purchase", "expense", "transfer", "other_in", "other_out", "reversal"]).optional() });
+export const expenseQuery = paginationQuery.extend({ month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).optional() });
