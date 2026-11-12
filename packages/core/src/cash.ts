@@ -26,12 +26,12 @@ export function transferMovements(transfer: {
 }
 
 /**
- * The entry that cancels `entry` when its document is voided: same account, amount and date,
- * opposite direction. Keeping the original date makes every historical balance read as if the
- * document never happened, which matches period totals that exclude voided documents.
+ * The entry that cancels `entry` when its document is voided on `voidDate`: same account and
+ * amount, opposite direction, dated on the void date (data-model ground rule 3), so totals of
+ * periods already reported do not change.
  */
-export function reversalOf(entry: CashMovement): CashMovement {
-  return { ...entry, direction: entry.direction === "in" ? "out" : "in" };
+export function reversalOf(entry: CashMovement, voidDate: BusinessDate): CashMovement {
+  return { ...entry, date: voidDate, direction: entry.direction === "in" ? "out" : "in" };
 }
 
 /** Manual cash rows are `other_in` / `other_out` by direction. */

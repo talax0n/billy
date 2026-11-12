@@ -1,4 +1,5 @@
 import {
+  businessDate,
   type accountInput,
   type cashBookQuery,
   type cashEntryInput,
@@ -224,7 +225,7 @@ export async function writeReversals(
   if (originals.length === 0) return;
   await tx.insert(cashEntries).values(
     originals.map((entry) => ({
-      ...reversalOf(entry),
+      ...reversalOf(entry, businessDate()),
       category: "reversal" as const,
       sourceType,
       sourceId,

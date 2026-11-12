@@ -1,7 +1,12 @@
 import { cashEntries } from "@billy/db";
 import { asc, eq } from "drizzle-orm";
-import { beforeAll, expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { createTestApp } from "../../testing.ts";
+
+// Voids are dated on the business date they happen: 13 Nov here.
+vi.useFakeTimers({ toFake: ["Date"] });
+vi.setSystemTime(new Date("2026-11-13T07:00:00Z"));
+afterAll(() => vi.useRealTimers());
 
 const { call, db, signIn } = await createTestApp();
 let cookie: string;
@@ -66,8 +71,8 @@ it("transfers between accounts with an out and an in entry, and voids with rever
   expect(voided.status).toBe(200);
   expect(voided.body).toMatchObject({ voidReason: "Salah akun", voidedAt: expect.any(String) });
   expect((await entriesOf(id)).filter((e) => e.category === "reversal")).toEqual([
-    { accountId: kas, date: "2026-11-03", direction: "in", amount: 1_500_000, category: "reversal" },
-    { accountId: bca, date: "2026-11-03", direction: "out", amount: 1_500_000, category: "reversal" },
+    { accountId: kas, date: "2026-11-13", direction: "in", amount: 1_500_000, category: "reversal" },
+    { accountId: bca, date: "2026-11-13", direction: "out", amount: 1_500_000, category: "reversal" },
   ]);
   expect(await json(`/api/accounts/${kas}`)).toMatchObject({ balance: 4_800_000 });
   expect(await json(`/api/accounts/${bca}`)).toMatchObject({ balance: 0 });
@@ -98,8 +103,8 @@ it("shows the cash book newest first with a running balance, filters and period 
     totalIn: 6_800_000,
     totalOut: 1_700_000,
     rows: [
-      { date: "2026-11-05", direction: "in", amount: 300_000, category: "other_in", balance: 5_100_000, createdByName: "Uji staff" },
-      { date: "2026-11-03", direction: "in", category: "reversal", note: "Void: Salah akun", balance: 4_800_000, voidable: false },
+      { date: "2026-11-13", direction: "in", category: "reversal", note: "Void: Salah akun", balance: 5_100_000, voidable: false },
+      { date: "2026-11-05", direction: "in", amount: 300_000, category: "other_in", balance: 3_600_000, createdByName: "Uji staff" },
       { date: "2026-11-03", direction: "out", category: "transfer", balance: 3_300_000, voidable: false },
       { date: "2026-11-02", direction: "out", amount: 200_000, balance: 4_800_000 },
       { date: "2026-11-01", direction: "in", amount: 5_000_000, balance: 5_000_000 },

@@ -9,14 +9,14 @@ it("moves a transfer out of the source and into the destination", () => {
   ]);
 });
 
-it("reverses an entry on the same account and date in the opposite direction", () => {
-  expect(reversalOf({ accountId: "kas", date: "2026-11-02", direction: "out", amount: rupiah(150_000) })).toEqual({
+it("reverses an entry on the same account in the opposite direction, dated on the void date", () => {
+  expect(reversalOf({ accountId: "kas", date: "2026-11-02", direction: "out", amount: rupiah(150_000) }, "2026-11-13")).toEqual({
     accountId: "kas",
-    date: "2026-11-02",
+    date: "2026-11-13",
     direction: "in",
     amount: 150_000,
   });
-  expect(reversalOf({ accountId: "bca", date: "2026-11-02", direction: "in", amount: rupiah(1) }).direction).toBe("out");
+  expect(reversalOf({ accountId: "bca", date: "2026-11-02", direction: "in", amount: rupiah(1) }, "2026-11-13").direction).toBe("out");
 });
 
 it("categorises manual cash by direction", () => {
