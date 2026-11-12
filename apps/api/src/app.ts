@@ -4,9 +4,10 @@ import { authRoutes } from "./auth/routes.ts";
 import type { AppEnv } from "./env.ts";
 import { onError } from "./lib/errors.ts";
 import { categoryRoutes } from "./modules/categories/routes.ts";
-import { purchaseRoutes } from "./modules/purchases/routes.ts";
 import { productRoutes } from "./modules/products/routes.ts";
+import { purchaseRoutes } from "./modules/purchases/routes.ts";
 import { settingsRoutes } from "./modules/settings/routes.ts";
+import { stockRoutes } from "./modules/stock/routes.ts";
 import { userRoutes } from "./modules/users/routes.ts";
 
 /**
@@ -28,7 +29,8 @@ export function createApp(db: Db) {
     .route("/settings", settingsRoutes)
     .route("/categories", categoryRoutes)
     .route("/products", productRoutes)
-    .route("/purchases", purchaseRoutes);
+    .route("/purchases", purchaseRoutes)
+    .route("/stock", stockRoutes);
 }
 
 export type AppType = ReturnType<typeof createApp>;
