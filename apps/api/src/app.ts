@@ -4,6 +4,8 @@ import { authRoutes } from "./auth/routes.ts";
 import type { AppEnv } from "./env.ts";
 import { onError } from "./lib/errors.ts";
 import { categoryRoutes } from "./modules/categories/routes.ts";
+import { accountRoutes, cashRoutes, expenseRoutes } from "./modules/finance/routes.ts";
+import { contactRoutes } from "./modules/contacts/routes.ts";
 import { productRoutes } from "./modules/products/routes.ts";
 import { settingsRoutes } from "./modules/settings/routes.ts";
 import { userRoutes } from "./modules/users/routes.ts";
@@ -26,6 +28,10 @@ export function createApp(db: Db) {
     .route("/users", userRoutes)
     .route("/settings", settingsRoutes)
     .route("/categories", categoryRoutes)
+    .route("/accounts", accountRoutes)
+    .route("/cash", cashRoutes)
+    .route("/expenses", expenseRoutes)
+    .route("/contacts", contactRoutes)
     .route("/products", productRoutes);
 }
 
