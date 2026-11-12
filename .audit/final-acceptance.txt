@@ -1,0 +1,11 @@
+commit 6f196a1 2026-11-12T18:50:09Z
+Done in 217ms using pnpm v10.28.2
+ Tasks:    6 successful, 6 total
+@billy/core:test: [2m      Tests [22m [1m[32m75 passed[39m[22m[90m (75)[39m
+@billy/db:test: [2m      Tests [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+@billy/api:test: [2m      Tests [22m [1m[32m108 passed[39m[22m[2m | [22m[33m2 skipped[39m[90m (110)[39m
+ Tasks:    3 successful, 3 total
+ Tasks:    2 successful, 2 total
+
+  17 passed (24.2s)
+      Tests  2 passed (2)
