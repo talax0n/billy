@@ -12,6 +12,16 @@ describe("rupiah", () => {
     expect(formatRupiah(rupiah(0))).toBe("Rp 0");
   });
 
+  it("puts a real minus sign before the symbol", () => {
+    expect(formatRupiah(rupiah(-250000))).toBe("\u2212Rp 250.000");
+  });
+
+  it("shortens millions and billions when compact", () => {
+    expect(formatRupiah(rupiah(-1250000), { compact: true })).toBe("\u2212Rp 1,3 jt");
+    expect(formatRupiah(rupiah(51500000000), { compact: true })).toBe("Rp 51,5 M");
+    expect(formatRupiah(rupiah(862500), { compact: true })).toBe("Rp 862.500");
+  });
+
   it("parses the legacy display format", () => {
     expect(parseRupiah("Rp. 3.460.000")).toBe(3460000);
     expect(parseRupiah("10.020.000")).toBe(10020000);
