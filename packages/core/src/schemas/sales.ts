@@ -33,8 +33,8 @@ export const paymentFields = {
   amount: positiveRupiah,
   method: z.enum(paymentMethods),
   proofUrl: z
-    .union([z.literal(""), z.url("Tautan bukti tidak valid").max(500)])
-    .default("")
+    .union([z.literal(""), z.null(), z.url("Tautan bukti tidak valid").max(500)])
+    .default(null)
     .transform((v) => v || null),
   note: text(500),
 };
