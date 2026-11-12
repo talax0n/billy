@@ -35,9 +35,13 @@ type DialogName = "customer" | "lineDiscount" | "note" | "txDiscount" | "parked"
 export function KasirPage() {
   const queryClient = useQueryClient();
   const catalog = useQuery(catalogQuery);
+  const { data: me } = useSuspenseQuery(meQuery);
+  const userId = me?.id;
+  const role = me?.role;
 
   useEffect(() => {
-    const stop = startOutbox();
+    if (!userId || !role) return;
+    const stop = startOutbox({ id: userId, role });
     // Fresh stock and the server's last receipt number once queued sales have landed.
     const unsubscribe = onFlushed(() => void queryClient.invalidateQueries({ queryKey: catalogQuery.queryKey }));
     void cacheAppShell();
@@ -45,7 +49,7 @@ export function KasirPage() {
       stop();
       unsubscribe();
     };
-  }, [queryClient]);
+  }, [queryClient, userId, role]);
 
   if (catalog.isPending) return <p className="grid min-h-dvh place-items-center text-muted">Memuat katalog…</p>;
   if (catalog.isError) {
@@ -138,6 +142,7 @@ function Register({ catalog }: { catalog: Catalog }) {
       accountId: account.id,
       tendered: paid,
       total: totals.total,
+      cashierId: me?.id,
     };
     const receipt: ReceiptData = {
       number,
@@ -470,10 +475,13 @@ function TopBar({
 
 /** Online, offline with the queue size, or uploading. Server unreachable counts as offline for the cashier. */
 function SyncChip({ outbox }: { outbox: OutboxSnapshot }) {
-  const pending = outbox.pending.length;
+  const pending = outbox.pending.length - outbox.othersPending;
   const { phase } = outbox.sync;
   const offline = phase === "offline" || phase === "backoff";
-  const waiting = pending ? ` · ${pending} transaksi menunggu sinkron` : "";
+  const waiting = [
+    pending ? ` · ${pending} transaksi menunggu sinkron` : "",
+    outbox.othersPending ? ` · ${outbox.othersPending} transaksi kasir lain menunggu` : "",
+  ].join("");
   return (
     <Chip className={cx(offline && "border-transparent bg-warn-bg text-warn")} title={outbox.sync.lastSyncedAt ? `Terakhir sinkron ${new Date(outbox.sync.lastSyncedAt).toLocaleTimeString("id-ID")}` : undefined}>
       <span className={cx("size-[7px] rounded-full", offline ? "bg-current" : "bg-up")} />

@@ -80,7 +80,7 @@ Manual cash rows ("terima uang" and other money out) are `cash_entries` with `so
 | Create expense | expense + cash entry `out` / `expense` |
 | Transfer | transfer + cash entry `out` on from + `in` on to, both category `transfer` |
 | Manual cash entry | cash entry `other_in` / `other_out` |
-| POS sale (idempotent by id) | sale + lines, stock movement `pos` (−qty), cash entry `in` / `sale` for `total` |
+| POS sale (idempotent by id) | sale + lines, stock movement `pos` (−qty), cash entry `in` / `sale` for `total`. `cashier_id` is the signed-in user; admin or staff uploading a sale another cashier queued offline record it under the payload's `cashierId` (an existing user). A kasir uploads only their own queued sales; the device keeps another cashier's until that cashier signs in again. |
 | Void POS sale | reversal stock movements + reversal cash entry |
 | Stock adjustment | stock movement `adjustment` (signed qty, required note) |
 | Create tukar faktur | bundle + invoice links. Only the customer's non-voided invoices with outstanding > 0. |

@@ -1,11 +1,12 @@
-import { createFlush, initialSyncState, requeueProblem, settleEntry, type SyncEvent, type SyncState, syncTransition } from "@billy/core";
+import { createFlush, initialSyncState, mayUpload, requeueProblem, type Role, settleEntry, type SyncEvent, type SyncState, syncTransition } from "@billy/core";
 import { useSyncExternalStore } from "react";
 import { api } from "../lib/api.ts";
 import { change, changeQueue, type QueuedSale, read, type SyncProblem } from "./local.ts";
 
 /**
  * The offline outbox. Selling only ever writes to IndexedDB; this loop uploads queued sales
- * to `POST /api/pos/sales` in order, one at a time. A sale leaves the outbox only when the
+ * to `POST /api/pos/sales` in order, one at a time, skipping another cashier's sales when a
+ * kasir is signed in. A sale leaves the outbox only when the
  * server answers 2xx; a 4xx moves it to the visible problem list; anything else backs off
  * and retries. The loop and its phase are pure logic in @billy/core (`createFlush`, `syncTransition`).
  */
@@ -13,12 +14,18 @@ import { change, changeQueue, type QueuedSale, read, type SyncProblem } from "./
 export interface OutboxSnapshot {
   sync: SyncState;
   pending: QueuedSale[];
+  /** Pending sales of another cashier: they upload when that cashier signs in again. */
+  othersPending: number;
   problems: SyncProblem[];
 }
 
+/** The signed-in user; set by `startOutbox`. Nothing uploads before. */
+let user: { id: string; role: Role } | undefined;
+const mine = (entry: QueuedSale) => user !== undefined && mayUpload(entry, user);
+
 const POLL_MS = 15_000;
 
-let snapshot: OutboxSnapshot = { sync: initialSyncState(navigator.onLine), pending: [], problems: [] };
+let snapshot: OutboxSnapshot = { sync: initialSyncState(navigator.onLine), pending: [], othersPending: 0, problems: [] };
 const listeners = new Set<() => void>();
 const flushedListeners = new Set<() => void>();
 let retryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -31,7 +38,8 @@ function publish(next: Partial<OutboxSnapshot>) {
 const dispatch = (event: SyncEvent) => publish({ sync: syncTransition(snapshot.sync, event) });
 
 async function reload() {
-  publish({ pending: (await read("outbox")) ?? [], problems: (await read("problems")) ?? [] });
+  const pending = (await read("outbox")) ?? [];
+  publish({ pending, othersPending: pending.filter((q) => !mine(q)).length, problems: (await read("problems")) ?? [] });
 }
 
 async function upload(item: QueuedSale): Promise<{ status: number; error: string }> {
@@ -48,7 +56,7 @@ async function upload(item: QueuedSale): Promise<{ status: number; error: string
 
 /** Uploads the queue head-first until it is empty or the server cannot be reached. One loop at a time. */
 export const flush = createFlush<QueuedSale>({
-  next: async () => (await read("outbox"))?.[0],
+  next: async () => (await read("outbox"))?.find(mine),
   upload,
   settle: async (entry, problem) => {
     await changeQueue((lists) => settleEntry(lists, entry, problem));
@@ -85,8 +93,12 @@ export async function dismissProblem(id: string) {
   await reload();
 }
 
-/** Starts the loop: on load, when the browser comes online, and every 15 s. Returns a stop function. */
-export function startOutbox(): () => void {
+/**
+ * Starts the loop for the signed-in user: on load, when the browser comes online, and every
+ * 15 s. Returns a stop function.
+ */
+export function startOutbox(signedIn: { id: string; role: Role }): () => void {
+  user = signedIn;
   const online = () => {
     dispatch({ type: "went_online" });
     void flush();
@@ -101,6 +113,7 @@ export function startOutbox(): () => void {
     window.removeEventListener("offline", offline);
     clearInterval(poll);
     clearTimeout(retryTimer);
+    user = undefined;
   };
 }
 

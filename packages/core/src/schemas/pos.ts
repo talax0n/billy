@@ -32,6 +32,11 @@ export const posSaleInput = z.object({
   tendered: rupiahInput,
   /** What the device charged; compared with the server's own computation. */
   total: rupiahInput,
+  /**
+   * The cashier signed in when the sale was made. A kasir may only upload their own sales;
+   * admin and staff may upload any cashier's queued sales, recorded under that cashier.
+   */
+  cashierId: z.uuid().optional(),
 });
 export type PosSaleInput = z.input<typeof posSaleInput>;
 

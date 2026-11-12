@@ -1,9 +1,19 @@
 import { retryDelay, type SyncEvent, type SyncState, uploadOutcome } from "./pos.ts";
+import type { Role } from "./schemas/users.ts";
 
 /** A sale waiting in the POS outbox. Extra fields (the printed receipt) ride along untouched. */
 export interface OutboxEntry {
-  sale: { id: string };
+  /** `cashierId`: who made the sale; absent on sales queued before it was recorded. */
+  sale: { id: string; cashierId?: string | undefined };
 }
+
+/**
+ * Whether `user`, signed in on this device, uploads this queued sale. A kasir uploads only
+ * their own; another cashier's sale waits until that cashier signs in again. Admin and staff
+ * upload every sale, and the server records it under the cashier who made it.
+ */
+export const mayUpload = (entry: OutboxEntry, user: { id: string; role: Role }) =>
+  user.role !== "kasir" || entry.sale.cashierId === undefined || entry.sale.cashierId === user.id;
 
 /** What the flush loop needs from the device and the network. */
 export interface FlushDeps<T extends OutboxEntry> {

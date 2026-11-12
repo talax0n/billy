@@ -100,13 +100,13 @@ export async function getCatalog(db: Db) {
  * server still recomputes the totals from those lines and refuses a total that disagrees.
  */
 export async function recordSale(db: Db, input: PosSale, user: SessionUser) {
-  const cashierId = user.id;
   // A replay answers like GET: a kasir never sees another cashier's sale.
   const replay = (tx: Db) => getSale(tx, input.id, user).then((sale) => ({ created: false, sale }));
   return db.transaction(async (tx) => {
     const [existing] = await tx.select({ id: posSales.id }).from(posSales).where(eq(posSales.id, input.id));
     if (existing) return replay(tx);
 
+    const cashierId = await cashierOf(tx, input.cashierId, user);
     const [taken] = await tx
       .select({ id: posSales.id })
       .from(posSales)
@@ -215,6 +215,20 @@ export async function recordSale(db: Db, input: PosSale, user: SessionUser) {
     }
     return { created: true, sale: await getSale(tx, input.id) };
   });
+}
+
+/**
+ * Who the sale is recorded under. A kasir uploads only their own sales; admin or staff signed in
+ * on the POS may upload sales another cashier queued offline, under that cashier's id.
+ */
+async function cashierOf(tx: Db, cashierId: string | undefined, user: SessionUser) {
+  if (!cashierId || cashierId === user.id) return user.id;
+  if (user.role === "kasir") {
+    throw new DomainError("invalid", "Transaksi ini milik kasir lain. Kirim dari akun kasir itu atau akun admin.");
+  }
+  const [cashier] = await tx.select({ id: users.id }).from(users).where(eq(users.id, cashierId));
+  if (!cashier) throw new DomainError("invalid", "Kasir tidak ditemukan");
+  return cashier.id;
 }
 
 const saleColumns = {

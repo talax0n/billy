@@ -285,6 +285,36 @@ describe("history, reprint and void", () => {
   });
 });
 
+describe("sales queued offline by another cashier", () => {
+  const voidAll = (ids: string[]) =>
+    Promise.all(ids.map((id) => call(`/api/pos/sales/${id}/void`, { method: "POST", cookie: staff, body: { reason: "Uji" } })));
+
+  it("records a sale uploaded by staff under the cashier who made it", async () => {
+    const queued = saleBody({ number: "K1-261113-0020", cashierId: kasirId });
+    const res = await post(staff, queued);
+    expect([res.status, ((await res.json()) as { cashierId: string }).cashierId]).toEqual([201, kasirId]);
+    await voidAll([queued.id]);
+  });
+
+  it("refuses an unknown cashier id from staff with 422", async () => {
+    const res = await post(staff, saleBody({ number: "K1-261113-0021", cashierId: "01a1d234-3800-7000-8000-000000000000" }));
+    expect([res.status, await res.json()]).toEqual([422, { error: "Kasir tidak ditemukan" }]);
+  });
+
+  it("records a kasir's own sale under them and refuses another cashier's sale from a kasir", async () => {
+    const own = saleBody({ number: "K1-261113-0022", cashierId: kasirId });
+    const res = await post(kasir, own);
+    expect([res.status, ((await res.json()) as { cashierId: string }).cashierId]).toEqual([201, kasirId]);
+    await voidAll([own.id]);
+
+    const foreign = await post(otherKasir, saleBody({ number: "K1-261113-0023", cashierId: kasirId }));
+    expect([foreign.status, await foreign.json()]).toEqual([
+      422,
+      { error: "Transaksi ini milik kasir lain. Kirim dari akun kasir itu atau akun admin." },
+    ]);
+  });
+});
+
 describe("GET /api/pos/catalog", () => {
   it("returns sellable products with stock but no cost, accounts, shop and the last number today", async () => {
     await db.update(settings).set({ posDeviceCode: "K9" });

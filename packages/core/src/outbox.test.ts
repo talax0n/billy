@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createFlush, type FlushDeps, type OutboxEntry, requeueProblem, settleEntry } from "./outbox.ts";
+import { createFlush, type FlushDeps, mayUpload, type OutboxEntry, requeueProblem, settleEntry } from "./outbox.ts";
 import { initialSyncState, type SyncState, syncTransition } from "./pos.ts";
 
 const entry = (id: string): OutboxEntry => ({ sale: { id } });
@@ -68,5 +68,19 @@ describe("moves between the outbox and the problem list", () => {
     const lists = { outbox: [b], problems: [{ ...a, status: 422, error: "Produk nonaktif" }] };
     expect(requeueProblem(lists, "a")).toEqual({ outbox: [b, a], problems: [] });
     expect(requeueProblem(lists, "x")).toBe(lists);
+  });
+});
+
+describe("who uploads a queued sale", () => {
+  const byA = { sale: { id: "1", cashierId: "kasir-a" } };
+  const legacy = { sale: { id: "2" } };
+  it("lets a kasir upload only their own sales, and admin or staff any sale", () => {
+    expect([
+      mayUpload(byA, { id: "kasir-a", role: "kasir" }),
+      mayUpload(byA, { id: "kasir-b", role: "kasir" }),
+      mayUpload(byA, { id: "staff-1", role: "staff" }),
+      mayUpload(byA, { id: "admin-1", role: "admin" }),
+      mayUpload(legacy, { id: "kasir-b", role: "kasir" }),
+    ]).toEqual([true, false, true, true, true]);
   });
 });
