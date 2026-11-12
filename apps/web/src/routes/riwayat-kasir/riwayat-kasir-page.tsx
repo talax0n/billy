@@ -1,5 +1,6 @@
 import { formatRupiah, posVoidInput } from "@billy/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Printer } from "lucide-react";
 import { useState } from "react";
 import { Badge } from "../../components/ui/badge.tsx";
@@ -16,12 +17,17 @@ import { methodLabels, printReceipt, ReceiptPrinter, receiptFromSale } from "../
 
 const stamp = new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Jakarta" });
 
-/** Every POS receipt the server holds, newest first. Admin and staff void from the detail sheet. */
+/**
+ * Every POS receipt the server holds, newest first. Admin and staff void from the detail sheet.
+ * The open receipt lives in the URL (`/riwayat-kasir?id=…`) so Mutasi Stok can link to it.
+ */
 export function RiwayatKasirPage() {
+  const search: { id?: string } = useSearch({ strict: false });
+  const navigate = useNavigate();
+  const openSale = (id: string | null) => void navigate({ to: "/riwayat-kasir", search: id ? { id } : {} });
   const paged = usePagedQuery(["pos", "sales"], (params) =>
     unwrap(api.pos.sales.$get({ query: { q: params.q, page: String(params.page), pageSize: String(params.pageSize) } })),
   );
-  const [open, setOpen] = useState<string | null>(null);
 
   return (
     <>
@@ -30,7 +36,7 @@ export function RiwayatKasirPage() {
         <DataTable
           paged={paged}
           searchPlaceholder="Cari nomor struk…"
-          onRowClick={(row) => setOpen(row.id)}
+          onRowClick={(row) => openSale(row.id)}
           empty={<EmptyState title="Belum ada transaksi kasir" />}
           columns={[
             { header: "No. struk", cell: (s) => <span className="font-medium">{s.number}</span>, className: "whitespace-nowrap" },
@@ -42,7 +48,7 @@ export function RiwayatKasirPage() {
           ]}
         />
       </PageBody>
-      {open && <SaleSheet id={open} onClose={() => setOpen(null)} />}
+      {search.id && <SaleSheet id={search.id} onClose={() => openSale(null)} />}
       <ReceiptPrinter />
     </>
   );

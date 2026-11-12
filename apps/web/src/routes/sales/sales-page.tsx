@@ -1,5 +1,6 @@
 import { formatDate, formatRupiah, rupiah, type SalesStatusFilter, salesStatusFilters } from "@billy/core";
 import { Plus } from "lucide-react";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useState } from "react";
 import { StatusTag } from "../../components/ui/badge.tsx";
 import { Button } from "../../components/ui/button.tsx";
@@ -22,7 +23,12 @@ const statusLabels: Record<SalesStatusFilter, string> = {
   void: "Void",
 };
 
+/** Penjualan. The open invoice lives in the URL (`/penjualan?id=…`) so other pages can link to it. */
 export function SalesPage() {
+  const search: { id?: string } = useSearch({ strict: false });
+  const navigate = useNavigate();
+  const openInvoice = (id: string | null) => void navigate({ to: "/penjualan", search: id ? { id } : {} });
+  const [creating, setCreating] = useState(false);
   const [period, setPeriod] = useState<Period>(() => presetPeriod("month"));
   const [status, setStatus] = useState<SalesStatusFilter | "">("");
   const [customer, setCustomer] = useState<Contact | null>(null);
@@ -40,8 +46,6 @@ export function SalesPage() {
       }),
     ),
   );
-  /** null: closed; "new": create form; a string: the invoice shown. */
-  const [open, setOpen] = useState<string | null>(null);
   const summary = paged.query.data?.summary;
   const windowNote = `Faktur ${periodLabel(period)}${status ? ` · ${statusLabels[status]}` : ""}${customer ? ` · ${customer.name}` : ""}`;
   const money = (v: number | undefined) => (v === undefined ? "—" : formatRupiah(rupiah(v)));
@@ -52,7 +56,7 @@ export function SalesPage() {
         title="Penjualan"
         description="Faktur penjualan tunai dan tempo, pembayaran, dan pengiriman."
         actions={
-          <Button variant="primary" onClick={() => setOpen("new")}>
+          <Button variant="primary" onClick={() => setCreating(true)}>
             <Plus className="size-4" />
             Faktur baru
           </Button>
@@ -95,8 +99,8 @@ export function SalesPage() {
         <DataTable
           paged={paged}
           searchPlaceholder="Cari nomor faktur atau pelanggan…"
-          onRowClick={(row) => setOpen(row.id)}
-          empty={<EmptyState title="Belum ada faktur di periode ini" action={<Button onClick={() => setOpen("new")}>Buat faktur</Button>} />}
+          onRowClick={(row) => openInvoice(row.id)}
+          empty={<EmptyState title="Belum ada faktur di periode ini" action={<Button onClick={() => setCreating(true)}>Buat faktur</Button>} />}
           columns={[
             { header: "Nomor", cell: (r) => <span className="font-medium">{r.number}</span>, className: "whitespace-nowrap" },
             { header: "Pelanggan", cell: (r) => r.customerName },
@@ -113,7 +117,17 @@ export function SalesPage() {
           ]}
         />
       </PageBody>
-      {open && <InvoiceSheet invoiceId={open === "new" ? null : open} onOpenInvoice={setOpen} onClose={() => setOpen(null)} />}
+      {creating && (
+        <InvoiceSheet
+          invoiceId={null}
+          onOpenInvoice={(id) => {
+            setCreating(false);
+            openInvoice(id);
+          }}
+          onClose={() => setCreating(false)}
+        />
+      )}
+      {search.id && <InvoiceSheet invoiceId={search.id} onOpenInvoice={openInvoice} onClose={() => openInvoice(null)} />}
     </>
   );
 }
