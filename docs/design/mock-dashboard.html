@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>Ringkasan · Sumber Karya</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f4f4f5; --panel:#fff; --line:#e8e8ea; --line-2:#f0f0f2;
+  --ink:#111113; --ink-2:#3f3f46; --muted:#71717a; --faint:#a1a1aa;
+  --up:#15803d; --down:#dc2626; --warn:#b45309; --chip:#f4f4f5;
+  --r:12px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font:13px/1.45 Inter,system-ui,sans-serif;color:var(--ink);background:var(--bg);padding:10px;font-feature-settings:"tnum" 1,"cv11" 1}
+.app{display:grid;grid-template-columns:220px 1fr;gap:10px;min-height:880px}
+aside{display:flex;flex-direction:column;gap:10px;padding:8px 4px}
+.brand{display:flex;align-items:center;gap:10px;padding:6px 8px;font-weight:600;font-size:15px}
+.logo{width:26px;height:26px;border-radius:7px;background:var(--ink);color:#fff;display:grid;place-items:center;font-size:12px}
+.search{display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:#fff;border-radius:9px;padding:7px 10px;color:var(--faint)}
+.search kbd{margin-left:auto;font:11px Inter;color:var(--faint);border:1px solid var(--line);border-radius:5px;padding:0 5px}
+.cta{display:flex;align-items:center;gap:8px;background:var(--ink);color:#fff;border-radius:9px;padding:8px 10px;font-weight:500}
+.cta span{margin-left:auto;opacity:.6;font-size:11px}
+.grp{color:var(--muted);font-size:11.5px;padding:10px 8px 4px}
+.nav a{display:flex;align-items:center;gap:9px;padding:6px 8px;border-radius:8px;color:var(--ink-2);text-decoration:none}
+.nav a.on{background:#fff;border:1px solid var(--line);color:var(--ink);font-weight:500;padding:5px 7px}
+.nav i{width:15px;height:15px;border:1.5px solid currentColor;border-radius:4px;opacity:.55;flex:none}
+.badge{margin-left:auto;font-size:11px;background:#fff;border:1px solid var(--line);border-radius:999px;padding:0 7px;color:var(--ink)}
+.spacer{flex:1}
+.sync{background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:10px 12px}
+.sync b{font-weight:500}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--up);margin-right:6px}
+.me{display:flex;align-items:center;gap:9px;padding:8px}
+.av{width:30px;height:30px;border-radius:50%;background:#d4d4d8}
+main{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+header{display:flex;align-items:flex-start;justify-content:space-between;padding:22px 26px 18px;border-bottom:1px solid var(--line)}
+h1{font-size:23px;font-weight:600;letter-spacing:-.02em}
+.sub{color:var(--muted);margin-top:2px}
+.pill{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:999px;padding:7px 14px;color:var(--muted)}
+.pill b{color:var(--ink);font-weight:500}
+.wrap{padding:16px 26px 26px;display:flex;flex-direction:column;gap:14px}
+.filters{display:flex;gap:8px;align-items:center}
+.f{border:1px solid var(--line);border-radius:8px;padding:6px 10px;color:var(--ink-2);display:flex;gap:6px;align-items:center}
+.f:after{content:"⌄";color:var(--faint);margin-top:-4px}
+.filters .asof{margin-left:auto;color:var(--muted)}
+.kpis{display:grid;grid-template-columns:repeat(5,1fr);border:1px solid var(--line);border-radius:var(--r)}
+.kpi{padding:16px 18px;border-left:1px solid var(--line)}
+.kpi:first-child{border-left:0}
+.kpi .t{color:var(--ink-2)}
+.kpi .v{white-space:nowrap;font-size:27px;font-weight:500;letter-spacing:-.02em;margin:8px 0 4px;display:flex;align-items:baseline;gap:8px}
+.kpi .v s{text-decoration:none;color:var(--faint)}
+.kpi .v small{font-size:13px;font-weight:500;letter-spacing:0}
+.up{color:var(--up)}.down{color:var(--down)}.warn{color:var(--warn)}
+.kpi .n{color:var(--muted);font-size:12px}
+.bar{height:3px;background:var(--line-2);border-radius:3px;margin-top:12px;overflow:hidden;display:flex}
+.bar i{display:block;background:var(--ink)}
+.row{display:grid;grid-template-columns:1fr 340px;gap:14px}
+.card{border:1px solid var(--line);border-radius:var(--r);padding:18px 20px}
+.card h3{font-size:14px;font-weight:500}
+.card .sub{font-size:12px}
+.head{display:flex;justify-content:space-between;align-items:flex-start}
+.seg{display:flex;background:var(--chip);border-radius:8px;padding:2px}
+.seg span{padding:4px 10px;border-radius:6px;color:var(--muted)}
+.seg .on{background:#fff;color:var(--ink);box-shadow:0 1px 2px #0001}
+.big{font-size:30px;font-weight:500;letter-spacing:-.02em;margin-top:6px}
+.big s{text-decoration:none;color:var(--faint)}
+table{width:100%;border-collapse:collapse;margin-top:10px}
+th{font-weight:400;color:var(--muted);font-size:11.5px;text-align:left;padding:6px 0}
+td{padding:8px 0;border-top:1px solid var(--line-2)}
+td.r,th.r{text-align:right}
+tr.hl td{background:var(--chip)}
+.foot{display:flex;justify-content:space-between;margin-top:10px;color:var(--muted)}
+.foot b{color:var(--ink);font-weight:500}
+.tag{display:inline-flex;gap:6px;align-items:center;border:1px solid var(--line);border-radius:6px;padding:1px 7px;font-size:11.5px;color:var(--ink-2)}
+.btn{background:var(--ink);color:#fff;border-radius:8px;padding:8px 14px;font-weight:500}
+.ghost{border:1px solid var(--line);border-radius:8px;padding:7px 12px}
+.list td:first-child{color:var(--muted);width:22px}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <div class="brand"><div class="logo">SK</div>Sumber Karya</div>
+    <div class="search">⌕ Cari apa saja <kbd>⌘K</kbd></div>
+    <div class="cta">▣ Buka Kasir <span>F2</span></div>
+    <nav class="nav">
+      <div class="grp">Umum</div>
+      <a class="on"><i></i>Ringkasan</a>
+      <a><i></i>Perlu Tindakan <span class="badge">7</span></a>
+      <div class="grp">Transaksi</div>
+      <a><i></i>Penjualan</a>
+      <a><i></i>Pembelian</a>
+      <a><i></i>Biaya</a>
+      <a><i></i>Tukar Faktur</a>
+      <a><i></i>Riwayat Kasir</a>
+      <div class="grp">Keuangan</div>
+      <a><i></i>Kas &amp; Bank</a>
+      <a><i></i>Piutang</a>
+      <a><i></i>Hutang</a>
+      <div class="grp">Persediaan</div>
+      <a><i></i>Produk</a>
+      <a><i></i>Mutasi Stok</a>
+      <a><i></i>Kontak</a>
+    </nav>
+    <div class="spacer"></div>
+    <div class="sync"><span class="dot"></span><b>Online</b> · semua tersinkron<div class="sub" style="font-size:12px">Terakhir 14:05 · Kasir PC-1</div></div>
+    <nav class="nav"><a><i></i>Pengaturan</a></nav>
+    <div class="me"><div class="av"></div><div><b style="font-weight:500">Pemilik</b><div class="sub" style="font-size:12px;margin:0">Admin</div></div></div>
+  </aside>
+
+  <main>
+    <header>
+      <div><h1>Ringkasan</h1><div class="sub">Kondisi toko bulan November 2026</div></div>
+      <div class="pill">Saldo kas &amp; bank <b>Rp 1,28 M</b> · 6 akun</div>
+    </header>
+    <div class="wrap">
+      <div class="filters">
+        <div class="f">▤ Bulan ini</div><div class="f">Semua akun</div><div class="f">Semua kategori</div>
+        <div class="asof">Data per 12 Nov 2026, 14:05</div>
+      </div>
+
+      <div class="kpis">
+        <div class="kpi"><div class="t">Penjualan</div>
+          <div class="v"><span>Rp 412<s>,6 jt</s></span><small class="up">↑ 8,2%</small></div>
+          <div class="n">Faktur Rp 238 jt · Kasir Rp 174 jt</div>
+          <div class="bar"><i style="width:58%"></i><i style="width:42%;background:var(--faint)"></i></div></div>
+        <div class="kpi"><div class="t">Laba kotor</div>
+          <div class="v"><span>Rp 96<s>,1 jt</s></span><small class="up">↑ 1,4 pts</small></div>
+          <div class="n">Margin 23,3% dari penjualan</div>
+          <div class="bar"><i style="width:23%"></i></div></div>
+        <div class="kpi"><div class="t">Arus kas bersih</div>
+          <div class="v"><span>Rp 31<s>,9 jt</s></span><small class="down">↓ 12%</small></div>
+          <div class="n">Masuk 388 jt · Keluar 356 jt</div>
+          <div class="bar"><i style="width:52%"></i><i style="width:48%;background:var(--faint)"></i></div></div>
+        <div class="kpi"><div class="t">Piutang terbuka</div>
+          <div class="v"><span>Rp 204<s>,8 jt</s></span><small class="warn">61 jt telat</small></div>
+          <div class="n">48 faktur · 9 pelanggan telat bayar</div>
+          <div class="bar"><i style="width:70%"></i><i style="width:30%;background:var(--down)"></i></div></div>
+        <div class="kpi"><div class="t">Hutang jatuh tempo</div>
+          <div class="v"><span>Rp 58<s>,3 jt</s></span><small class="muted" style="color:var(--muted)">7 hari</small></div>
+          <div class="n">12 faktur pemasok · total Rp 412 jt</div>
+          <div class="bar"><i style="width:14%"></i></div></div>
+      </div>
+
+      <div class="row">
+        <div class="card">
+          <div class="head">
+            <div><h3>Arus kas</h3><div class="sub">Uang masuk vs keluar semua akun, mingguan</div></div>
+            <div class="seg"><span class="on">12 minggu</span><span>6 bulan</span></div>
+          </div>
+          <svg viewBox="0 0 640 330" width="100%" height="380" style="margin-top:8px;font:11px Inter;fill:var(--muted)">
+            <g stroke="#f0f0f2">
+              <line x1="44" x2="560" y1="20" y2="20"/><line x1="44" x2="560" y1="90" y2="90"/>
+              <line x1="44" x2="560" y1="160" y2="160"/><line x1="44" x2="560" y1="230" y2="230"/><line x1="44" x2="560" y1="300" y2="300"/>
+            </g>
+            <text x="0" y="24">150 jt</text><text x="0" y="94">120 jt</text><text x="0" y="164">90 jt</text><text x="0" y="234">60 jt</text><text x="0" y="304">30 jt</text>
+            <path d="M44 150 C80 140 100 120 135 128 S200 170 230 150 S290 100 325 112 S390 150 420 130 S490 80 560 96" fill="none" stroke="#111113" stroke-width="2.2"/>
+            <path d="M44 190 C80 180 100 200 135 176 S200 140 230 160 S290 190 325 170 S390 120 420 150 S490 150 560 140" fill="none" stroke="#b4b4bb" stroke-width="1.6"/>
+            <circle cx="560" cy="96" r="3.5" fill="#111113"/><circle cx="560" cy="140" r="3" fill="#b4b4bb"/>
+            <rect x="570" y="84" rx="11" width="70" height="22" fill="#111113"/><text x="580" y="99" fill="#fff">Masuk 101</text>
+            <text x="574" y="144">Keluar 82</text>
+            <g text-anchor="middle"><text x="44" y="324">19 Agu</text><text x="173" y="324">9 Sep</text><text x="302" y="324">30 Sep</text><text x="431" y="324">21 Okt</text><text x="560" y="324">11 Nov</text></g>
+          </svg>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <div class="card">
+            <h3>Saldo per akun</h3>
+            <div class="big">Rp 1,28<s> M</s></div>
+            <table class="list">
+              <tr><th>#</th><th>Akun</th><th class="r">Saldo</th><th class="r">Minggu ini</th></tr>
+              <tr><td>1</td><td>QRIS</td><td class="r">671,9 jt</td><td class="r up">↑ 12,1</td></tr>
+              <tr><td>2</td><td>BCA Operasional</td><td class="r">302,4 jt</td><td class="r down">↓ 18,0</td></tr>
+              <tr class="hl"><td>3</td><td>Kas Toko</td><td class="r">146,0 jt</td><td class="r up">↑ 4,3</td></tr>
+              <tr><td>4</td><td>Mandiri</td><td class="r">98,7 jt</td><td class="r">0,0</td></tr>
+              <tr><td>5</td><td>BRI</td><td class="r">60,5 jt</td><td class="r up">↑ 1,1</td></tr>
+            </table>
+            <div class="foot"><span>Kas toko perlu disetor</span><b>Semua akun ›</b></div>
+          </div>
+          <div class="card">
+            <div class="head"><h3>Tindakan berikutnya</h3><span class="sub">6 lainnya ›</span></div>
+            <div style="margin-top:10px"><span class="tag"><b class="down">●</b> Telat 34 hari</span></div>
+            <div style="font-weight:500;margin-top:8px">Tagih PT Contoh Abadi: 3 faktur, Rp 18,4 jt</div>
+            <div class="sub" style="font-size:12px">Faktur tertua jatuh tempo 9 Okt. Belum ada tukar faktur.</div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px">
+              <span class="ghost">Lihat faktur</span><span class="btn">Buat tukar faktur →</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

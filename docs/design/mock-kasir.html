@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>Kasir · Sumber Karya</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f4f4f5; --panel:#fff; --line:#e8e8ea; --line-2:#f0f0f2; --hover:#f4f4f5;
+  --ink:#111113; --ink-2:#3f3f46; --muted:#71717a; --faint:#a1a1aa;
+  --inv:#111113; --inv-ink:#fff;
+  --up:#15803d; --down:#dc2626; --warn:#b45309; --warn-bg:#fef3c7;
+  --r:12px;
+}
+:root[data-theme=dark]{
+  --bg:#0b0b0c; --panel:#141416; --line:#26262a; --line-2:#1d1d20; --hover:#1d1d20;
+  --ink:#f4f4f5; --ink-2:#d4d4d8; --muted:#a1a1aa; --faint:#63636b;
+  --inv:#f4f4f5; --inv-ink:#111113;
+  --up:#4ade80; --down:#f87171; --warn:#fbbf24; --warn-bg:#2a2108;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font:13px/1.45 Inter,system-ui,sans-serif;color:var(--ink);background:var(--bg);height:768px;display:flex;flex-direction:column;font-feature-settings:"tnum" 1}
+.top{display:flex;align-items:center;gap:14px;padding:10px 16px}
+.logo{width:26px;height:26px;border-radius:7px;background:var(--inv);color:var(--inv-ink);display:grid;place-items:center;font-size:12px;font-weight:600}
+.top b{font-weight:600;font-size:15px}
+.chip{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:4px 11px;color:var(--muted);display:flex;gap:7px;align-items:center}
+.chip strong{color:var(--ink);font-weight:500}
+.chip.off{background:var(--warn-bg);border-color:transparent;color:var(--warn)}
+.chip.off strong{color:var(--warn)}
+.dot{width:7px;height:7px;border-radius:50%;background:currentColor}
+.sp{flex:1}
+.main{flex:1;display:grid;grid-template-columns:1fr 380px;gap:10px;padding:0 10px 10px;min-height:0}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;display:flex;flex-direction:column;min-height:0}
+.search{position:relative;padding:14px 16px;border-bottom:1px solid var(--line)}
+.field{display:flex;align-items:center;gap:10px;border:1.5px solid var(--ink);border-radius:10px;padding:10px 12px;font-size:15px}
+.field .q{flex:1}
+.field .q::after{content:"";display:inline-block;width:1.5px;height:17px;background:var(--ink);vertical-align:-3px;margin-left:1px}
+kbd{font:11px Inter;color:var(--muted);border:1px solid var(--line);border-radius:5px;padding:1px 6px;background:var(--panel)}
+.drop{position:absolute;left:16px;right:16px;top:62px;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:0 12px 32px #0000001f;z-index:2;overflow:hidden}
+.drop .it{display:grid;grid-template-columns:1fr 70px 110px;gap:10px;padding:9px 12px;align-items:center}
+.drop .it.on{background:var(--hover)}
+.drop .it small{color:var(--muted);display:block;font-size:11.5px}
+.drop .r{text-align:right}
+.drop .low{color:var(--warn)}
+.drop .hint{padding:7px 12px;color:var(--muted);border-top:1px solid var(--line-2);font-size:11.5px;display:flex;gap:14px}
+table{width:100%;border-collapse:collapse}
+th{font-weight:400;color:var(--muted);font-size:11.5px;text-align:left;padding:10px 8px;border-bottom:1px solid var(--line)}
+td{padding:11px 8px;border-bottom:1px solid var(--line-2);vertical-align:top}
+th:first-child,td:first-child{padding-left:16px}
+th:last-child,td:last-child{padding-right:16px}
+.r{text-align:right}
+td small{display:block;color:var(--muted);font-size:11.5px}
+.qty{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:7px}
+.qty span{padding:2px 8px;color:var(--muted)}
+.qty b{padding:2px 8px;font-weight:500;border-left:1px solid var(--line);border-right:1px solid var(--line)}
+tr.sel td{background:var(--hover)}
+.note{display:inline-block;margin-top:4px;font-size:11.5px;border:1px dashed var(--line);border-radius:6px;padding:0 6px;color:var(--ink-2)}
+.cartfoot{margin-top:auto;display:flex;gap:16px;padding:10px 16px;border-top:1px solid var(--line);color:var(--muted);font-size:12px}
+.pay{padding:16px 18px;display:flex;flex-direction:column;gap:14px;flex:1}
+.row{display:flex;justify-content:space-between;color:var(--ink-2)}
+.row.m{color:var(--muted)}
+.link{color:var(--ink);text-decoration:underline;text-underline-offset:3px;text-decoration-color:var(--faint)}
+.total{border-top:1px solid var(--line);padding-top:12px}
+.total .l{color:var(--muted)}
+.total .v{font-size:38px;font-weight:600;letter-spacing:-.03em;line-height:1.1}
+.total .v s{text-decoration:none;color:var(--faint);font-weight:500;font-size:22px;margin-right:4px}
+.methods{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.pm{border:1px solid var(--line);border-radius:9px;padding:9px 10px;display:flex;justify-content:space-between;align-items:center}
+.pm.on{border:1.5px solid var(--ink);font-weight:500}
+.lbl{color:var(--muted);font-size:12px;margin-bottom:6px}
+.tender{border:1.5px solid var(--line);border-radius:10px;padding:9px 12px;font-size:20px;font-weight:500;display:flex;justify-content:space-between}
+.tender s{text-decoration:none;color:var(--faint)}
+.quick{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:6px}
+.quick span{border:1px solid var(--line);border-radius:8px;padding:5px 0;text-align:center;color:var(--ink-2);font-size:12px}
+.change{display:flex;justify-content:space-between;align-items:baseline;background:var(--hover);border-radius:10px;padding:10px 12px}
+.change b{font-size:22px;font-weight:600;color:var(--up)}
+.go{margin-top:auto;background:var(--inv);color:var(--inv-ink);border-radius:11px;padding:14px 16px;display:flex;justify-content:space-between;align-items:center;font-size:15px;font-weight:600}
+.go kbd{background:transparent;color:var(--inv-ink);border-color:color-mix(in srgb,var(--inv-ink) 35%,transparent)}
+.keys{display:flex;gap:16px;padding:0 16px 10px;color:var(--muted);font-size:12px}
+.keys span{display:flex;gap:6px;align-items:center}
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="logo">SK</div><b>Kasir</b>
+  <span class="chip">No. <strong>K1-261112-0412</strong></span>
+  <span class="chip">Pelanggan <strong>Umum</strong> <kbd>F3</kbd></span>
+  <div class="sp"></div>
+  <span class="chip off"><span class="dot"></span><strong>Offline</strong> · 3 transaksi menunggu sinkron</span>
+  <span class="chip">Shift <strong>Kasir 1</strong> · mulai 08:02</span>
+  <span class="chip">◐</span>
+</div>
+
+<div class="main">
+  <section class="panel">
+    <div class="search">
+      <div class="field">⌕ <span class="q">thinner nd</span><kbd>scan / ketik</kbd></div>
+      <div class="drop">
+        <div class="it on"><div>THINNER ND SUPER 20 LITER<small>JRG · NC</small></div><div class="r">stok 38</div><div class="r"><b>565.000</b></div></div>
+        <div class="it"><div>THINNER ND SUPER 5 LITER<small>GALON · NC</small></div><div class="r">stok 112</div><div class="r">152.000</div></div>
+        <div class="it"><div>THINNER ND SUPER 1 LITER<small>KLG · NC</small></div><div class="r low">stok 4</div><div class="r">33.000</div></div>
+        <div class="hint"><span>↑↓ pilih</span><span>Enter tambah</span><span>Shift+Enter tambah + qty</span><span>Esc tutup</span></div>
+      </div>
+    </div>
+    <table>
+      <tr><th style="width:28px">#</th><th>Produk</th><th class="r">Harga</th><th class="r" style="width:120px">Qty</th><th class="r">Diskon</th><th class="r">Jumlah</th></tr>
+      <tr><td>1</td><td>CAT NC BLACK PAIL<small>PAIL · NC</small></td><td class="r">1.200.000</td><td class="r"><span class="qty"><span>−</span><b>1</b><span>+</span></span></td><td class="r" style="color:var(--faint)">0</td><td class="r">1.200.000</td></tr>
+      <tr class="sel"><td>2</td><td>CAT NC TINTING CUSTOM 1 LTR<small>KLG · NC</small><span class="note">Kode warna: RAL 7035 · tidak bisa retur</span></td><td class="r">95.000</td><td class="r"><span class="qty"><span>−</span><b>6</b><span>+</span></span></td><td class="r">−30.000</td><td class="r">540.000</td></tr>
+      <tr><td>3</td><td>EPOXY PRIMER GREY GALON<small>GALON · Epoxy</small></td><td class="r">310.000</td><td class="r"><span class="qty"><span>−</span><b>2</b><span>+</span></span></td><td class="r" style="color:var(--faint)">0</td><td class="r">620.000</td></tr>
+      <tr><td>4</td><td>KUAS 3 INCI<small>PCS · GEN</small></td><td class="r">18.000</td><td class="r"><span class="qty"><span>−</span><b>4</b><span>+</span></span></td><td class="r" style="color:var(--faint)">0</td><td class="r">72.000</td></tr>
+    </table>
+    <div class="cartfoot"><span>4 produk · 13 item</span><span class="sp"></span><span>Baris terpilih: <kbd>+</kbd> <kbd>−</kbd> qty · <kbd>D</kbd> diskon · <kbd>N</kbd> catatan · <kbd>Del</kbd> hapus</span></div>
+  </section>
+
+  <aside class="panel">
+    <div class="pay">
+      <div class="row"><span>Subtotal</span><span>2.462.000</span></div>
+      <div class="row m"><span>Diskon baris</span><span>−30.000</span></div>
+      <div class="row m"><span><span class="link">+ Diskon transaksi</span> <kbd>F4</kbd></span><span>0</span></div>
+      <div class="total"><div class="l">Total</div><div class="v"><s>Rp</s>2.432.000</div></div>
+      <div>
+        <div class="lbl">Metode bayar</div>
+        <div class="methods"><div class="pm on">Tunai <kbd>F5</kbd></div><div class="pm">QRIS <kbd>F6</kbd></div><div class="pm">Transfer <kbd>F7</kbd></div></div>
+      </div>
+      <div>
+        <div class="lbl">Uang diterima · masuk ke <b style="color:var(--ink);font-weight:500">Kas Toko</b></div>
+        <div class="tender"><span><s>Rp</s> 2.500.000</span></div>
+        <div class="quick"><span>Uang pas</span><span>2.450.000</span><span>2.500.000</span><span>3.000.000</span></div>
+      </div>
+      <div class="change"><span>Kembalian</span><b>Rp 68.000</b></div>
+      <div class="go"><span>Bayar &amp; cetak struk</span><kbd>Enter</kbd></div>
+    </div>
+  </aside>
+</div>
+<div class="keys"><span><kbd>F2</kbd> cari</span><span><kbd>F3</kbd> pelanggan</span><span><kbd>F8</kbd> tahan transaksi (1 ditahan)</span><span><kbd>F9</kbd> riwayat</span><span><kbd>F10</kbd> cetak ulang</span><span class="sp"></span><span><kbd>Ctrl</kbd>+<kbd>Del</kbd> batalkan</span></div>
+</body>
+</html>
