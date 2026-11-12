@@ -10,29 +10,24 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import type { InferResponseType } from "hono/client";
 import { useState } from "react";
+import { Button } from "../../components/ui/button.tsx";
+import { DateInput, Select } from "../../components/ui/field.tsx";
 import { FilterRow, PageBody, PageHeader } from "../../components/ui/page.tsx";
 import { api, unwrap } from "../../lib/api.ts";
-import { ActionLink, ActionStatus, actionDescription } from "./actions.tsx";
-import "./insights.css";
+import { cx } from "../../lib/cx.ts";
+import { ActionLink, ActionStatus, actionDescription, linkButton } from "./actions.tsx";
 
 type Dashboard = InferResponseType<typeof api.insights.dashboard.$get, 200>;
-const compact = (n: number) =>
-  Math.abs(n) >= 1e9
-    ? { value: n / 1e9, unit: "M" }
-    : Math.abs(n) >= 1e6
-      ? { value: n / 1e6, unit: "jt" }
-      : { value: n, unit: "" };
+const card = "min-w-0 rounded-xl border border-line px-5 py-[18px] [&_h2]:text-sm [&_h2]:font-medium";
+const bigValue = "mt-2 mb-1 text-[27px] font-medium tracking-[-0.02em] tabular-nums max-[1200px]:text-[23px]";
+const short = (n: number) => formatRupiah(rupiah(n), { compact: true });
+/** Compact amount with the decimals and unit dimmed: `Rp 51,5 jt`. */
 function ShortMoney({ value }: { value: number }) {
-  const short = compact(value);
-  const [integer, fraction] = short.value
-    .toLocaleString("id-ID", { maximumFractionDigits: short.unit ? 1 : 0 })
-    .split(",");
+  const [, main, rest] = /^(.*?)((?:,\d+)?(?: jt| M)?)$/.exec(short(value))!;
   return (
     <span title={formatRupiah(rupiah(value))}>
-      Rp {integer}
-      <span className="text-faint">
-        {fraction && `,${fraction}`} {short.unit}
-      </span>
+      {main}
+      <span className="text-faint">{rest}</span>
     </span>
   );
 }
@@ -58,65 +53,73 @@ function Delta({
     </span>
   );
 }
+type Point = [x: number, y: number];
+/**
+ * Monotone cubic through every point (the d3 `monotoneX` tangents): a curve that never
+ * overshoots its neighbours, so weeks with zero cash stay on the axis instead of dipping below.
+ */
+function monotonePath(points: Point[]) {
+  const slope = (i: number) =>
+    (points[i + 1]![1] - points[i]![1]) / (points[i + 1]![0] - points[i]![0]);
+  const tangents = points.map((_, i) => {
+    if (i === 0) return slope(0);
+    if (i === points.length - 1) return slope(i - 1);
+    const [s0, s1] = [slope(i - 1), slope(i)];
+    return (
+      (Math.sign(s0) + Math.sign(s1)) *
+      Math.min(Math.abs(s0), Math.abs(s1), Math.abs(s0 + s1) / 4)
+    );
+  });
+  return points
+    .map(([x, y], i) => {
+      if (i === 0) return `M${x},${y}`;
+      const [px, py] = points[i - 1]!;
+      const h = (x - px) / 3;
+      return `C${px + h},${py + tangents[i - 1]! * h} ${x - h},${y - tangents[i]! * h} ${x},${y}`;
+    })
+    .join(" ");
+}
+/** Pushes two end labels at least `gap` apart around their midpoint, inside [top, bottom]. */
+function spreadLabels(a: number, b: number, gap: number, top: number, bottom: number) {
+  if (Math.abs(a - b) >= gap) return [a, b] as const;
+  const mid = Math.min(Math.max((a + b) / 2, top + gap / 2), bottom - gap / 2);
+  return a <= b ? ([mid - gap / 2, mid + gap / 2] as const) : ([mid + gap / 2, mid - gap / 2] as const);
+}
+const plot = { left: 64, right: 520, top: 50, bottom: 290 };
 function CashChart({ rows }: { rows: Dashboard["chart"] }) {
   const max = Math.max(1, ...rows.flatMap((r) => [r.incoming, r.outgoing]));
-  const x = (i: number) => 48 + (i * 472) / (rows.length - 1);
-  const y = (value: number) => 290 - (value / max) * 240;
-  const path = (key: "incoming" | "outgoing") =>
-    rows.map((r, i) => `${i ? "L" : "M"}${x(i)},${y(r[key])}`).join(" ");
+  const x = (i: number) => plot.left + (i * (plot.right - plot.left)) / (rows.length - 1);
+  const y = (value: number) => plot.bottom - (value / max) * (plot.bottom - plot.top);
+  const path = (key: "incoming" | "outgoing") => monotonePath(rows.map((r, i) => [x(i), y(r[key])]));
   const last = rows.at(-1)!;
-  const incomingY = y(last.incoming),
-    outgoingY =
-      Math.abs(y(last.outgoing) - incomingY) < 24
-        ? incomingY + 25
-        : y(last.outgoing);
-  const label = (n: number) => {
-    const s = compact(n);
-    return `${s.value.toLocaleString("id-ID", { maximumFractionDigits: 1 })} ${s.unit}`;
-  };
+  const [incomingY, outgoingY] = spreadLabels(y(last.incoming), y(last.outgoing), 28, plot.top, plot.bottom);
   return (
     <svg
-      className="insight-chart"
+      className="mt-5 min-h-[330px] w-full overflow-visible text-[11px] tabular-nums [&_text]:fill-muted"
       viewBox="0 0 660 330"
       role="img"
       aria-label="Arus kas mingguan: uang masuk dan keluar, tanpa transfer"
     >
       {[0, 1, 2, 3, 4].map((i) => (
         <g key={i}>
-          <line
-            x1="48"
-            x2="520"
-            y1={50 + i * 60}
-            y2={50 + i * 60}
-            stroke="var(--line-2)"
-          />
-          <text x="0" y={54 + i * 60}>
-            {label((max * (4 - i)) / 4)}
+          <line x1={plot.left} x2={plot.right} y1={plot.top + i * 60} y2={plot.top + i * 60} stroke="var(--line-2)" />
+          <text x="0" y={plot.top + 4 + i * 60}>
+            {short(Math.round((max * (4 - i)) / 4))}
           </text>
         </g>
       ))}
-      <path
-        d={path("incoming")}
-        fill="none"
-        stroke="var(--ink)"
-        strokeWidth="2.2"
-      />
-      <path
-        d={path("outgoing")}
-        fill="none"
-        stroke="var(--faint)"
-        strokeWidth="1.8"
-      />
+      <path d={path("outgoing")} fill="none" stroke="var(--faint)" strokeWidth="1.8" />
+      <path d={path("incoming")} fill="none" stroke="var(--ink)" strokeWidth="2.2" />
       {rows.map((r, i) => (
         <g key={r.from}>
-          <circle cx={x(i)} cy={y(r.incoming)} r="3" fill="var(--ink)">
-            <title>
-              {formatDate(r.from)} · Masuk {formatRupiah(r.incoming)}
-            </title>
-          </circle>
           <circle cx={x(i)} cy={y(r.outgoing)} r="3" fill="var(--faint)">
             <title>
               {formatDate(r.from)} · Keluar {formatRupiah(r.outgoing)}
+            </title>
+          </circle>
+          <circle cx={x(i)} cy={y(r.incoming)} r="3" fill="var(--ink)">
+            <title>
+              {formatDate(r.from)} · Masuk {formatRupiah(r.incoming)}
             </title>
           </circle>
           {(i % Math.ceil(rows.length / 5) === 0 || i === rows.length - 1) && (
@@ -126,19 +129,12 @@ function CashChart({ rows }: { rows: Dashboard["chart"] }) {
           )}
         </g>
       ))}
-      <rect
-        x="531"
-        y={incomingY - 13}
-        width="125"
-        height="24"
-        rx="12"
-        fill="var(--ink)"
-      />
-      <text x="541" y={incomingY + 3} style={{ fill: "var(--panel)" }}>
-        Masuk {label(last.incoming)}
+      <rect x="531" y={incomingY - 12} width="125" height="24" rx="12" fill="var(--ink)" />
+      <text x="541" y={incomingY + 4} style={{ fill: "var(--panel)" }}>
+        Masuk {short(last.incoming)}
       </text>
-      <text x="541" y={outgoingY + 3}>
-        Keluar {label(last.outgoing)}
+      <text x="541" y={outgoingY + 4}>
+        Keluar {short(last.outgoing)}
       </text>
     </svg>
   );
@@ -183,8 +179,8 @@ export function DashboardPage() {
         description={`Kondisi toko · ${range}`}
         actions={
           data && (
-            <div className="insight-pill">
-              Saldo kas & bank <b>{formatRupiah(data.totalBalance)}</b>
+            <div className="flex gap-2.5 rounded-full border border-line px-3.5 py-[7px] whitespace-nowrap text-muted max-[900px]:flex-wrap max-[900px]:whitespace-normal">
+              Saldo kas & bank <b className="font-medium text-ink">{formatRupiah(data.totalBalance)}</b>
               <span>
                 · {data.balances.filter((a) => a.kind !== "ewallet").length}{" "}
                 akun
@@ -193,7 +189,7 @@ export function DashboardPage() {
           )
         }
       />
-      <PageBody className="insights">
+      <PageBody className="gap-3.5">
         <FilterRow
           aside={
             data
@@ -201,44 +197,30 @@ export function DashboardPage() {
               : "Memuat data…"
           }
         >
-          <select
-            aria-label="Periode"
-            value={period}
-            onChange={(e) => setPeriod(e.target.value as InsightPeriod)}
-          >
-            <option value="month">Bulan ini</option>
-            <option value="last-month">Bulan lalu</option>
-            <option value="30-days">30 hari</option>
-            <option value="custom">Tanggal khusus</option>
-          </select>
+          <div className="w-36">
+            <Select aria-label="Periode" value={period} onChange={(e) => setPeriod(e.target.value as InsightPeriod)}>
+              <option value="month">Bulan ini</option>
+              <option value="last-month">Bulan lalu</option>
+              <option value="30-days">30 hari</option>
+              <option value="custom">Tanggal khusus</option>
+            </Select>
+          </div>
           {period === "custom" && (
-            <>
-              <input
-                aria-label="Dari tanggal"
-                type="date"
-                value={from}
-                onChange={(e) => setFrom(e.target.value)}
-              />
-              <input
-                aria-label="Sampai tanggal"
-                type="date"
-                value={to}
-                onChange={(e) => setTo(e.target.value)}
-              />
-            </>
+            <div className="flex w-80 gap-2">
+              <DateInput aria-label="Dari tanggal" value={from} onChange={(e) => setFrom(e.target.value)} />
+              <DateInput aria-label="Sampai tanggal" value={to} onChange={(e) => setTo(e.target.value)} />
+            </div>
           )}
-          <select
-            aria-label="Akun arus kas"
-            value={account}
-            onChange={(e) => setAccount(e.target.value)}
-          >
-            <option value="">Semua akun</option>
-            {data?.balances.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-              </option>
-            ))}
-          </select>
+          <div className="w-52">
+            <Select aria-label="Akun arus kas" value={account} onChange={(e) => setAccount(e.target.value)}>
+              <option value="">Semua akun</option>
+              {data?.balances.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </Select>
+          </div>
         </FilterRow>
         {invalid && (
           <p role="alert" className="text-down">
@@ -249,7 +231,9 @@ export function DashboardPage() {
         {result.isError && (
           <p role="alert" className="text-down">
             {result.error.message}{" "}
-            <button onClick={() => void result.refetch()}>Coba lagi</button>
+            <Button size="sm" onClick={() => void result.refetch()}>
+              Coba lagi
+            </Button>
           </p>
         )}
         {result.isPending && !invalid && (
@@ -257,7 +241,7 @@ export function DashboardPage() {
         )}
         {data && !invalid && (
           <>
-            <div className="insight-kpis">
+            <div className="grid grid-cols-5 overflow-hidden rounded-xl border border-line max-[900px]:grid-cols-2">
               {(
                 [
                   {
@@ -301,35 +285,39 @@ export function DashboardPage() {
                   },
                 ] as const
               ).map((kpi) => (
-                <section className="insight-kpi" key={kpi.key}>
-                  <h2>{kpi.title}</h2>
-                  <p className="insight-window">
+                <section className="border-l border-line p-4 first:border-l-0 max-[1200px]:p-3" key={kpi.key}>
+                  <h2 className="text-ink-2">{kpi.title}</h2>
+                  <p className="mt-1 text-[10px] text-muted">
                     {kpi.key === "receivables" || kpi.key === "duePayables"
                       ? `Per ${formatDate(window.to)}`
                       : range}
                   </p>
-                  <div className="insight-value">
+                  <div className={bigValue}>
                     <ShortMoney value={kpi.value} />
                   </div>
-                  <p className="insight-delta">
+                  <p className="mb-2 text-[11px]">
                     <Delta
                       value={data.deltas[kpi.key]}
                       inverse={
                         kpi.key === "receivables" || kpi.key === "duePayables"
                       }
                     />{" "}
-                    <span>vs periode sebelumnya</span>
+                    <span className="text-[10px] text-muted">vs periode sebelumnya</span>
                   </p>
                   <p
-                    className={`insight-note ${kpi.key === "receivables" ? "text-down" : "text-muted"}`}
+                    className={cx("min-h-8 text-[11px]", kpi.key === "receivables" ? "text-down" : "text-muted")}
                   >
                     {kpi.note}
                   </p>
                   {kpi.share !== null && (
                     <div
-                      className={`insight-bar ${kpi.key === "sales" ? "insight-split" : ""}`}
+                      className={cx(
+                        "mt-2.5 h-[3px] overflow-hidden rounded-[3px]",
+                        kpi.key === "sales" ? "bg-faint" : "bg-line-2",
+                      )}
                     >
-                      <i
+                      <div
+                        className="h-full"
                         style={{
                           width: `${Math.min(100, Math.max(0, kpi.share * 100))}%`,
                           background:
@@ -348,19 +336,20 @@ export function DashboardPage() {
               {formatDate(data.previousWindow.to)}. Penjualan & faktur: seluruh
               toko. Arus kas: {selected}, tanpa transfer.
             </p>
-            <div className="insight-grid">
-              <section className="insight-card insight-chart-card">
-                <div className="insight-card-head">
+            <div className="grid grid-cols-[minmax(0,1fr)_370px] gap-3.5 max-[1200px]:grid-cols-1">
+              <section className={card}>
+                <div className="flex items-start justify-between gap-2.5">
                   <div>
                     <h2>Arus kas</h2>
                     <p className="text-xs text-muted">
                       Uang masuk vs keluar · {selected} · mingguan
                     </p>
                   </div>
-                  <div className="insight-segments">
+                  <div className="flex rounded-lg bg-bg p-0.5 whitespace-nowrap">
                     {(["12", "26"] as const).map((w) => (
                       <button
                         key={w}
+                        className="cursor-pointer rounded-md px-2.5 py-1 text-muted aria-pressed:bg-panel aria-pressed:text-ink"
                         aria-pressed={weeks === w}
                         onClick={() => setWeeks(w)}
                       >
@@ -371,18 +360,18 @@ export function DashboardPage() {
                 </div>
                 <CashChart rows={data.chart} />
               </section>
-              <div className="insight-right">
-                <section className="insight-card">
+              <div className="flex flex-col gap-3.5 min-[901px]:max-[1200px]:grid min-[901px]:max-[1200px]:grid-cols-2">
+                <section className={card}>
                   <h2>Saldo per akun</h2>
                   <p className="text-xs text-muted">
                     Per {formatDate(data.today)} · seluruh akun
                   </p>
-                  <div className="insight-value">
+                  <div className={bigValue}>
                     <ShortMoney
                       value={data.balances.reduce((n, a) => n + a.balance, 0)}
                     />
                   </div>
-                  <table className="insight-balances">
+                  <table className="mt-2.5 w-full text-[11px] tabular-nums [&_:is(th,td):nth-child(n+3)]:text-right [&_:is(th,td):nth-child(n+3)]:whitespace-nowrap [&_td]:border-t [&_td]:border-line-2 [&_td]:px-[3px] [&_td]:py-[9px] [&_th]:px-[3px] [&_th]:py-1.5 [&_th]:text-left [&_th]:font-normal [&_th]:text-muted">
                     <thead>
                       <tr>
                         <th>#</th>
@@ -422,8 +411,8 @@ export function DashboardPage() {
                     Semua {data.balances.length} akun ›
                   </Link>
                 </section>
-                <section className="insight-card">
-                  <div className="insight-card-head">
+                <section className={card}>
+                  <div className="flex items-start justify-between gap-2.5">
                     <h2>Tindakan berikutnya</h2>
                     <Link className="text-xs text-muted" to="/tindakan">
                       {data.actionCount} tindakan ›
@@ -450,13 +439,13 @@ export function DashboardPage() {
             </div>
             <div className="flex justify-end gap-2">
               <a
-                className="insight-button secondary"
+                className={linkButton.secondary}
                 href={`/api/reports/cash-book.xlsx?${exportQuery}`}
               >
                 Ekspor buku kas (.xlsx)
               </a>
               <a
-                className="insight-button secondary"
+                className={linkButton.secondary}
                 href={`/api/reports/sales.xlsx?${new URLSearchParams({ ...window })}`}
               >
                 Ekspor penjualan (.xlsx)

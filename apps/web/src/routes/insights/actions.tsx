@@ -14,7 +14,7 @@ import { Badge, StatusTag } from "../../components/ui/badge.tsx";
 import { DataTable, usePagedQuery } from "../../components/ui/data-table.tsx";
 import { EmptyState, PageBody, PageHeader } from "../../components/ui/page.tsx";
 import { api, unwrap } from "../../lib/api.ts";
-import "./insights.css";
+import { cx } from "../../lib/cx.ts";
 
 export const actionsOptions = queryOptions({
   queryKey: ["insights", "action-count"],
@@ -30,7 +30,7 @@ export const ActionNavIcon: LucideIcon = forwardRef(
         <BellDot {...props} ref={ref} />
         {data && (
           <span
-            className="insight-nav-count"
+            className="order-last ml-auto rounded-full border border-line bg-panel px-1.5 text-[10px] text-ink"
             aria-label={`${data.count} tindakan`}
           >
             {data.count}
@@ -72,9 +72,15 @@ export function actionDescription(item: ActionItem) {
       return `Stok ${item.stock} · Minimum ${item.minStock}`;
   }
 }
+const linkBase = "inline-flex h-9 items-center rounded-lg border px-3.5 font-medium whitespace-nowrap transition-colors";
+/** Button looks for links; matches `Button` variants. */
+export const linkButton = {
+  primary: cx(linkBase, "border-ink bg-ink text-panel hover:opacity-90"),
+  secondary: cx(linkBase, "border-line bg-panel text-ink hover:bg-line-2"),
+};
 export function ActionLink({ item }: { item: ActionItem }) {
   return (
-    <Link className="insight-button" to={actionRegistry[item.kind].target}>
+    <Link className={linkButton.primary} to={actionRegistry[item.kind].target}>
       {actionRegistry[item.kind].title} →
     </Link>
   );
