@@ -21,7 +21,7 @@ import {
   stockMovements,
   users,
 } from "@billy/db";
-import { and, asc, count, desc, eq, getTableColumns, ilike, inArray, like, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, getTableColumns, ilike, inArray, isNull, like, sql, type SQL } from "drizzle-orm";
 import type { z } from "zod";
 import type { SessionUser } from "../../env.ts";
 import { likePattern } from "../../lib/search.ts";
@@ -247,15 +247,22 @@ export async function getSale(db: Db, id: string, user?: SessionUser) {
   return { ...sale, lines };
 }
 
-/** Sets the void columns and writes reversal rows for the stock and the money. */
+/**
+ * Sets the void columns and writes reversal rows for the stock and the money. The conditional
+ * update is the guard: of two concurrent voids only one updates the row and writes reversals.
+ */
 export async function voidSale(db: Db, id: string, reason: string, userId: string) {
   return db.transaction(async (tx) => {
+    const [voided] = await tx
+      .update(posSales)
+      .set({ voidedAt: new Date(), voidedBy: userId, voidReason: reason })
+      .where(and(eq(posSales.id, id), isNull(posSales.voidedAt)))
+      .returning({ id: posSales.id });
     const sale = await getSale(tx, id);
-    if (sale.voidedAt) throw new DomainError("conflict", "Struk sudah di-void");
+    if (!voided) throw new DomainError("conflict", "Struk sudah di-void");
     const date = businessDate();
     const note = `Void ${sale.number}: ${reason}`;
 
-    await tx.update(posSales).set({ voidedAt: new Date(), voidedBy: userId, voidReason: reason }).where(eq(posSales.id, id));
     await tx.insert(stockMovements).values(
       sale.lines.map((line) => ({
         productId: line.productId,

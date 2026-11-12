@@ -1,11 +1,29 @@
 import type { Role } from "@billy/core";
 import { createDb } from "@billy/db";
+import { sql } from "drizzle-orm";
 import { createApp } from "./app.ts";
 import { createUser } from "./modules/users/service.ts";
 
-/** A fresh app on an in-memory PGlite with migrations applied, plus helpers to call it as a role. */
-export async function createTestApp() {
-  const { db, migrate } = await createDb();
+/**
+ * A fresh, empty database on the Postgres server at `serverUrl`, for tests that need real
+ * concurrent transactions (PGlite runs one transaction at a time).
+ */
+async function freshPostgres(serverUrl: string) {
+  const name = `billy_test_${crypto.randomUUID().replaceAll("-", "")}`;
+  const admin = await createDb({ url: serverUrl });
+  await admin.db.execute(sql.raw(`create database ${name}`));
+  await admin.close();
+  const url = new URL(serverUrl);
+  url.pathname = `/${name}`;
+  return url.toString();
+}
+
+/**
+ * A fresh app on an in-memory PGlite with migrations applied, plus helpers to call it as a role.
+ * With `postgres` (a server URL), it runs on a new database on that server instead.
+ */
+export async function createTestApp({ postgres }: { postgres?: string | undefined } = {}) {
+  const { db, migrate, close } = await createDb(postgres ? { url: await freshPostgres(postgres) } : {});
   await migrate();
   const app = createApp(db);
 
@@ -24,5 +42,5 @@ export async function createTestApp() {
     return { user, cookie };
   };
 
-  return { app, db, call, signIn };
+  return { app, db, call, signIn, close };
 }
