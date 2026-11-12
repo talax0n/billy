@@ -4,7 +4,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { Button } from "../components/ui/button.tsx";
 import { Field, Input } from "../components/ui/field.tsx";
 import { api, unwrap } from "../lib/api.ts";
-import { meQuery } from "../lib/auth.ts";
+import { meQuery, rememberMe } from "../lib/auth.ts";
 import { useForm } from "../lib/form.ts";
 
 export function LoginPage() {
@@ -14,7 +14,7 @@ export function LoginPage() {
 
   const submit = form.onSubmit(async (input) => {
     const me = await unwrap(api.auth.login.$post({ json: input }));
-    queryClient.setQueryData(meQuery.queryKey, me);
+    queryClient.setQueryData(meQuery.queryKey, rememberMe(me));
     await navigate({ to: me.role === "kasir" ? "/kasir" : "/" });
   });
 

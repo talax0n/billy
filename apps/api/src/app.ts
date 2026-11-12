@@ -9,6 +9,7 @@ import { accountRoutes, cashRoutes } from "./modules/cash/routes.ts";
 import { contactRoutes } from "./modules/contacts/routes.ts";
 import { expenseRoutes } from "./modules/expenses/routes.ts";
 import { insightRoutes } from "./modules/insights/routes.ts";
+import { posRoutes } from "./modules/pos/routes.ts";
 import { productRoutes } from "./modules/products/routes.ts";
 import { salesRoutes } from "./modules/sales/routes.ts";
 import { purchaseRoutes } from "./modules/purchases/routes.ts";
@@ -43,6 +44,7 @@ export function createApp(db: Db) {
     .route("/contacts", contactRoutes)
     .route("/purchases", purchaseRoutes)
     .route("/stock", stockRoutes)
+    .route("/pos", posRoutes)
     .route("/", insightRoutes);
 }
 

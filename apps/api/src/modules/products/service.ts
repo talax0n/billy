@@ -11,7 +11,7 @@ import type { z } from "zod";
 import { likePattern } from "../../lib/search.ts";
 
 /** Stock is derived: the sum of a product's movements (data-model ground rule 4). */
-const stockByProduct = (db: Db) =>
+export const stockByProduct = (db: Db) =>
   db
     .select({ productId: stockMovements.productId, stock: sql<number>`sum(${stockMovements.qty})::int`.as("stock") })
     .from(stockMovements)

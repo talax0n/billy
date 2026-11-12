@@ -14,6 +14,8 @@ export * from "./schemas/contacts.ts";
 export * from "./schemas/finance.ts";
 export * from "./purchases.ts";
 export * from "./schemas/purchases.ts";
+export * from "./pos.ts";
+export * from "./schemas/pos.ts";
 export * from "./schemas/settings.ts";
 export * from "./schemas/stock.ts";
 export * from "./schemas/users.ts";

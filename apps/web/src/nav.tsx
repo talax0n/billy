@@ -27,6 +27,7 @@ import { ReceivablesPage } from "./routes/receivables/receivables-page.tsx";
 import { SalesPage } from "./routes/sales/sales-page.tsx";
 import { PayablesPage } from "./routes/payables/payables-page.tsx";
 import { PurchasesPage } from "./routes/purchases/purchases-page.tsx";
+import { RiwayatKasirPage } from "./routes/riwayat-kasir/riwayat-kasir-page.tsx";
 import { SettingsPage } from "./routes/settings/settings-page.tsx";
 import { StockPage } from "./routes/stock/stock-page.tsx";
 
@@ -55,7 +56,7 @@ export const navItems: NavItem[] = [
   { group: "Transaksi", path: "/pembelian", label: "Pembelian", icon: ShoppingCart, page: PurchasesPage },
   { group: "Transaksi", path: "/biaya", label: "Biaya", icon: WalletCards, page: ExpensesPage },
   { group: "Transaksi", path: "/tukar-faktur", label: "Tukar Faktur", icon: FileStack, page: BundlesPage },
-  { group: "Transaksi", path: "/riwayat-kasir", label: "Riwayat Kasir", icon: History },
+  { group: "Transaksi", path: "/riwayat-kasir", label: "Riwayat Kasir", icon: History, page: RiwayatKasirPage },
   { group: "Keuangan", path: "/kas-bank", label: "Kas & Bank", icon: Wallet, page: CashPage },
   { group: "Keuangan", path: "/piutang", label: "Piutang", icon: HandCoins, page: ReceivablesPage },
   { group: "Keuangan", path: "/hutang", label: "Hutang", icon: ArrowLeftRight, page: PayablesPage },
