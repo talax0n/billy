@@ -25,8 +25,7 @@ export function ExpensesPage() {
       }),
     ),
   );
-  // usePagedQuery types the page as `{ rows, total }`; the response also carries the period total.
-  const amountTotal = (paged.query.data as ExpensePage | undefined)?.amountTotal;
+  const amountTotal = paged.query.data?.amountTotal;
   /** null: closed; "new": create form; a row: the expense being viewed. */
   const [open, setOpen] = useState<ExpenseRow | "new" | null>(null);
 
@@ -57,7 +56,7 @@ export function ExpensesPage() {
             <Input
               type="month"
               aria-label="Bulan"
-              className="w-44!"
+              className="w-44"
               value={month}
               onChange={(e) => {
                 setMonth(e.target.value);

@@ -54,7 +54,7 @@ export function AccountSheet({
     <Sheet
       open
       onClose={onClose}
-      className="max-w-3xl!"
+      className="max-w-3xl"
       title={accountId ? (account.data?.name ?? "Memuat…") : "Akun baru"}
       description={account.data && `${account.data.code} · ${accountKindLabels[account.data.kind]}`}
     >
@@ -143,8 +143,7 @@ function CashBook({ accountId }: { accountId: string }) {
     },
   });
 
-  // usePagedQuery types the page as `{ rows, total }`; the response also carries the period totals.
-  const data = paged.query.data as CashBookPage | undefined;
+  const data = paged.query.data;
   return (
     <section className="flex flex-col gap-3">
       <h3 className="font-medium">Buku kas</h3>
@@ -158,12 +157,12 @@ function CashBook({ accountId }: { accountId: string }) {
           )
         }
       >
-        <DateInput aria-label="Dari tanggal" className="w-36!" value={filters.from} onChange={(e) => setFilter("from", e.target.value)} />
+        <DateInput aria-label="Dari tanggal" className="w-36" value={filters.from} onChange={(e) => setFilter("from", e.target.value)} />
         <span className="text-muted">s/d</span>
-        <DateInput aria-label="Sampai tanggal" className="w-36!" value={filters.to} onChange={(e) => setFilter("to", e.target.value)} />
+        <DateInput aria-label="Sampai tanggal" className="w-36" value={filters.to} onChange={(e) => setFilter("to", e.target.value)} />
         <Select
           aria-label="Arah"
-          className="w-28!"
+          className="w-28"
           value={filters.direction}
           onChange={(e) => setFilter("direction", e.target.value as CashBookFilters["direction"])}
         >
@@ -173,7 +172,7 @@ function CashBook({ accountId }: { accountId: string }) {
         </Select>
         <Select
           aria-label="Kategori"
-          className="w-40!"
+          className="w-40"
           value={filters.category}
           onChange={(e) => setFilter("category", e.target.value as CashBookFilters["category"])}
         >

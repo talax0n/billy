@@ -14,12 +14,13 @@ export interface PageParams {
 }
 
 /**
- * Server-side search + pagination state for a list endpoint returning `{ rows, total }`.
+ * Server-side search + pagination state for a list endpoint returning `{ rows, total }`, plus
+ * any summary fields the endpoint adds (typed through `Page`).
  * The query key is `[...key, params]`, so invalidating `key` refreshes every page.
  */
-export function usePagedQuery<Row>(
+export function usePagedQuery<Page extends Paginated<unknown>>(
   key: readonly unknown[],
-  fetchPage: (params: PageParams) => Promise<Paginated<Row>>,
+  fetchPage: (params: PageParams) => Promise<Page>,
   pageSize = 25,
 ) {
   const [q, setQ] = useState("");
@@ -51,8 +52,8 @@ export function usePagedQuery<Row>(
   };
 }
 
-export type PagedQuery<Row> = Omit<ReturnType<typeof usePagedQuery<Row>>, "query"> & {
-  query: UseQueryResult<Paginated<Row>>;
+export type PagedQuery<Page extends Paginated<unknown>> = Omit<ReturnType<typeof usePagedQuery<Page>>, "query"> & {
+  query: UseQueryResult<Page>;
 };
 
 export interface Column<Row> {
@@ -71,7 +72,7 @@ export function DataTable<Row extends { id: string }>({
   searchPlaceholder,
   toolbar,
 }: {
-  paged: PagedQuery<Row>;
+  paged: PagedQuery<Paginated<Row>>;
   columns: Column<Row>[];
   onRowClick?: (row: Row) => void;
   empty: ReactNode;

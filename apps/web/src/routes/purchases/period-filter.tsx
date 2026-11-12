@@ -50,22 +50,20 @@ export const periodQuery = ({ from, to }: Period) => ({ ...(from && { from }), .
 export function PeriodFilter({ value, onChange }: { value: Period; onChange: (period: Period) => void }) {
   return (
     <>
-      <div className="w-44">
-        <Select
-          aria-label="Periode"
-          value={value.preset}
-          onChange={(e) => {
-            const preset = e.target.value as Period["preset"];
-            onChange(preset === "custom" ? { ...value, preset } : presetPeriod(preset));
-          }}
-        >
-          {Object.entries(periodPresets).map(([preset, label]) => (
-            <option key={preset} value={preset}>
-              {label}
-            </option>
-          ))}
-        </Select>
-      </div>
+      <Select className="w-44"
+        aria-label="Periode"
+        value={value.preset}
+        onChange={(e) => {
+          const preset = e.target.value as Period["preset"];
+          onChange(preset === "custom" ? { ...value, preset } : presetPeriod(preset));
+        }}
+      >
+        {Object.entries(periodPresets).map(([preset, label]) => (
+          <option key={preset} value={preset}>
+            {label}
+          </option>
+        ))}
+      </Select>
       {value.preset === "custom" && (
         <div className="flex items-center gap-2">
           <DateInput aria-label="Dari tanggal" value={value.from} onChange={(e) => onChange({ ...value, from: e.target.value })} />

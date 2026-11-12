@@ -163,16 +163,14 @@ function Ledger({ productId, onProductChange }: { productId: string | null; onPr
           />
         </div>
         <PeriodFilter value={period} onChange={filter(setPeriod)} />
-        <div className="w-40">
-          <Select aria-label="Jenis mutasi" value={reason} onChange={(e) => filter(setReason)(e.target.value as Reason | "")}>
-            <option value="">Semua jenis</option>
-            {Object.entries(reasonLabels).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </Select>
-        </div>
+        <Select className="w-40" aria-label="Jenis mutasi" value={reason} onChange={(e) => filter(setReason)(e.target.value as Reason | "")}>
+          <option value="">Semua jenis</option>
+          {Object.entries(reasonLabels).map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </Select>
       </FilterRow>
 
       {selected && (

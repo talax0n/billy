@@ -30,7 +30,7 @@ export function PurchaseSheet({ id, onClose }: { id: string; onClose: () => void
     <Sheet
       open
       onClose={onClose}
-      className="max-w-3xl!"
+      className="max-w-3xl"
       title={p ? p.number : purchase.isError ? "Faktur tidak ditemukan" : "Memuat…"}
       description={p && [p.supplierName, p.supplierInvoiceNumber && `No. pemasok ${p.supplierInvoiceNumber}`].filter(Boolean).join(" · ")}
     >

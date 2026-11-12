@@ -197,30 +197,26 @@ export function DashboardPage() {
               : "Memuat data…"
           }
         >
-          <div className="w-36">
-            <Select aria-label="Periode" value={period} onChange={(e) => setPeriod(e.target.value as InsightPeriod)}>
-              <option value="month">Bulan ini</option>
-              <option value="last-month">Bulan lalu</option>
-              <option value="30-days">30 hari</option>
-              <option value="custom">Tanggal khusus</option>
-            </Select>
-          </div>
+          <Select className="w-36" aria-label="Periode" value={period} onChange={(e) => setPeriod(e.target.value as InsightPeriod)}>
+            <option value="month">Bulan ini</option>
+            <option value="last-month">Bulan lalu</option>
+            <option value="30-days">30 hari</option>
+            <option value="custom">Tanggal khusus</option>
+          </Select>
           {period === "custom" && (
             <div className="flex w-80 gap-2">
               <DateInput aria-label="Dari tanggal" value={from} onChange={(e) => setFrom(e.target.value)} />
               <DateInput aria-label="Sampai tanggal" value={to} onChange={(e) => setTo(e.target.value)} />
             </div>
           )}
-          <div className="w-52">
-            <Select aria-label="Akun arus kas" value={account} onChange={(e) => setAccount(e.target.value)}>
-              <option value="">Semua akun</option>
-              {data?.balances.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                </option>
-              ))}
-            </Select>
-          </div>
+          <Select className="w-52" aria-label="Akun arus kas" value={account} onChange={(e) => setAccount(e.target.value)}>
+            <option value="">Semua akun</option>
+            {data?.balances.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </Select>
         </FilterRow>
         {invalid && (
           <p role="alert" className="text-down">

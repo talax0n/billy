@@ -1,7 +1,8 @@
 import { X } from "lucide-react";
-import { type ReactNode, useEffect, useRef } from "react";
+import { type ReactNode, useEffect, useId, useRef } from "react";
 import { cx } from "../../lib/cx.ts";
 import { Button } from "./button.tsx";
+import { restackToasts } from "./toast.tsx";
 
 /**
  * Modal on the native `<dialog>`: focus trap, Esc and top layer come from the browser.
@@ -25,16 +26,23 @@ export function Dialog({
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+  const descriptionId = useId();
 
   useEffect(() => {
     const dialog = ref.current;
     if (open && !dialog?.open) dialog?.showModal();
     if (!open && dialog?.open) dialog.close();
+    restackToasts();
   }, [open]);
+
+  useEffect(() => restackToasts, []);
 
   return (
     <dialog
       ref={ref}
+      aria-labelledby={titleId}
+      aria-describedby={description ? descriptionId : undefined}
       onCancel={(e) => {
         e.preventDefault();
         onClose();
@@ -54,8 +62,14 @@ export function Dialog({
         <div className="flex h-full flex-col">
           <header className="flex items-start justify-between gap-4 border-b border-line px-6 py-4">
             <div>
-              <h2 className="text-base font-semibold tracking-tight">{title}</h2>
-              {description && <p className="mt-0.5 text-muted">{description}</p>}
+              <h2 id={titleId} className="text-base font-semibold tracking-tight">
+                {title}
+              </h2>
+              {description && (
+                <p id={descriptionId} className="mt-0.5 text-muted">
+                  {description}
+                </p>
+              )}
             </div>
             <Button variant="ghost" size="icon" aria-label="Tutup" onClick={onClose}>
               <X className="size-4" />

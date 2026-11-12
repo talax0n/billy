@@ -258,17 +258,15 @@ export function InvoiceForm({ onSaved }: { onSaved: (id: string) => void }) {
           discountKind={discountKind}
           discountInput={
             <div className="flex gap-2">
-              <div className="w-28 shrink-0">
-                <Select
-                  aria-label="Jenis diskon faktur"
-                  value={discountKind}
-                  onChange={(e) => setDiscountKind(e.target.value as DiscountKind)}
-                >
-                  <option value="none">Tanpa</option>
-                  <option value="percent">Persen</option>
-                  <option value="amount">Rupiah</option>
-                </Select>
-              </div>
+              <Select className="w-28 shrink-0"
+                aria-label="Jenis diskon faktur"
+                value={discountKind}
+                onChange={(e) => setDiscountKind(e.target.value as DiscountKind)}
+              >
+                <option value="none">Tanpa</option>
+                <option value="percent">Persen</option>
+                <option value="amount">Rupiah</option>
+              </Select>
               {discountKind === "percent" && (
                 <div className="relative flex-1">
                   <input

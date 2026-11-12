@@ -20,8 +20,7 @@ export function CashPage() {
   /** null: closed; "new": create form; a string: the account whose cash book is open. */
   const [open, setOpen] = useState<string | null>(null);
   const [action, setAction] = useState<CashAction | null>(null);
-  // usePagedQuery types the page as `{ rows, total }`; the response also carries the combined balance.
-  const balanceTotal = (paged.query.data as AccountPage | undefined)?.balanceTotal;
+  const balanceTotal = paged.query.data?.balanceTotal;
 
   return (
     <>

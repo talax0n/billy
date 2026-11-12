@@ -31,8 +31,7 @@ export function PayablesPage() {
   const paged = usePagedQuery(["purchases", "payables"], (params) =>
     unwrap(api.purchases.payables.$get({ query: { q: params.q, page: String(params.page), pageSize: String(params.pageSize) } })),
   );
-  // usePagedQuery types only `rows` and `total`; the response also carries the bucket totals.
-  const data = paged.query.data as PayablesList | undefined;
+  const data = paged.query.data;
   const totals = data?.totals;
   const asOf = formatDate(data?.asOf ?? businessDate());
   const [supplier, setSupplier] = useState<SupplierRow | null>(null);
@@ -82,7 +81,7 @@ function SupplierPayablesSheet({ supplier, onClose }: { supplier: SupplierRow; o
   const open = rupiah(rows.reduce((sum, row) => sum + row.outstanding, 0));
 
   return (
-    <Sheet open onClose={onClose} className="max-w-3xl!" title={supplier.supplierName} description={`Hutang terbuka ${formatRupiah(open)}`}>
+    <Sheet open onClose={onClose} className="max-w-3xl" title={supplier.supplierName} description={`Hutang terbuka ${formatRupiah(open)}`}>
       {invoices.isPending && <p className="text-muted">Memuat…</p>}
       {invoices.data && rows.length === 0 && <EmptyState title="Semua faktur pemasok ini sudah lunas" />}
       <ul className="flex flex-col">

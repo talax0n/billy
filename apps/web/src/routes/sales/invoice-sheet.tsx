@@ -29,7 +29,7 @@ export function InvoiceSheet({
     <Sheet
       open
       onClose={onClose}
-      className={invoiceId === null ? "max-w-5xl!" : "max-w-2xl!"}
+      className={invoiceId === null ? "max-w-5xl" : "max-w-2xl"}
       title={invoiceId === null ? "Faktur penjualan baru" : (invoice.data?.number ?? "Memuat…")}
       description={invoice.data && `${invoice.data.customer.name} · ${formatDate(invoice.data.date)}`}
     >

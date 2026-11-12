@@ -1,5 +1,4 @@
 import { formatDate, formatRupiah, rupiah, type SalesStatusFilter, salesStatusFilters } from "@billy/core";
-import type { InferResponseType } from "hono/client";
 import { Plus } from "lucide-react";
 import { useState } from "react";
 import { StatusTag } from "../../components/ui/badge.tsx";
@@ -13,7 +12,6 @@ import { CustomerPicker } from "./customer-picker.tsx";
 import { InvoiceSheet } from "./invoice-sheet.tsx";
 import { type Customer, type Period, periodLabel, periodRange, periods } from "./queries.ts";
 
-type SalesList = InferResponseType<typeof api.sales.$get, 200>;
 
 const statusLabels: Record<SalesStatusFilter, string> = {
   open: "Belum lunas",
@@ -45,8 +43,7 @@ export function SalesPage() {
   );
   /** null: closed; "new": create form; a string: the invoice shown. */
   const [open, setOpen] = useState<string | null>(null);
-  // usePagedQuery types its data as plain `{ rows, total }`; this endpoint also sends the summary.
-  const summary = (paged.query.data as SalesList | undefined)?.summary;
+  const summary = paged.query.data?.summary;
   const windowNote = `${periodLabel(period)}${status ? ` · ${statusLabels[status]}` : ""}${customer ? ` · ${customer.name}` : ""}`;
   const money = (v: number | undefined) => (v === undefined ? "—" : formatRupiah(rupiah(v)));
 
@@ -64,25 +61,21 @@ export function SalesPage() {
       />
       <PageBody>
         <FilterRow aside={summary && `${summary.count} faktur`}>
-          <div className="w-44">
-            <Select aria-label="Periode" value={period} onChange={(e) => setPeriod(e.target.value as Period)}>
-              {Object.entries(periods).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </Select>
-          </div>
-          <div className="w-40">
-            <Select aria-label="Status" value={status} onChange={(e) => setStatus(e.target.value as SalesStatusFilter | "")}>
-              <option value="">Semua status</option>
-              {salesStatusFilters.map((s) => (
-                <option key={s} value={s}>
-                  {statusLabels[s]}
-                </option>
-              ))}
-            </Select>
-          </div>
+          <Select className="w-44" aria-label="Periode" value={period} onChange={(e) => setPeriod(e.target.value as Period)}>
+            {Object.entries(periods).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </Select>
+          <Select className="w-40" aria-label="Status" value={status} onChange={(e) => setStatus(e.target.value as SalesStatusFilter | "")}>
+            <option value="">Semua status</option>
+            {salesStatusFilters.map((s) => (
+              <option key={s} value={s}>
+                {statusLabels[s]}
+              </option>
+            ))}
+          </Select>
           <div className="w-56">
             <CustomerPicker key={pickerKey} value={customer} onChange={setCustomer} placeholder="Semua pelanggan" />
           </div>

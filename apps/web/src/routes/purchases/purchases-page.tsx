@@ -1,7 +1,6 @@
 import { formatDate, formatRupiah, type purchaseStatusFilters, rupiah } from "@billy/core";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import type { InferResponseType } from "hono/client";
 import { Plus } from "lucide-react";
 import { useState } from "react";
 import { StatusTag } from "../../components/ui/badge.tsx";
@@ -18,7 +17,6 @@ import { type Period, PeriodFilter, periodLabel, periodQuery, presetPeriod } fro
 import { PurchaseForm } from "./purchase-form.tsx";
 import { PurchaseSheet } from "./purchase-sheet.tsx";
 
-type PurchaseList = InferResponseType<typeof api.purchases.$get, 200>;
 type StatusFilter = (typeof purchaseStatusFilters)[number];
 
 const statusLabels: Record<StatusFilter, string> = {
@@ -48,8 +46,7 @@ export function PurchasesPage() {
     set(value);
     paged.setPage(1);
   };
-  // usePagedQuery types only `rows` and `total`; the response also carries the summary.
-  const summary = (paged.query.data as PurchaseList | undefined)?.summary;
+  const summary = paged.query.data?.summary;
   const payables = useQuery({
     queryKey: ["purchases", "payables", "totals"],
     queryFn: () => unwrap(api.purchases.payables.$get({ query: { pageSize: "1" } })),
@@ -71,16 +68,14 @@ export function PurchasesPage() {
       <PageBody>
         <FilterRow aside={paged.query.dataUpdatedAt ? `Data per ${timeOfDay.format(paged.query.dataUpdatedAt)}` : undefined}>
           <PeriodFilter value={period} onChange={filter(setPeriod)} />
-          <div className="w-40">
-            <Select aria-label="Status" value={status} onChange={(e) => filter(setStatus)(e.target.value as StatusFilter | "")}>
-              <option value="">Semua status</option>
-              {Object.entries(statusLabels).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </Select>
-          </div>
+          <Select className="w-40" aria-label="Status" value={status} onChange={(e) => filter(setStatus)(e.target.value as StatusFilter | "")}>
+            <option value="">Semua status</option>
+            {Object.entries(statusLabels).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </Select>
           <div className="w-64">
             <LookupPicker kind="supplier" lookup={lookups.supplier} value={supplier} onChange={filter(setSupplier)} placeholder="Semua pemasok" />
           </div>
@@ -141,7 +136,7 @@ export function PurchasesPage() {
       </PageBody>
 
       {creating && (
-        <Sheet open className="max-w-5xl!" onClose={() => setCreating(false)} title="Pembelian baru" description="Faktur dari pemasok">
+        <Sheet open className="max-w-5xl" onClose={() => setCreating(false)} title="Pembelian baru" description="Faktur dari pemasok">
           <PurchaseForm
             onCancel={() => setCreating(false)}
             onSaved={(id) => {

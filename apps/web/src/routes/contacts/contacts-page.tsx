@@ -43,7 +43,7 @@ export function ContactsPage() {
           toolbar={
             <Select
               aria-label="Jenis kontak"
-              className="w-44!"
+              className="w-44"
               value={kind}
               onChange={(e) => {
                 setKind(e.target.value as ContactKind | "");
