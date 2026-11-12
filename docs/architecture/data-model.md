@@ -11,7 +11,7 @@ This is the shared contract for every module. Read it together with `docs/archit
 5. **Invoice status is derived.** `paid = sum(non-voided payments)` and `outstanding = total - paid`. The status is `void | paid | partial | unpaid`, and it is `overdue` when `outstanding > 0 && due_date < today`. It is never stored.
 6. **The server recomputes all totals** from the lines, using pure functions in `@billy/core`. A client-sent total is ignored, or rejected if it disagrees.
 7. **Business dates** are Postgres `date` in the `Asia/Jakarta` timezone. Audit timestamps are `timestamptz`.
-8. **Line cost snapshot.** Every sale and POS line stores `unit_cost` copied from `products.cost_price` at the time of sale. Every purchase posting sets `products.cost_price` to the line's net unit cost (latest-cost method). Gross profit is `sum(line_total - qty * unit_cost)`.
+8. **Line cost snapshot.** The **cost of a product as of a date** is the net unit cost (`round(line_total / qty)`) of its latest non-voided purchase line dated on or before that date, falling back to `products.cost_price` when there is none (`costAsOf` in `apps/api/src/lib/cost-as-of.ts`). Every sales line stores `unit_cost` = the cost as of the invoice date; every POS line stores the cost as of the sale's own business date, so an offline sale synced after a newer purchase keeps the cost that applied when it was sold. Every purchase posting sets `products.cost_price` to the line's net unit cost (latest-cost method); voiding a purchase resets it to the net unit cost of the latest remaining non-voided purchase, and keeps the current value when none remains. Sales revenue is `subtotal - discount_amount` (net of the document discount, before PPN) and gross profit is that minus `sum(qty * unit_cost)`.
 
 ## Tables
 
@@ -75,6 +75,7 @@ Manual cash rows ("terima uang" and other money out) are `cash_entries` with `so
 | Record sales payment | payment + cash entry `in` / `sale`. Rejected if amount > outstanding. |
 | Void payment | reversal cash entry (`out`, category `reversal`) |
 | Create purchase invoice | invoice + lines, stock movement `purchase` (+qty), update `products.cost_price` |
+| Void purchase invoice | refused while non-voided payments exist; otherwise reversal stock movements, `products.cost_price` recomputed (rule 8) |
 | Record purchase payment | payment + cash entry `out` / `purchase` |
 | Create expense | expense + cash entry `out` / `expense` |
 | Transfer | transfer + cash entry `out` on from + `in` on to, both category `transfer` |

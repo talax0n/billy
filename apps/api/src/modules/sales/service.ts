@@ -27,6 +27,7 @@ import {
 } from "@billy/db";
 import { and, asc, count, desc, eq, gte, inArray, isNull, lte, sql, type SQL } from "drizzle-orm";
 import type { z } from "zod";
+import { costAsOf } from "../../lib/cost-as-of.ts";
 import { allocateDocNumber } from "../../lib/doc-number.ts";
 import { invoiceState } from "../../lib/invoice-state.ts";
 import { matchAllTerms } from "../../lib/search.ts";
@@ -250,7 +251,7 @@ export async function createInvoice(db: Db, input: z.output<typeof salesInvoiceI
     const productIds = [...new Set(input.lines.map((l) => l.productId))];
     const costs = new Map(
       (
-        await tx.select({ id: products.id, costPrice: products.costPrice }).from(products).where(inArray(products.id, productIds))
+        await tx.select({ id: products.id, costPrice: costAsOf(input.date) }).from(products).where(inArray(products.id, productIds))
       ).map((p) => [p.id, p.costPrice]),
     );
     if (costs.size !== productIds.length) throw new DomainError("invalid", "Ada produk yang tidak ditemukan");

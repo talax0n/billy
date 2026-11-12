@@ -24,6 +24,7 @@ import {
 import { and, asc, count, desc, eq, getTableColumns, ilike, inArray, isNull, like, ne, sql, type SQL } from "drizzle-orm";
 import type { z } from "zod";
 import type { SessionUser } from "../../env.ts";
+import { costAsOf } from "../../lib/cost-as-of.ts";
 import { likePattern } from "../../lib/search.ts";
 import { stockByProduct } from "../products/service.ts";
 
@@ -121,9 +122,13 @@ export async function recordSale(db: Db, input: PosSale, user: SessionUser) {
       if (customer?.kind !== "customer") throw new DomainError("invalid", "Pelanggan tidak ditemukan");
     }
 
+    // Cost as of the day the sale happened, so an offline sale synced after a newer purchase
+    // keeps the cost that applied when it was sold.
+    const soldAt = new Date(input.soldAt);
+    const date = businessDate(soldAt);
     const productIds = [...new Set(input.lines.map((l) => l.productId))];
     const catalog = await tx
-      .select({ id: products.id, active: products.active, costPrice: products.costPrice })
+      .select({ id: products.id, active: products.active, costPrice: costAsOf(date) })
       .from(products)
       .where(inArray(products.id, productIds));
     const byId = new Map(catalog.map((p) => [p.id, p]));
@@ -143,8 +148,6 @@ export async function recordSale(db: Db, input: PosSale, user: SessionUser) {
     }
     if (input.tendered < totals.total) throw new DomainError("invalid", "Uang diterima kurang dari total");
 
-    const soldAt = new Date(input.soldAt);
-    const date = businessDate(soldAt);
     // Two uploads of the same new sale can both get here; the one that loses the insert
     // waits for the winner and answers as a replay.
     const [inserted] = await tx

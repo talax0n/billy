@@ -29,6 +29,7 @@ import {
 } from "@billy/db";
 import { and, asc, count, desc, eq, gte, inArray, isNull, lte, sql, type SQL } from "drizzle-orm";
 import type { z } from "zod";
+import { costAsOf } from "../../lib/cost-as-of.ts";
 import { allocateDocNumber } from "../../lib/doc-number.ts";
 import { invoiceState } from "../../lib/invoice-state.ts";
 import { matchAllTerms } from "../../lib/search.ts";
@@ -358,8 +359,10 @@ export async function voidPurchase(db: Db, id: string, reason: string, userId: s
         createdBy: userId,
       })),
     );
-    // products.cost_price stays as is: a later purchase may already have set a newer cost, and
-    // the previous cost is not recorded anywhere to roll back to.
+    // The voided lines no longer count: each product's cost_price goes back to the net cost of
+    // its latest remaining non-voided purchase, or stays as is when none remains (rule 8).
+    const productIds = [...new Set(posted.map((movement) => movement.productId))];
+    await tx.update(products).set({ costPrice: costAsOf(null) }).where(inArray(products.id, productIds));
   });
   return getPurchase(db, id);
 }
