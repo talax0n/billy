@@ -5,6 +5,9 @@ import type { AppEnv } from "./env.ts";
 import { onError } from "./lib/errors.ts";
 import { categoryRoutes } from "./modules/categories/routes.ts";
 import { invoiceBundleRoutes } from "./modules/invoice-bundles/routes.ts";
+import { accountRoutes, cashRoutes } from "./modules/cash/routes.ts";
+import { contactRoutes } from "./modules/contacts/routes.ts";
+import { expenseRoutes } from "./modules/expenses/routes.ts";
 import { productRoutes } from "./modules/products/routes.ts";
 import { salesRoutes } from "./modules/sales/routes.ts";
 import { settingsRoutes } from "./modules/settings/routes.ts";
@@ -30,7 +33,11 @@ export function createApp(db: Db) {
     .route("/categories", categoryRoutes)
     .route("/products", productRoutes)
     .route("/sales", salesRoutes)
-    .route("/invoice-bundles", invoiceBundleRoutes);
+    .route("/invoice-bundles", invoiceBundleRoutes)
+    .route("/accounts", accountRoutes)
+    .route("/cash", cashRoutes)
+    .route("/expenses", expenseRoutes)
+    .route("/contacts", contactRoutes);
 }
 
 export type AppType = ReturnType<typeof createApp>;

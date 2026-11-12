@@ -46,3 +46,6 @@ export function fieldErrors(error: z.core.$ZodError): Record<string, string> {
   }
   return fields;
 }
+
+export const voidInput = z.object({ reason: z.string().trim().min(1, "Alasan void wajib diisi").max(500) });
+export type VoidInput = z.input<typeof voidInput>;

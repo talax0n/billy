@@ -56,9 +56,6 @@ export type SalesInvoiceInput = z.input<typeof salesInvoiceInput>;
 export const salesPaymentInput = z.object({ ...paymentFields, date: businessDateInput });
 export type SalesPaymentInput = z.input<typeof salesPaymentInput>;
 
-export const voidInput = z.object({ reason: z.string().trim().min(1, "Alasan wajib diisi").max(500) });
-export type VoidInput = z.input<typeof voidInput>;
-
 export const salesListQuery = paginationQuery.extend({
   from: businessDateInput.optional(),
   to: businessDateInput.optional(),
