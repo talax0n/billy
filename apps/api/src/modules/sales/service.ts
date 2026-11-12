@@ -97,31 +97,27 @@ function selectInvoices(db: Db) {
     .leftJoin(paid, eq(paid.invoiceId, salesInvoices.id));
 }
 
-type InvoiceRow = Awaited<ReturnType<ReturnType<typeof selectInvoices>["execute"]>>[number];
-
-function withState(row: InvoiceRow, today: string) {
-  const paid = rupiah(row.paid);
-  const state = deriveInvoiceStatus({ total: row.total, paid, dueDate: row.dueDate, voided: row.voidedAt !== null, today });
-  return { ...row, paid, state };
+/** Invoice rows with derived `paid` and `state`, newest first. Shared with tukar faktur. */
+export async function invoicesWithState(db: Db, where: SQL | undefined) {
+  const today = businessDate();
+  const rows = await selectInvoices(db).where(where).orderBy(desc(salesInvoices.date), desc(salesInvoices.number));
+  return rows.map((row) => {
+    const paid = rupiah(row.paid);
+    const state = deriveInvoiceStatus({ total: row.total, paid, dueDate: row.dueDate, voided: row.voidedAt !== null, today });
+    return { ...row, paid, state };
+  });
 }
 
 export async function listInvoices(db: Db, query: z.output<typeof salesListQuery>) {
-  const conditions: (SQL | undefined)[] = [
+  const where = and(
     query.from ? gte(salesInvoices.date, query.from) : undefined,
     query.to ? lte(salesInvoices.date, query.to) : undefined,
     query.customerId ? eq(salesInvoices.customerId, query.customerId) : undefined,
     query.q ? or(ilike(salesInvoices.number, likePattern(query.q)), ilike(contacts.name, likePattern(query.q))) : undefined,
-  ];
+  );
   // ponytail: status is derived, so the period's invoices are filtered and paged in memory.
   // Fine for one shop's volume; move the status expression into SQL if a period passes ~50k invoices.
-  const today = businessDate();
-  const rows = (
-    await selectInvoices(db)
-      .where(and(...conditions))
-      .orderBy(desc(salesInvoices.date), desc(salesInvoices.number))
-  )
-    .map((row) => withState(row, today))
-    .filter((row) => !query.status || matchesStatusFilter(row.state, query.status));
+  const rows = (await invoicesWithState(db, where)).filter((row) => !query.status || matchesStatusFilter(row.state, query.status));
   const start = (query.page - 1) * query.pageSize;
   return { rows: rows.slice(start, start + query.pageSize), total: rows.length, summary: summarizeInvoices(rows) };
 }
@@ -377,9 +373,7 @@ export async function voidInvoice(db: Db, invoiceId: string, { reason }: z.outpu
 /** Piutang: open invoices aged per customer, largest balance first. */
 export async function listReceivables(db: Db) {
   const today = businessDate();
-  const open = (await selectInvoices(db).where(isNull(salesInvoices.voidedAt)))
-    .map((row) => withState(row, today))
-    .filter((row) => row.state.outstanding > 0);
+  const open = (await invoicesWithState(db, isNull(salesInvoices.voidedAt))).filter((row) => row.state.outstanding > 0);
   const names = new Map(open.map((row) => [row.customerId, row.customerName]));
   const aged = ageReceivables(
     open.map((row) => ({ customerId: row.customerId, dueDate: row.dueDate, outstanding: row.state.outstanding })),
