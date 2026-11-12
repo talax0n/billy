@@ -49,6 +49,10 @@ The `ui` and `api-client` packages are skipped for now. The web and desktop apps
 | Hosting | **Decided:** Vercel (web + API as Hono functions, region `sin1` Singapore) + Neon Postgres (`ap-southeast-1`). Drizzle uses the Neon serverless driver. | The owner's choice. There are no servers to run. Both regions are close to Indonesia. | A VPS with Docker Compose |
 | Offline sync | **Proposed:** PowerSync (hosted service). It replicates Neon into a local SQLite on each client. Local writes queue and upload through our own API. | Supports Neon, Web, Electron, and Expo with one model. Writes still pass server validation. | Hand-rolled outbox + pull cursor (no vendor, but a lot more work). Electric (read sync only, so writes are also ours to build). Zero (needs a long-running `zero-cache` server, a poor fit for Vercel). |
 
+## Offline implementation for v1 (decided 2026-11-13)
+
+PowerSync needs a hosted service account, so v1 does not use it. Only the cashier PC sells offline. v1 therefore uses a small client **outbox**: the POS caches products and accounts in IndexedDB, queues each sale as an idempotent command keyed by its client UUID, and flushes the queue to `POST /api/pos/sales` when online. The server ignores a sale ID it already holds. The rules below still hold, so PowerSync can replace the outbox later without a schema change.
+
 ## Offline-first design (decided 2026-11-12: the app works offline and syncs automatically)
 
 ```
