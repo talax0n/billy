@@ -72,43 +72,6 @@ export function ageReceivables(
 export const salesStatusFilters = ["open", "unpaid", "partial", "overdue", "paid", "void"] as const;
 export type SalesStatusFilter = (typeof salesStatusFilters)[number];
 
-export function matchesStatusFilter(state: InvoiceState, filter: SalesStatusFilter): boolean {
-  switch (filter) {
-    case "open":
-      return state.outstanding > 0;
-    case "overdue":
-      return state.overdue;
-    case "unpaid":
-    case "partial":
-      return state.status === filter && !state.overdue;
-    case "paid":
-    case "void":
-      return state.status === filter;
-  }
-}
-
-export interface SalesSummary {
-  count: number;
-  total: Rupiah;
-  paid: Rupiah;
-  outstanding: Rupiah;
-  overdue: Rupiah;
-}
-
-/** Tiles for a filtered set of invoices. Void invoices count toward nothing. */
-export function summarizeInvoices(rows: readonly { total: Rupiah; paid: Rupiah; state: InvoiceState }[]): SalesSummary {
-  const summary: SalesSummary = { count: 0, total: rupiah(0), paid: rupiah(0), outstanding: rupiah(0), overdue: rupiah(0) };
-  for (const { total, paid, state } of rows) {
-    if (state.status === "void") continue;
-    summary.count += 1;
-    summary.total = rupiah(summary.total + total);
-    summary.paid = rupiah(summary.paid + paid);
-    summary.outstanding = rupiah(summary.outstanding + state.outstanding);
-    if (state.overdue) summary.overdue = rupiah(summary.overdue + state.outstanding);
-  }
-  return summary;
-}
-
 export function assertPaymentAllowed(state: InvoiceState, amount: Rupiah): void {
   if (state.status === "void") throw new DomainError("conflict", "Faktur sudah di-void");
   if (amount <= 0) throw new DomainError("invalid", "Jumlah pembayaran harus lebih dari 0");

@@ -27,10 +27,11 @@ import {
   stockMovements,
   users,
 } from "@billy/db";
-import { and, asc, count, desc, eq, gte, ilike, inArray, isNotNull, isNull, lt, lte, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, isNull, lte, sql, type SQL } from "drizzle-orm";
 import type { z } from "zod";
 import { allocateDocNumber } from "../../lib/doc-number.ts";
-import { likePattern } from "../../lib/search.ts";
+import { invoiceState } from "../../lib/invoice-state.ts";
+import { matchAllTerms } from "../../lib/search.ts";
 
 type PurchaseInput = z.output<typeof purchaseInput>;
 type PaymentInput = z.output<typeof purchasePaymentInput>;
@@ -38,22 +39,9 @@ type ListQuery = z.output<typeof purchaseListQuery>;
 
 const notFound = () => new DomainError("not_found", "Faktur pembelian tidak ditemukan");
 
-/** Every whitespace-separated term must appear somewhere in `haystack`. */
-function matchAllTerms(haystack: SQL, q: string): SQL | undefined {
-  const terms = q.split(/\s+/).filter(Boolean);
-  return terms.length ? and(...terms.map((term) => ilike(haystack, likePattern(term)))) : undefined;
-}
-
-/** Paid = sum of non-voided payments (data-model ground rule 5). */
 function invoiceQuery(db: Db) {
-  const paidByInvoice = db
-    .select({ invoiceId: payments.purchaseInvoiceId, paid: sql<string>`sum(${payments.amount})`.as("paid") })
-    .from(payments)
-    .where(isNull(payments.voidedAt))
-    .groupBy(payments.purchaseInvoiceId)
-    .as("paid_by_invoice");
-  const paid = sql<number>`coalesce(${paidByInvoice.paid}, 0)`.mapWith(Number);
-  const open = and(isNull(purchaseInvoices.voidedAt), sql`${purchaseInvoices.total} > ${paid}`)!;
+  const state = invoiceState(db, purchaseInvoices, payments.purchaseInvoiceId);
+  const { paidByInvoice, paid, open } = state;
 
   const select = () =>
     db
@@ -94,7 +82,7 @@ function invoiceQuery(db: Db) {
       .innerJoin(contacts, eq(contacts.id, purchaseInvoices.supplierId))
       .leftJoin(paidByInvoice, eq(paidByInvoice.invoiceId, purchaseInvoices.id));
 
-  return { select, aggregate, paid, open };
+  return { ...state, select, aggregate };
 }
 
 type InvoiceRow = Awaited<ReturnType<ReturnType<typeof invoiceQuery>["select"]>>[number];
@@ -102,23 +90,6 @@ type InvoiceRow = Awaited<ReturnType<ReturnType<typeof invoiceQuery>["select"]>>
 function withState(row: InvoiceRow, today: string) {
   const paid = rupiah(row.paid);
   return { ...row, paid, ...deriveInvoiceStatus({ total: row.total, paid, dueDate: row.dueDate, voided: row.voidedAt !== null, today }) };
-}
-
-/** Each filter matches the StatusTag the row shows, so Telat wins over Sebagian and Belum bayar. */
-function statusWhere(status: NonNullable<ListQuery["status"]>, { paid, open }: { paid: SQL; open: SQL }, today: string) {
-  const live = isNull(purchaseInvoices.voidedAt);
-  switch (status) {
-    case "void":
-      return isNotNull(purchaseInvoices.voidedAt);
-    case "paid":
-      return and(live, sql`${purchaseInvoices.total} <= ${paid}`);
-    case "overdue":
-      return and(open, lt(purchaseInvoices.dueDate, today));
-    case "partial":
-      return and(open, gte(purchaseInvoices.dueDate, today), sql`${paid} > 0`);
-    case "unpaid":
-      return and(open, gte(purchaseInvoices.dueDate, today), sql`${paid} = 0`);
-  }
 }
 
 export async function listPurchases(db: Db, query: ListQuery) {
@@ -129,7 +100,7 @@ export async function listPurchases(db: Db, query: ListQuery) {
     query.from ? gte(purchaseInvoices.date, query.from) : undefined,
     query.to ? lte(purchaseInvoices.date, query.to) : undefined,
     query.supplierId ? eq(purchaseInvoices.supplierId, query.supplierId) : undefined,
-    query.status ? statusWhere(query.status, invoices, today) : undefined,
+    query.status ? invoices.statusWhere(query.status, today) : undefined,
   );
   const [rows, [summary]] = await Promise.all([
     invoices

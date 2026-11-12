@@ -6,9 +6,9 @@ import {
   type stockAdjustmentInput,
 } from "@billy/core";
 import { categories, type Db, products, stockMovements, users } from "@billy/db";
-import { and, asc, count, desc, eq, ilike, sql, type SQL } from "drizzle-orm";
+import { asc, count, desc, eq, sql, type SQL } from "drizzle-orm";
 import type { z } from "zod";
-import { likePattern } from "../../lib/search.ts";
+import { matchAllTerms } from "../../lib/search.ts";
 
 /** Stock is derived: the sum of a product's movements (data-model ground rule 4). */
 export const stockByProduct = (db: Db) =>
@@ -21,8 +21,7 @@ export const stockByProduct = (db: Db) =>
 /** Every whitespace-separated term must appear in the name, variant, code or barcode. */
 function searchWhere(q: string): SQL | undefined {
   const haystack = sql`${products.name} || ' ' || ${products.variant} || ' ' || coalesce(${products.code}, '') || ' ' || coalesce(${products.barcode}, '')`;
-  const terms = q.split(/\s+/).filter(Boolean);
-  return terms.length ? and(...terms.map((term) => ilike(haystack, likePattern(term)))) : undefined;
+  return matchAllTerms(haystack, q);
 }
 
 function selectProducts(db: Db) {

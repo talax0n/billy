@@ -1,20 +1,15 @@
 import { DomainError, type expenseInput, type expenseQuery, monthRange } from "@billy/core";
 import { accounts, cashEntries, type Db, expenses, users } from "@billy/db";
-import { and, count, desc, eq, gte, ilike, lt, type SQL, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, lt, type SQL, sql } from "drizzle-orm";
 import type { z } from "zod";
 import { allocateDocNumber } from "../../lib/doc-number.ts";
-import { likePattern } from "../../lib/search.ts";
+import { matchAllTerms } from "../../lib/search.ts";
 import { writeReversals } from "../cash/service.ts";
 
 function expenseWhere({ q, month }: z.output<typeof expenseQuery>): SQL | undefined {
   const range = month ? monthRange(month) : undefined;
   const haystack = sql`${expenses.number} || ' ' || ${expenses.category} || ' ' || ${expenses.description}`;
-  const terms = q.split(/\s+/).filter(Boolean);
-  return and(
-    range && gte(expenses.date, range.from),
-    range && lt(expenses.date, range.until),
-    ...terms.map((term) => ilike(haystack, likePattern(term))),
-  );
+  return and(range && gte(expenses.date, range.from), range && lt(expenses.date, range.until), matchAllTerms(haystack, q));
 }
 
 function selectExpenses(db: Db) {

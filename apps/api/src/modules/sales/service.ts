@@ -7,12 +7,10 @@ import {
   computeTotals,
   deriveInvoiceStatus,
   DomainError,
-  matchesStatusFilter,
   rupiah,
   type salesInvoiceInput,
   type salesListQuery,
   type salesPaymentInput,
-  summarizeInvoices,
   type voidInput,
 } from "@billy/core";
 import {
@@ -27,68 +25,98 @@ import {
   stockMovements,
   users,
 } from "@billy/db";
-import { and, asc, desc, eq, gte, ilike, inArray, isNull, lte, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, isNull, lte, sql, type SQL } from "drizzle-orm";
 import type { z } from "zod";
 import { allocateDocNumber } from "../../lib/doc-number.ts";
-import { likePattern } from "../../lib/search.ts";
+import { invoiceState } from "../../lib/invoice-state.ts";
+import { matchAllTerms } from "../../lib/search.ts";
 
 type PaymentFields = Omit<z.output<typeof salesPaymentInput>, "date">;
 
-/** Contacts are owned by the contacts module; sales only reads customers for its pickers. */
-/** Paid is derived: the sum of an invoice's non-voided payments (data-model ground rule 5). */
-const paidByInvoice = (db: Db) =>
-  db
-    .select({
-      invoiceId: payments.salesInvoiceId,
-      paid: sql<number>`sum(${payments.amount})`.mapWith(Number).as("paid"),
-    })
-    .from(payments)
-    .where(isNull(payments.voidedAt))
-    .groupBy(payments.salesInvoiceId)
-    .as("paid_by_invoice");
+function invoiceQuery(db: Db) {
+  const state = invoiceState(db, salesInvoices, payments.salesInvoiceId);
+  const { paidByInvoice, paid, live, open } = state;
 
-function selectInvoices(db: Db) {
-  const paid = paidByInvoice(db);
-  return db
-    .select({
-      id: salesInvoices.id,
-      number: salesInvoices.number,
-      customerId: salesInvoices.customerId,
-      customerName: contacts.name,
-      date: salesInvoices.date,
-      dueDate: salesInvoices.dueDate,
-      total: salesInvoices.total,
-      voidedAt: salesInvoices.voidedAt,
-      paid: sql<number>`coalesce(${paid.paid}, 0)`.mapWith(Number),
-    })
-    .from(salesInvoices)
-    .innerJoin(contacts, eq(contacts.id, salesInvoices.customerId))
-    .leftJoin(paid, eq(paid.invoiceId, salesInvoices.id));
+  const select = () =>
+    db
+      .select({
+        id: salesInvoices.id,
+        number: salesInvoices.number,
+        customerId: salesInvoices.customerId,
+        customerName: contacts.name,
+        date: salesInvoices.date,
+        dueDate: salesInvoices.dueDate,
+        total: salesInvoices.total,
+        voidedAt: salesInvoices.voidedAt,
+        paid,
+      })
+      .from(salesInvoices)
+      .innerJoin(contacts, eq(contacts.id, salesInvoices.customerId))
+      .leftJoin(paidByInvoice, eq(paidByInvoice.invoiceId, salesInvoices.id));
+
+  const sum = (value: SQL, where: SQL) => sql<number>`coalesce(sum(${value}) filter (where ${where}), 0)`.mapWith(Number);
+  const aggregate = (today: string) =>
+    db
+      .select({
+        rows: count(),
+        count: sql<number>`count(*) filter (where ${live})`.mapWith(Number),
+        total: sum(sql`${salesInvoices.total}`, live),
+        paid: sum(paid, live),
+        outstanding: sum(sql`${salesInvoices.total} - ${paid}`, open),
+        overdue: sum(sql`${salesInvoices.total} - ${paid}`, state.statusWhere("overdue", today)),
+      })
+      .from(salesInvoices)
+      .innerJoin(contacts, eq(contacts.id, salesInvoices.customerId))
+      .leftJoin(paidByInvoice, eq(paidByInvoice.invoiceId, salesInvoices.id));
+
+  return { ...state, select, aggregate };
+}
+
+type InvoiceRow = Awaited<ReturnType<ReturnType<typeof invoiceQuery>["select"]>>[number];
+
+function withState(row: InvoiceRow, today: string) {
+  const paid = rupiah(row.paid);
+  return { ...row, paid, state: deriveInvoiceStatus({ total: row.total, paid, dueDate: row.dueDate, voided: row.voidedAt !== null, today }) };
 }
 
 /** Invoice rows with derived `paid` and `state`, newest first. Shared with tukar faktur. */
 export async function invoicesWithState(db: Db, where: SQL | undefined) {
   const today = businessDate();
-  const rows = await selectInvoices(db).where(where).orderBy(desc(salesInvoices.date), desc(salesInvoices.number));
-  return rows.map((row) => {
-    const paid = rupiah(row.paid);
-    const state = deriveInvoiceStatus({ total: row.total, paid, dueDate: row.dueDate, voided: row.voidedAt !== null, today });
-    return { ...row, paid, state };
-  });
+  const rows = await invoiceQuery(db).select().where(where).orderBy(desc(salesInvoices.date), desc(salesInvoices.number));
+  return rows.map((row) => withState(row, today));
 }
 
 export async function listInvoices(db: Db, query: z.output<typeof salesListQuery>) {
+  const today = businessDate();
+  const invoices = invoiceQuery(db);
   const where = and(
     query.from ? gte(salesInvoices.date, query.from) : undefined,
     query.to ? lte(salesInvoices.date, query.to) : undefined,
     query.customerId ? eq(salesInvoices.customerId, query.customerId) : undefined,
-    query.q ? or(ilike(salesInvoices.number, likePattern(query.q)), ilike(contacts.name, likePattern(query.q))) : undefined,
+    matchAllTerms(sql`${salesInvoices.number} || ' ' || ${contacts.name}`, query.q),
+    query.status ? invoices.statusWhere(query.status, today) : undefined,
   );
-  // ponytail: status is derived, so the period's invoices are filtered and paged in memory.
-  // Fine for one shop's volume; move the status expression into SQL if a period passes ~50k invoices.
-  const rows = (await invoicesWithState(db, where)).filter((row) => !query.status || matchesStatusFilter(row.state, query.status));
-  const start = (query.page - 1) * query.pageSize;
-  return { rows: rows.slice(start, start + query.pageSize), total: rows.length, summary: summarizeInvoices(rows) };
+  const [rows, [summary]] = await Promise.all([
+    invoices
+      .select()
+      .where(where)
+      .orderBy(desc(salesInvoices.date), desc(salesInvoices.number))
+      .limit(query.pageSize)
+      .offset((query.page - 1) * query.pageSize),
+    invoices.aggregate(today).where(where),
+  ]);
+  const { rows: total, ...totals } = summary!;
+  return {
+    rows: rows.map((row) => withState(row, today)),
+    total,
+    summary: {
+      count: totals.count,
+      total: rupiah(totals.total),
+      paid: rupiah(totals.paid),
+      outstanding: rupiah(totals.outstanding),
+      overdue: rupiah(totals.overdue),
+    },
+  };
 }
 
 export async function getInvoice(db: Db, id: string) {

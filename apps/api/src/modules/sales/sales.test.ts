@@ -216,6 +216,27 @@ describe("lists", () => {
     ]);
   });
 
+  it("returns exactly the rows whose status tag matches each filter", async () => {
+    const late = await post("/api/sales", invoiceBody({ date: addDays(today, -40), termsDays: 30 }));
+    const partial = await post("/api/sales", invoiceBody());
+    await post(`/api/sales/${partial.body.id}/payments`, { accountId, amount: 100_000, method: "cash", date: today });
+    const tag = (state: Json) => (state.overdue ? "overdue" : state.status);
+
+    const tags: Record<string, string[]> = {};
+    for (const status of ["unpaid", "partial", "overdue", "paid", "void"]) {
+      const body = (await (await call(`/api/sales?status=${status}`, { cookie })).json()) as Json;
+      tags[status] = body.rows.map((r: Json) => tag(r.state));
+      expect(body.total).toBe(body.rows.length);
+    }
+    expect(tags).toEqual({
+      unpaid: ["unpaid", "unpaid"],
+      partial: ["partial"],
+      overdue: ["overdue"],
+      paid: ["paid"],
+      void: ["void"],
+    });
+    expect(late.status).toBe(201);
+  });
 });
 
 it("refuses the kasir role", async () => {

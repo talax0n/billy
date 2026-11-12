@@ -8,15 +8,14 @@ import {
   nextContactCode,
 } from "@billy/core";
 import { contacts, type Db } from "@billy/db";
-import { and, asc, count, desc, eq, ilike, like, type SQL, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, like, type SQL, sql } from "drizzle-orm";
 import type { z } from "zod";
-import { likePattern } from "../../lib/search.ts";
+import { matchAllTerms } from "../../lib/search.ts";
 
 /** Optional kind, and every whitespace-separated term in the name, code or phone. */
 function contactWhere(q: string, kind: ContactKind | undefined): SQL | undefined {
   const haystack = sql`${contacts.name} || ' ' || ${contacts.code} || ' ' || ${contacts.phone}`;
-  const terms = q.split(/\s+/).filter(Boolean);
-  return and(kind && eq(contacts.kind, kind), ...terms.map((term) => ilike(haystack, likePattern(term))));
+  return and(kind && eq(contacts.kind, kind), matchAllTerms(haystack, q));
 }
 
 export async function listContacts(db: Db, { q, kind, page, pageSize }: z.output<typeof contactQuery>) {

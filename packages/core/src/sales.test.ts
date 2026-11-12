@@ -6,8 +6,6 @@ import {
   agingBucket,
   assertInvoiceVoidable,
   assertPaymentAllowed,
-  matchesStatusFilter,
-  summarizeInvoices,
 } from "./sales.ts";
 import { deriveInvoiceStatus } from "./status.ts";
 
@@ -53,33 +51,6 @@ describe("ageReceivables", () => {
 
 const state = (paid: number, dueDate = "2026-11-20", voided = false) =>
   deriveInvoiceStatus({ total: rupiah(1_000_000), paid: rupiah(paid), dueDate, voided, today });
-
-describe("matchesStatusFilter", () => {
-  it("files overdue invoices under overdue only, like the Telat tag", () => {
-    const lateUnpaid = state(0, "2026-11-01");
-    expect(matchesStatusFilter(lateUnpaid, "overdue")).toBe(true);
-    expect(matchesStatusFilter(lateUnpaid, "unpaid")).toBe(false);
-    expect(matchesStatusFilter(lateUnpaid, "open")).toBe(true);
-    expect(matchesStatusFilter(state(0), "unpaid")).toBe(true);
-    expect(matchesStatusFilter(state(400_000), "partial")).toBe(true);
-    expect(matchesStatusFilter(state(1_000_000), "paid")).toBe(true);
-    expect(matchesStatusFilter(state(1_000_000), "open")).toBe(false);
-    expect(matchesStatusFilter(state(0, today, true), "void")).toBe(true);
-  });
-});
-
-describe("summarizeInvoices", () => {
-  it("sums the set and leaves void invoices out", () => {
-    const total = rupiah(1_000_000);
-    expect(
-      summarizeInvoices([
-        { total, paid: rupiah(400_000), state: state(400_000, "2026-11-01") },
-        { total, paid: rupiah(1_000_000), state: state(1_000_000) },
-        { total, paid: rupiah(0), state: state(0, today, true) },
-      ]),
-    ).toEqual({ count: 2, total: 2_000_000, paid: 1_400_000, outstanding: 600_000, overdue: 600_000 });
-  });
-});
 
 describe("assertPaymentAllowed", () => {
   it("accepts up to the outstanding amount", () => {
