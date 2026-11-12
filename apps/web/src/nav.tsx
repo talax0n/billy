@@ -17,7 +17,10 @@ import {
   WalletCards,
 } from "lucide-react";
 import type { ReactNode } from "react";
+import { BundlesPage } from "./routes/invoice-bundles/bundles-page.tsx";
 import { ProductsPage } from "./routes/products/products-page.tsx";
+import { ReceivablesPage } from "./routes/receivables/receivables-page.tsx";
+import { SalesPage } from "./routes/sales/sales-page.tsx";
 import { SettingsPage } from "./routes/settings/settings-page.tsx";
 
 export const navGroups = ["Umum", "Transaksi", "Keuangan", "Persediaan"] as const;
@@ -41,13 +44,13 @@ export interface NavItem {
 export const navItems: NavItem[] = [
   { group: "Umum", path: "/", label: "Ringkasan", icon: LayoutDashboard },
   { group: "Umum", path: "/tindakan", label: "Perlu Tindakan", icon: BellDot },
-  { group: "Transaksi", path: "/penjualan", label: "Penjualan", icon: Receipt },
+  { group: "Transaksi", path: "/penjualan", label: "Penjualan", icon: Receipt, page: SalesPage },
   { group: "Transaksi", path: "/pembelian", label: "Pembelian", icon: ShoppingCart },
   { group: "Transaksi", path: "/biaya", label: "Biaya", icon: WalletCards },
-  { group: "Transaksi", path: "/tukar-faktur", label: "Tukar Faktur", icon: FileStack },
+  { group: "Transaksi", path: "/tukar-faktur", label: "Tukar Faktur", icon: FileStack, page: BundlesPage },
   { group: "Transaksi", path: "/riwayat-kasir", label: "Riwayat Kasir", icon: History },
   { group: "Keuangan", path: "/kas-bank", label: "Kas & Bank", icon: Wallet },
-  { group: "Keuangan", path: "/piutang", label: "Piutang", icon: HandCoins },
+  { group: "Keuangan", path: "/piutang", label: "Piutang", icon: HandCoins, page: ReceivablesPage },
   { group: "Keuangan", path: "/hutang", label: "Hutang", icon: ArrowLeftRight },
   { group: "Persediaan", path: "/produk", label: "Produk", icon: Package, page: ProductsPage },
   { group: "Persediaan", path: "/mutasi-stok", label: "Mutasi Stok", icon: Boxes },
