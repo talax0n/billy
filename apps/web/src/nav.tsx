@@ -1,7 +1,6 @@
 import type { Role } from "@billy/core";
 import {
   ArrowLeftRight,
-  BellDot,
   Boxes,
   FileStack,
   HandCoins,
@@ -17,6 +16,8 @@ import {
   WalletCards,
 } from "lucide-react";
 import type { ReactNode } from "react";
+import { ActionsPage, ActionNavIcon } from "./routes/insights/actions.tsx";
+import { DashboardPage } from "./routes/insights/dashboard.tsx";
 import { ProductsPage } from "./routes/products/products-page.tsx";
 import { SettingsPage } from "./routes/settings/settings-page.tsx";
 
@@ -39,8 +40,8 @@ export interface NavItem {
  * Adding a module's page is one entry here.
  */
 export const navItems: NavItem[] = [
-  { group: "Umum", path: "/", label: "Ringkasan", icon: LayoutDashboard },
-  { group: "Umum", path: "/tindakan", label: "Perlu Tindakan", icon: BellDot },
+  { group: "Umum", path: "/", label: "Ringkasan", icon: LayoutDashboard, page: DashboardPage },
+  { group: "Umum", path: "/tindakan", label: "Perlu Tindakan", icon: ActionNavIcon, page: ActionsPage },
   { group: "Transaksi", path: "/penjualan", label: "Penjualan", icon: Receipt },
   { group: "Transaksi", path: "/pembelian", label: "Pembelian", icon: ShoppingCart },
   { group: "Transaksi", path: "/biaya", label: "Biaya", icon: WalletCards },
