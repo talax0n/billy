@@ -1,17 +1,103 @@
-import { inWindow, rupiah, type DateWindow } from "@billy/core";
-import type { Db } from "@billy/db";
+import { rupiah, type DateWindow } from "@billy/core";
+import {
+  accounts,
+  cashEntries,
+  type Db,
+  posLines,
+  posSales,
+  salesInvoices,
+  salesLines,
+} from "@billy/db";
+import { and, between, eq, isNull, sql } from "drizzle-orm";
 import ExcelJS from "exceljs";
-import { readInsightData } from "./service.ts";
+import { money, signedAmount, snapshot } from "./sql.ts";
 
 export const RUPIAH_FORMAT = '"Rp" #,##0;[Red]("Rp" #,##0)';
+
+type ReportQuery = DateWindow & { account?: string | undefined };
+
+function salesRows(db: Db, window: DateWindow) {
+  const documents = (
+    source: string,
+    document: typeof salesInvoices | typeof posSales,
+    line: typeof salesLines | typeof posLines,
+    lineDocumentId: typeof salesLines.invoiceId | typeof posLines.saleId,
+  ) =>
+    db
+      .select({
+        date: document.date,
+        number: document.number,
+        source: sql<string>`${source}::text`,
+        total: document.total,
+        profit: money(
+          sql`sum(${line.lineTotal} - ${line.qty} * ${line.unitCost})`,
+        ),
+      })
+      .from(document)
+      .leftJoin(line, eq(lineDocumentId, document.id))
+      .where(
+        and(
+          between(document.date, window.from, window.to),
+          isNull(document.voidedAt),
+        ),
+      )
+      .groupBy(document.id);
+  return Promise.all([
+    documents("Faktur", salesInvoices, salesLines, salesLines.invoiceId),
+    documents("Kasir", posSales, posLines, posLines.saleId),
+  ]).then((parts) =>
+    parts
+      .flat()
+      .sort(
+        (a, b) =>
+          a.date.localeCompare(b.date) || a.number.localeCompare(b.number),
+      ),
+  );
+}
+
+async function cashBook(db: Db, query: ReportQuery) {
+  const account = (column: typeof accounts.id | typeof cashEntries.accountId) =>
+    query.account ? eq(column, query.account) : undefined;
+  const [opening, rows] = await Promise.all([
+    db
+      .select({
+        id: accounts.id,
+        name: accounts.name,
+        balance: money(
+          sql`sum(${signedAmount}) filter (where ${cashEntries.date} < ${query.from})`,
+        ),
+      })
+      .from(accounts)
+      .leftJoin(cashEntries, eq(cashEntries.accountId, accounts.id))
+      .where(account(accounts.id))
+      .groupBy(accounts.id)
+      .orderBy(accounts.name),
+    db
+      .select({
+        accountId: cashEntries.accountId,
+        date: cashEntries.date,
+        direction: cashEntries.direction,
+        amount: cashEntries.amount,
+        sourceType: cashEntries.sourceType,
+        note: cashEntries.note,
+      })
+      .from(cashEntries)
+      .where(
+        and(
+          between(cashEntries.date, query.from, query.to),
+          account(cashEntries.accountId),
+        ),
+      )
+      .orderBy(cashEntries.date, cashEntries.id),
+  ]);
+  return { opening, rows };
+}
+
 export async function exportReport(
   db: Db,
   kind: "cash-book" | "sales",
-  query: DateWindow & { account?: string | undefined },
+  query: ReportQuery,
 ) {
-  const data = await db.transaction((tx) => readInsightData(tx, query.to), {
-    isolationLevel: "repeatable read",
-  });
   const book = new ExcelJS.Workbook();
   const sheet = book.addWorksheet(kind === "sales" ? "Penjualan" : "Buku kas", {
     views: [{ state: "frozen", ySplit: 1 }],
@@ -24,16 +110,9 @@ export async function exportReport(
       { header: "Penjualan", key: "total", width: 22 },
       { header: "Laba kotor", key: "profit", width: 22 },
     ];
-    const rows = [
-      ...data.invoices.map((r) => ({ ...r, source: "Faktur" })),
-      ...data.pos.map((r) => ({ ...r, source: "Kasir" })),
-    ]
-      .filter((r) => !r.voidedDate && inWindow(r.date, query))
-      .sort(
-        (a, b) =>
-          a.date.localeCompare(b.date) || a.number.localeCompare(b.number),
-      );
-    sheet.addRows(rows);
+    sheet.addRows(
+      await db.transaction((tx) => salesRows(tx, query), snapshot),
+    );
     for (const key of ["total", "profit"])
       sheet.getColumn(key).numFmt = RUPIAH_FORMAT;
   } else {
@@ -46,22 +125,12 @@ export async function exportReport(
       { header: "Keluar", key: "outgoing", width: 22 },
       { header: "Saldo akun", key: "balance", width: 22 },
     ];
-    for (const account of data.accounts.filter(
-      (a) => !query.account || a.id === query.account,
-    )) {
-      const rows = data.cash
-        .filter((r) => r.accountId === account.id)
-        .sort(
-          (a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id),
-        );
-      let balance = rupiah(
-        rows
-          .filter((r) => r.date < query.from)
-          .reduce(
-            (n, r) => n + (r.direction === "in" ? r.amount : -r.amount),
-            0,
-          ),
-      );
+    const { opening, rows } = await db.transaction(
+      (tx) => cashBook(tx, query),
+      snapshot,
+    );
+    for (const account of opening) {
+      let balance = account.balance;
       sheet.addRow({
         date: query.from,
         account: account.name,
@@ -70,7 +139,7 @@ export async function exportReport(
         outgoing: 0,
         balance,
       });
-      for (const row of rows.filter((r) => inWindow(r.date, query))) {
+      for (const row of rows.filter((r) => r.accountId === account.id)) {
         balance = rupiah(
           balance + (row.direction === "in" ? row.amount : -row.amount),
         );

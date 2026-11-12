@@ -39,173 +39,85 @@ export function delta(current: number, previous: number) {
         : Math.round(((current - previous) / Math.abs(previous)) * 1000) / 10,
   };
 }
-export const inWindow = (date: string, window: DateWindow) =>
-  date >= window.from && date <= window.to;
 export function weekStart(date: string) {
   return addDays(date, -((new Date(`${date}T00:00:00Z`).getUTCDay() + 6) % 7));
 }
-export interface InsightInvoice {
+/** A sales or purchase invoice with money still owed at some date. */
+export interface OpenInvoice {
   id: string;
   number: string;
   contactId: string;
   contactName: string;
-  date: string;
   dueDate: string;
   total: Rupiah;
+  outstanding: Rupiah;
+}
+export interface OpenInvoices {
+  receivables: OpenInvoice[];
+  payables: OpenInvoice[];
+}
+/** Sums over one date window; cash flow excludes transfers. */
+export interface PeriodTotals {
+  invoiceSales: Rupiah;
+  posSales: Rupiah;
   profit: Rupiah;
-  voidedDate: string | null;
+  incoming: Rupiah;
+  outgoing: Rupiah;
 }
-export interface InsightPayment {
-  invoiceId: string;
-  date: string;
-  amount: Rupiah;
-  voidedDate: string | null;
-}
-export interface InsightSale {
-  id: string;
-  number: string;
-  date: string;
-  total: Rupiah;
-  profit: Rupiah;
-  voidedDate: string | null;
-}
-export interface InsightCash {
-  id: string;
-  accountId: string;
-  date: string;
-  direction: "in" | "out";
-  amount: Rupiah;
-  sourceType: string;
-  note: string;
-}
-export interface InsightAccount {
+export interface AccountBalance {
   id: string;
   name: string;
   kind: "cash" | "bank" | "ewallet";
+  balance: Rupiah;
+  weeklyChange: Rupiah;
 }
-export interface InsightData {
-  invoices: InsightInvoice[];
-  purchases: InsightInvoice[];
-  pos: InsightSale[];
-  payments: InsightPayment[];
-  cash: InsightCash[];
-  accounts: InsightAccount[];
-  products: { id: string; name: string; stock: number; minStock: number }[];
+export interface StockLevel {
+  id: string;
+  name: string;
+  stock: number;
+  minStock: number;
 }
 const sum = <T>(rows: readonly T[], value: (row: T) => number) =>
   rupiah(rows.reduce((n, row) => n + value(row), 0));
-const activeAt = (
-  row: { date: string; voidedDate: string | null },
-  date: string,
-) => row.date <= date && (!row.voidedDate || row.voidedDate > date);
-export function outstanding(
-  invoice: InsightInvoice,
-  payments: InsightPayment[],
-  at: string,
-): Rupiah {
-  if (!activeAt(invoice, at)) return rupiah(0);
-  return rupiah(
-    Math.max(
-      0,
-      invoice.total -
-        sum(
-          payments.filter((p) => p.invoiceId === invoice.id && activeAt(p, at)),
-          (p) => p.amount,
-        ),
-    ),
-  );
-}
-export function cashFlow(
-  cash: InsightCash[],
-  window: DateWindow,
-  account?: string,
-) {
-  const rows = cash.filter(
-    (r) =>
-      inWindow(r.date, window) &&
-      r.sourceType !== "transfer" &&
-      (!account || r.accountId === account),
-  );
-  const incoming = sum(
-    rows.filter((r) => r.direction === "in"),
-    (r) => r.amount,
-  );
-  const outgoing = sum(
-    rows.filter((r) => r.direction === "out"),
-    (r) => r.amount,
-  );
-  return { incoming, outgoing, net: rupiah(incoming - outgoing) };
-}
-export function kpis(data: InsightData, window: DateWindow, account?: string) {
-  const invoices = data.invoices.filter(
-    (r) => !r.voidedDate && inWindow(r.date, window),
-  );
-  const pos = data.pos.filter((r) => !r.voidedDate && inWindow(r.date, window));
-  const invoiceSales = sum(invoices, (r) => r.total);
-  const posSales = sum(pos, (r) => r.total);
-  const sales = rupiah(invoiceSales + posSales);
-  const profit = rupiah(
-    sum(invoices, (r) => r.profit) + sum(pos, (r) => r.profit),
-  );
-  const receivables = sum(data.invoices, (r) =>
-    outstanding(r, data.payments, window.to),
-  );
-  const overdue = sum(
-    data.invoices.filter((r) => r.dueDate < window.to),
-    (r) => outstanding(r, data.payments, window.to),
-  );
-  const duePayables = sum(
-    data.purchases.filter((r) => r.dueDate <= addDays(window.to, 7)),
-    (r) => outstanding(r, data.payments, window.to),
-  );
+const outstanding = (r: OpenInvoice) => r.outstanding;
+const payablesDueBy = (at: string) => addDays(at, 7);
+export function kpis(totals: PeriodTotals, open: OpenInvoices, at: string) {
+  const sales = rupiah(totals.invoiceSales + totals.posSales);
   return {
+    ...totals,
     sales,
-    invoiceSales,
-    posSales,
-    profit,
-    margin: sales === 0 ? 0 : Math.round((profit / sales) * 1000) / 10,
-    ...cashFlow(data.cash, window, account),
-    receivables,
-    overdue,
-    duePayables,
+    margin: sales === 0 ? 0 : Math.round((totals.profit / sales) * 1000) / 10,
+    net: rupiah(totals.incoming - totals.outgoing),
+    receivables: sum(open.receivables, outstanding),
+    overdue: sum(
+      open.receivables.filter((r) => r.dueDate < at),
+      outstanding,
+    ),
+    duePayables: sum(
+      open.payables.filter((r) => r.dueDate <= payablesDueBy(at)),
+      outstanding,
+    ),
   };
 }
-export function accountBalances(
-  data: Pick<InsightData, "accounts" | "cash">,
-  today: string,
-) {
-  return data.accounts
-    .map((account) => {
-      const rows = data.cash.filter(
-        (r) => r.accountId === account.id && r.date <= today,
-      );
-      const signed = (r: InsightCash) =>
-        r.direction === "in" ? r.amount : -r.amount;
-      return {
-        ...account,
-        balance: sum(rows, signed),
-        weeklyChange: sum(
-          rows.filter((r) => r.date >= weekStart(today)),
-          signed,
-        ),
-      };
-    })
-    .sort((a, b) => b.balance - a.balance || a.name.localeCompare(b.name));
-}
+/** Fills the weeks without cash movement with real zeros, oldest week first. */
 export function weeklyCashFlow(
-  cash: InsightCash[],
+  totals: { from: string; incoming: Rupiah; outgoing: Rupiah }[],
   today: string,
   weeks: number,
-  account?: string,
 ) {
   const start = weekStart(today);
   return Array.from({ length: weeks }, (_, i) => {
     const from = addDays(start, (i - weeks + 1) * 7);
     const end = addDays(from, 6);
+    const week = totals.find((t) => t.from === from);
+    const incoming = week?.incoming ?? rupiah(0);
+    const outgoing = week?.outgoing ?? rupiah(0);
     return {
       from,
       to: end > today ? today : end,
-      ...cashFlow(cash, { from, to: end > today ? today : end }, account),
+      incoming,
+      outgoing,
+      net: rupiah(incoming - outgoing),
     };
   });
 }
@@ -255,22 +167,24 @@ export function rankActions(items: ActionItem[]): ActionItem[] {
       a.id.localeCompare(b.id),
   );
 }
-export function actionItems(data: InsightData, today: string): ActionItem[] {
+export function actionItems(
+  input: OpenInvoices & { products: StockLevel[]; balances: AccountBalance[] },
+  today: string,
+): ActionItem[] {
   const items: ActionItem[] = [];
   const customers = new Map<
     string,
     Extract<ActionItem, { kind: "receivable" }>
   >();
-  for (const invoice of data.invoices) {
-    const amount = outstanding(invoice, data.payments, today);
-    if (!amount || invoice.dueDate >= today) continue;
+  for (const invoice of input.receivables) {
+    if (invoice.dueDate >= today) continue;
     const previous = customers.get(invoice.contactId);
     customers.set(invoice.contactId, {
       kind: "receivable",
       id: `receivable:${invoice.contactId}`,
       customerId: invoice.contactId,
       name: invoice.contactName,
-      amount: rupiah(amount + (previous?.amount ?? 0)),
+      amount: rupiah(invoice.outstanding + (previous?.amount ?? 0)),
       count: (previous?.count ?? 0) + 1,
       dueDate:
         previous && previous.dueDate < invoice.dueDate
@@ -279,20 +193,18 @@ export function actionItems(data: InsightData, today: string): ActionItem[] {
     });
   }
   items.push(...customers.values());
-  for (const invoice of data.purchases) {
-    const amount = outstanding(invoice, data.payments, today);
-    if (amount && invoice.dueDate <= addDays(today, 7))
+  for (const invoice of input.payables)
+    if (invoice.dueDate <= payablesDueBy(today))
       items.push({
         kind: "payable",
         id: `payable:${invoice.id}`,
         invoiceId: invoice.id,
-        status: amount < invoice.total ? "partial" : "unpaid",
+        status: invoice.outstanding < invoice.total ? "partial" : "unpaid",
         name: `${invoice.contactName} · ${invoice.number}`,
-        amount,
+        amount: invoice.outstanding,
         dueDate: invoice.dueDate,
       });
-  }
-  for (const p of data.products)
+  for (const p of input.products)
     if (p.stock < 0 || p.stock < p.minStock)
       items.push({
         kind: p.stock < 0 ? "negative-stock" : "low-stock",
@@ -302,7 +214,7 @@ export function actionItems(data: InsightData, today: string): ActionItem[] {
         stock: p.stock,
         minStock: p.minStock,
       });
-  for (const a of accountBalances(data, today))
+  for (const a of input.balances)
     if (a.kind === "cash" && a.balance > CASH_DEPOSIT_THRESHOLD)
       items.push({
         kind: "deposit",
@@ -312,25 +224,4 @@ export function actionItems(data: InsightData, today: string): ActionItem[] {
         amount: a.balance,
       });
   return rankActions(items);
-}
-
-export function documentProfits(
-  lines: {
-    documentId: string;
-    lineTotal: Rupiah;
-    qty: number;
-    unitCost: Rupiah;
-  }[],
-): Map<string, Rupiah> {
-  const profits = new Map<string, Rupiah>();
-  for (const line of lines)
-    profits.set(
-      line.documentId,
-      rupiah(
-        (profits.get(line.documentId) ?? 0) +
-          line.lineTotal -
-          line.qty * line.unitCost,
-      ),
-    );
-  return profits;
 }

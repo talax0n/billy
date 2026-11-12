@@ -1,10 +1,29 @@
-import { cashEntries, stockMovements } from "@billy/db";
-import { eq } from "drizzle-orm";
+import {
+  addDays,
+  businessDate,
+  CASH_DEPOSIT_THRESHOLD,
+  previousWindow,
+  weekStart,
+  type DateWindow,
+} from "@billy/core";
+import {
+  accounts,
+  cashEntries,
+  payments,
+  posLines,
+  posSales,
+  products,
+  purchaseInvoices,
+  salesInvoices,
+  salesLines,
+  stockMovements,
+} from "@billy/db";
+import { eq, lte } from "drizzle-orm";
 import ExcelJS from "exceljs";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { createTestApp } from "../../testing.ts";
 import { seedInsightDemo } from "./fixture.ts";
-import { dashboard, listActions, readInsightData } from "./service.ts";
+import { dashboard, listActions, stockAlerts } from "./service.ts";
 
 vi.useFakeTimers({ toFake: ["Date"] });
 vi.setSystemTime(new Date("2026-11-13T07:00:00Z"));
@@ -104,8 +123,9 @@ it("groups overdue receivables by customer, derives stock and returns ranked pag
 it("keeps fixture idempotent and reversals preserve exact ledger/stock totals", async () => {
   const staff = await signIn("staff", "fixture-staff");
   expect(await seedInsightDemo(db, staff.user.id)).toEqual({ inserted: false });
-  const data = await readInsightData(db, "2026-11-13");
-  expect(data.cash).toHaveLength(38);
+  expect(
+    await db.$count(cashEntries, lte(cashEntries.date, "2026-11-13")),
+  ).toBe(38);
   expect(
     await db
       .select({
@@ -137,7 +157,179 @@ it("keeps fixture idempotent and reversals preserve exact ledger/stock totals", 
     ]),
   );
 
-  expect(data.products.find((p) => p.id === fixture.productId)?.stock).toBe(15);
+  expect(
+    (await stockAlerts(db, "2026-11-13")).find(
+      (p) => p.id === fixture.productId,
+    )?.stock,
+  ).toBe(15);
+});
+it("matches dashboard aggregates recomputed row by row from the fixture", async () => {
+  const today = "2026-11-13";
+  const [invoices, purchases, pos, paid, cash, accountRows, lines, stock, items] =
+    await Promise.all([
+      db.select().from(salesInvoices),
+      db.select().from(purchaseInvoices),
+      db.select().from(posSales),
+      db.select().from(payments),
+      db.select().from(cashEntries),
+      db.select().from(accounts),
+      Promise.all([
+        db
+          .select({ doc: salesLines.invoiceId, line: salesLines })
+          .from(salesLines),
+        db.select({ doc: posLines.saleId, line: posLines }).from(posLines),
+      ]).then((parts) => parts.flat()),
+      db.select().from(stockMovements),
+      db.select().from(products).where(eq(products.active, true)),
+    ]);
+  const voided = (at: Date | null) => (at ? businessDate(at) : null);
+  const activeAt = (
+    r: { date: string; voidedAt: Date | null },
+    at: string,
+  ) => r.date <= at && (!r.voidedAt || voided(r.voidedAt)! > at);
+  const within = (date: string, w: DateWindow) =>
+    date >= w.from && date <= w.to;
+  const total = (values: number[]) => values.reduce((n, v) => n + v, 0);
+  const open = <
+    T extends {
+      id: string;
+      date: string;
+      total: number;
+      voidedAt: Date | null;
+    },
+  >(
+    docs: T[],
+    at: string,
+  ) =>
+    docs
+      .filter((d) => activeAt(d, at))
+      .map((d) => ({
+        ...d,
+        owed: Math.max(
+          0,
+          d.total -
+            total(
+              paid
+                .filter(
+                  (p) =>
+                    (p.salesInvoiceId ?? p.purchaseInvoiceId) === d.id &&
+                    activeAt(p, at),
+                )
+                .map((p) => p.amount),
+            ),
+        ),
+      }))
+      .filter((d) => d.owed > 0);
+  const flow = (w: DateWindow, account?: string) =>
+    cash.filter(
+      (c) =>
+        within(c.date, w) &&
+        c.sourceType !== "transfer" &&
+        (!account || c.accountId === account),
+    );
+  const sum = (rows: { amount: number }[]) => total(rows.map((r) => r.amount));
+  const signed = (c: (typeof cash)[number]) =>
+    c.direction === "in" ? c.amount : -c.amount;
+  const expected = (w: DateWindow, account?: string) => {
+    const sold = [...invoices, ...pos].filter(
+      (d) => !d.voidedAt && within(d.date, w),
+    );
+    const soldIds = new Set(sold.map((d) => d.id));
+    const invoiceSales = total(
+      invoices.filter((d) => soldIds.has(d.id)).map((d) => d.total),
+    );
+    const sales = total(sold.map((d) => d.total));
+    const profit = total(
+      lines
+        .filter((l) => soldIds.has(l.doc))
+        .map((l) => l.line.lineTotal - l.line.qty * l.line.unitCost),
+    );
+    const rows = flow(w, account);
+    const incoming = sum(rows.filter((c) => c.direction === "in"));
+    const outgoing = sum(rows.filter((c) => c.direction === "out"));
+    const receivable = open(invoices, w.to);
+    return {
+      sales,
+      invoiceSales,
+      posSales: sales - invoiceSales,
+      profit,
+      margin: sales ? Math.round((profit / sales) * 1000) / 10 : 0,
+      incoming,
+      outgoing,
+      net: incoming - outgoing,
+      receivables: total(receivable.map((d) => d.owed)),
+      overdue: total(
+        receivable.filter((d) => d.dueDate < w.to).map((d) => d.owed),
+      ),
+      duePayables: total(
+        open(purchases, w.to)
+          .filter((d) => d.dueDate <= addDays(w.to, 7))
+          .map((d) => d.owed),
+      ),
+    };
+  };
+  const balances = accountRows.map((a) => {
+    const rows = cash.filter((c) => c.accountId === a.id && c.date <= today);
+    return {
+      id: a.id,
+      balance: total(rows.map(signed)),
+      weeklyChange: total(
+        rows.filter((c) => c.date >= weekStart(today)).map(signed),
+      ),
+    };
+  });
+  const stockOf = (id: string) =>
+    total(stock.filter((m) => m.productId === id).map((m) => m.qty));
+  const actionCount =
+    new Set(
+      open(invoices, today)
+        .filter((d) => d.dueDate < today)
+        .map((d) => d.customerId),
+    ).size +
+    open(purchases, today).filter((d) => d.dueDate <= addDays(today, 7))
+      .length +
+    items.filter((p) => stockOf(p.id) < Math.max(0, p.minStock)).length +
+    balances.filter(
+      (b) =>
+        accountRows.find((a) => a.id === b.id)!.kind === "cash" &&
+        b.balance > CASH_DEPOSIT_THRESHOLD,
+    ).length;
+
+  const voidDay = voided(paid.find((p) => p.voidedAt)!.voidedAt)!;
+  const windows: [DateWindow, string | undefined][] = [
+    [{ from: "2026-06-01", to: "2026-11-13" }, undefined],
+    [{ from: "2026-09-15", to: "2026-10-20" }, fixture.cashId],
+    [{ from: addDays(voidDay, -20), to: voidDay }, undefined],
+  ];
+  for (const [window, account] of windows) {
+    const body = (await (
+      await call(
+        `/api/insights/dashboard?${new URLSearchParams({ ...window, weeks: "26", ...(account && { account }) })}`,
+        { cookie },
+      )
+    ).json()) as Awaited<ReturnType<typeof dashboard>>;
+    expect(body.current).toEqual(expected(window, account));
+    expect(body.previous).toEqual(expected(previousWindow(window), account));
+    expect(
+      body.balances.map(({ id, balance, weeklyChange }) => ({
+        id,
+        balance,
+        weeklyChange,
+      })),
+    ).toEqual(expect.arrayContaining(balances));
+    expect(body.balances).toHaveLength(balances.length);
+    expect(body.chart.some((w) => w.incoming > 0)).toBe(true);
+    expect(body.chart.map((w) => [w.incoming, w.outgoing])).toEqual(
+      body.chart.map((w) => {
+        const rows = flow(w, account);
+        return [
+          sum(rows.filter((c) => c.direction === "in")),
+          sum(rows.filter((c) => c.direction === "out")),
+        ];
+      }),
+    );
+    expect(body.actionCount).toBe(actionCount);
+  }
 });
 it("exports numeric Excel cells and opening/running account balances", async () => {
   const sales = await call(`/api/reports/sales.xlsx?${query}`, { cookie });
