@@ -23,3 +23,4 @@ export * from "./status.ts";
 export * from "./insights.ts";
 export * from "./product-search.ts";
 export * from "./stock.ts";
+export * from "./outbox.ts";

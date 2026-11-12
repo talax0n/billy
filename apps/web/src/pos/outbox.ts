@@ -1,4 +1,4 @@
-import { initialSyncState, retryDelay, type SyncEvent, type SyncState, syncTransition, uploadOutcome } from "@billy/core";
+import { createFlush, initialSyncState, type SyncEvent, type SyncState, syncTransition } from "@billy/core";
 import { useSyncExternalStore } from "react";
 import { api } from "../lib/api.ts";
 import { change, type QueuedSale, read, type SyncProblem } from "./local.ts";
@@ -7,7 +7,7 @@ import { change, type QueuedSale, read, type SyncProblem } from "./local.ts";
  * The offline outbox. Selling only ever writes to IndexedDB; this loop uploads queued sales
  * to `POST /api/pos/sales` in order, one at a time. A sale leaves the outbox only when the
  * server answers 2xx; a 4xx moves it to the visible problem list; anything else backs off
- * and retries. The phase is the pure state machine in @billy/core.
+ * and retries. The loop and its phase are pure logic in @billy/core (`createFlush`, `syncTransition`).
  */
 
 export interface OutboxSnapshot {
@@ -46,30 +46,26 @@ async function upload(item: QueuedSale): Promise<{ status: number; error: string
   }
 }
 
-/** Uploads the queue head-first until it is empty or the server cannot be reached. */
-export async function flush() {
-  dispatch({ type: "flush" });
-  if (snapshot.sync.phase !== "syncing") return;
-  clearTimeout(retryTimer);
-
-  let accepted = 0;
-  for (let head = (await read("outbox"))?.[0]; head; head = (await read("outbox"))?.[0]) {
-    const { status, error } = await upload(head);
-    const outcome = uploadOutcome(status);
-    if (outcome === "retry") {
-      dispatch({ type: "failed" });
-      retryTimer = setTimeout(() => void flush(), retryDelay(snapshot.sync.failures));
-      return;
-    }
-    const id = head.sale.id;
-    if (outcome === "done") accepted++;
-    if (outcome === "rejected") await change("problems", (list = []) => [...list, { ...head, status, error }]);
+/** Uploads the queue head-first until it is empty or the server cannot be reached. One loop at a time. */
+export const flush = createFlush<QueuedSale>({
+  next: async () => (await read("outbox"))?.[0],
+  upload,
+  settle: async (entry, problem) => {
+    const id = entry.sale.id;
+    if (problem) await change("problems", (list = []) => [...list, { ...entry, ...problem }]);
     await change("outbox", (list = []) => list.filter((q) => q.sale.id !== id));
     await reload();
-  }
-  dispatch({ type: "flushed", at: new Date().toISOString() });
-  if (accepted > 0) for (const listener of flushedListeners) listener();
-}
+  },
+  state: () => snapshot.sync,
+  dispatch,
+  retryLater: (delayMs) => {
+    clearTimeout(retryTimer);
+    retryTimer = setTimeout(() => void flush(), delayMs);
+  },
+  accepted: () => {
+    for (const listener of flushedListeners) listener();
+  },
+});
 
 /** Queues a sale for upload. Resolves once it is stored on the device, never waits for the network. */
 export async function queueSale(item: QueuedSale) {
