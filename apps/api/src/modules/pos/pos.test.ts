@@ -1,5 +1,5 @@
 import { uuidv7 } from "@billy/core";
-import { accounts, cashEntries, posLines, posSales, settings, stockMovements } from "@billy/db";
+import { accounts, cashEntries, posLines, posSales, products, settings, stockMovements } from "@billy/db";
 import { asc, eq } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 import { createTestApp } from "../../testing.ts";
@@ -140,13 +140,30 @@ describe("POST /api/pos/sales", () => {
     expect(await res.json()).toEqual({ error: "Total struk Rp 221.000 tidak sama dengan hitungan server Rp 221.400" });
   });
 
-  it("refuses a stale price with 422 naming the product", async () => {
+  it("accepts a sale made at a stale price and stores the price actually charged", async () => {
+    const stale = saleBody({
+      number: "K1-261113-0005",
+      lines: [{ productId: thinner, qty: 2, unitPrice: 30_000 }],
+      discount: { kind: "none", value: 0 },
+      tendered: 60_000,
+      total: 60_000,
+    });
+    expect((await post(kasir, stale)).status).toBe(201);
+    const effects = await sideEffects(stale.id);
+    expect(effects.lines.map(({ unitPrice, lineTotal, unitCost }) => ({ unitPrice, lineTotal, unitCost }))).toEqual([
+      { unitPrice: 30_000, lineTotal: 60_000, unitCost: 24_500 },
+    ]);
+    expect(effects.cash.map(({ amount }) => amount)).toEqual([60_000]);
+  });
+
+  it("refuses an inactive product with 422", async () => {
+    const retired = await createProduct("OLD-1", "Cat Lama", 50_000, 40_000, 5);
+    await db.update(products).set({ active: false }).where(eq(products.id, retired));
     const res = await post(
       kasir,
-      saleBody({ number: "K1-261113-0002", lines: [{ productId: thinner, qty: 1, unitPrice: 30_000 }], discount: { kind: "none", value: 0 }, total: 30_000 }),
+      saleBody({ number: "K1-261113-0006", lines: [{ productId: retired, qty: 1, unitPrice: 50_000 }], discount: { kind: "none", value: 0 }, total: 50_000 }),
     );
-    expect(res.status).toBe(422);
-    expect(await res.json()).toEqual({ error: "Harga Thinner Super 1 L berubah: Rp 30.000 di kasir, Rp 32.000 sekarang" });
+    expect([res.status, await res.json()]).toEqual([422, { error: "Produk di struk tidak ditemukan atau nonaktif" }]);
   });
 
   it("refuses short cash, an inactive account and invalid input", async () => {

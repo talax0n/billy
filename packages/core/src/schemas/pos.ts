@@ -9,7 +9,7 @@ export type PosMethod = (typeof posMethods)[number];
 export const posLineInput = z.object({
   productId: z.uuid(),
   qty: z.number().int().min(1, "Jumlah minimal 1"),
-  /** The price the cashier saw; the server rejects the sale when it no longer matches. */
+  /** The price actually charged; stored as is, even if the catalog price changed since. */
   unitPrice: rupiahInput,
   discountAmount: z.number().int().min(0).default(0).transform(rupiah),
   /** Tinting colour code and similar, printed on the receipt. */

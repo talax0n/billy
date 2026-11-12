@@ -87,9 +87,9 @@ export async function getCatalog(db: Db) {
 
 /**
  * Idempotent by the device-generated id: a replay returns the stored sale untouched
- * (`created: false`). Prices come from the server's catalog; a line priced differently or a
- * total that disagrees is refused, so a stale offline price surfaces instead of silently
- * changing what the customer paid.
+ * (`created: false`). The sale already happened and was paid, so each line keeps the price
+ * actually charged, even when the catalog price changed while the device was offline. The
+ * server still recomputes the totals from those lines and refuses a total that disagrees.
  */
 export async function recordSale(db: Db, input: PosSale, cashierId: string) {
   return db.transaction(async (tx) => {
@@ -104,20 +104,14 @@ export async function recordSale(db: Db, input: PosSale, cashierId: string) {
 
     const productIds = [...new Set(input.lines.map((l) => l.productId))];
     const catalog = await tx
-      .select({ id: products.id, name: products.name, variant: products.variant, sellPrice: products.sellPrice, costPrice: products.costPrice })
+      .select({ id: products.id, active: products.active, costPrice: products.costPrice })
       .from(products)
       .where(inArray(products.id, productIds));
     const byId = new Map(catalog.map((p) => [p.id, p]));
 
     const lines = input.lines.map((line) => {
       const product = byId.get(line.productId);
-      if (!product) throw new DomainError("invalid", "Produk di struk tidak ditemukan");
-      if (line.unitPrice !== product.sellPrice) {
-        throw new DomainError(
-          "invalid",
-          `Harga ${product.name} ${product.variant} berubah: ${formatRupiah(line.unitPrice)} di kasir, ${formatRupiah(product.sellPrice)} sekarang`,
-        );
-      }
+      if (!product?.active) throw new DomainError("invalid", "Produk di struk tidak ditemukan atau nonaktif");
       return { ...line, unitCost: product.costPrice };
     });
 
