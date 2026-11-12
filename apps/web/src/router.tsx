@@ -9,6 +9,7 @@ import { navItems } from "./nav.tsx";
 import { ComingSoon } from "./routes/coming-soon.tsx";
 import { KasirPage } from "./routes/kasir.tsx";
 import { LoginPage } from "./routes/login.tsx";
+import { printPages } from "./routes/print/print-pages.tsx";
 
 export const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
@@ -67,6 +68,16 @@ const shellRoute = createRoute({
   component: AppShell,
 });
 
+/** Printable documents: back-office only, without the shell. */
+const printRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  id: "print",
+  beforeLoad: ({ context }) => {
+    if (context.me.role === "kasir") throw redirect({ to: "/kasir" });
+  },
+});
+const printRoutes = printPages.map(({ path, page }) => createRoute({ getParentRoute: () => printRoute, path, component: page }));
+
 const pageRoutes = navItems.map((item) =>
   createRoute({
     getParentRoute: () => shellRoute,
@@ -78,6 +89,6 @@ const pageRoutes = navItems.map((item) =>
   }),
 );
 
-const routeTree = rootRoute.addChildren([loginRoute, authedRoute.addChildren([kasirRoute, shellRoute.addChildren(pageRoutes)])]);
+const routeTree = rootRoute.addChildren([loginRoute, authedRoute.addChildren([kasirRoute, printRoute.addChildren(printRoutes), shellRoute.addChildren(pageRoutes)])]);
 
 export const router = createRouter({ routeTree, context: { queryClient }, defaultPreload: "intent" });
