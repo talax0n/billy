@@ -1,7 +1,7 @@
-import { createFlush, initialSyncState, type SyncEvent, type SyncState, syncTransition } from "@billy/core";
+import { createFlush, initialSyncState, requeueProblem, settleEntry, type SyncEvent, type SyncState, syncTransition } from "@billy/core";
 import { useSyncExternalStore } from "react";
 import { api } from "../lib/api.ts";
-import { change, type QueuedSale, read, type SyncProblem } from "./local.ts";
+import { change, changeQueue, type QueuedSale, read, type SyncProblem } from "./local.ts";
 
 /**
  * The offline outbox. Selling only ever writes to IndexedDB; this loop uploads queued sales
@@ -51,9 +51,7 @@ export const flush = createFlush<QueuedSale>({
   next: async () => (await read("outbox"))?.[0],
   upload,
   settle: async (entry, problem) => {
-    const id = entry.sale.id;
-    if (problem) await change("problems", (list = []) => [...list, { ...entry, ...problem }]);
-    await change("outbox", (list = []) => list.filter((q) => q.sale.id !== id));
+    await changeQueue((lists) => settleEntry(lists, entry, problem));
     await reload();
   },
   state: () => snapshot.sync,
@@ -76,10 +74,9 @@ export async function queueSale(item: QueuedSale) {
 
 /** Moves a refused sale back into the outbox, for after the cause was fixed on the server. */
 export async function retryProblem(id: string) {
-  const problem = snapshot.problems.find((p) => p.sale.id === id);
-  if (!problem) return;
-  await change("problems", (list = []) => list.filter((p) => p.sale.id !== id));
-  await queueSale({ sale: problem.sale, receipt: problem.receipt });
+  await changeQueue((lists) => requeueProblem(lists, id));
+  await reload();
+  void flush();
 }
 
 /** Removes a refused sale for good, after the user confirmed it is handled elsewhere. */

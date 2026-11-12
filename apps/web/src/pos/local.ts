@@ -1,7 +1,7 @@
-import { businessDate, nextPosNumber, parsePosNumber, type PosSaleInput } from "@billy/core";
+import { businessDate, nextPosNumber, type OutboxLists, type OutboxProblem, parsePosNumber, type PosSaleInput } from "@billy/core";
 import { queryOptions } from "@tanstack/react-query";
 import type { InferResponseType } from "hono/client";
-import { createStore, get, set, update } from "idb-keyval";
+import { createStore, get, promisifyRequest, set, update } from "idb-keyval";
 import { api, unwrap } from "../lib/api.ts";
 import type { Cart } from "./cart.ts";
 import type { ReceiptData } from "./receipt.tsx";
@@ -17,10 +17,7 @@ export interface QueuedSale {
 }
 
 /** A sale the server refused (4xx). Kept until someone retries or removes it. */
-export interface SyncProblem extends QueuedSale {
-  error: string;
-  status: number;
-}
+export type SyncProblem = OutboxProblem<QueuedSale>;
 
 export interface ParkedCart {
   id: string;
@@ -53,6 +50,31 @@ export const read = <K extends keyof Schema>(key: K) => get<Schema[K]>(key, stor
 export const write = <K extends keyof Schema>(key: K, value: Schema[K]) => set(key, value, store);
 export const change = <K extends keyof Schema>(key: K, fn: (value: Schema[K] | undefined) => Schema[K]) =>
   update<Schema[K]>(key, fn, store);
+
+/**
+ * Changes the outbox and the problem list together in one IndexedDB transaction, so a sale
+ * moving between them is never in neither (or both) after a crash.
+ */
+export const changeQueue = (fn: (lists: OutboxLists<QueuedSale>) => OutboxLists<QueuedSale>) =>
+  store(
+    "readwrite",
+    (kv) =>
+      new Promise<void>((resolve, reject) => {
+        const outbox = kv.get("outbox") as IDBRequest<QueuedSale[] | undefined>;
+        const problems = kv.get("problems") as IDBRequest<SyncProblem[] | undefined>;
+        // Requests run in order, so both reads are done here; writing in the callback keeps the transaction open.
+        problems.onsuccess = () => {
+          try {
+            const next = fn({ outbox: outbox.result ?? [], problems: problems.result ?? [] });
+            kv.put(next.outbox, "outbox");
+            kv.put(next.problems, "problems");
+            resolve(promisifyRequest(kv.transaction));
+          } catch (err) {
+            reject(err);
+          }
+        };
+      }),
+  );
 
 function nextNumber(deviceCode: string, serverLast: string | null, local: Counter | undefined) {
   const fromServer = serverLast ? parsePosNumber(serverLast) : null;

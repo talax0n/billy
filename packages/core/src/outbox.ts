@@ -64,3 +64,35 @@ async function flushOnce<T extends OutboxEntry>(deps: FlushDeps<T>): Promise<boo
   if (accepted > 0) deps.accepted();
   return true;
 }
+
+/** A sale the server refused (4xx), kept until someone retries or removes it. */
+export type OutboxProblem<T extends OutboxEntry> = T & { status: number; error: string };
+
+/** Both device lists. Every move between them is one change of this pair, written in one transaction. */
+export interface OutboxLists<T extends OutboxEntry> {
+  outbox: T[];
+  problems: OutboxProblem<T>[];
+}
+
+/** Takes an uploaded sale out of the outbox; a refused one moves to the problem list. */
+export function settleEntry<T extends OutboxEntry>(
+  lists: OutboxLists<T>,
+  entry: T,
+  problem: { status: number; error: string } | null,
+): OutboxLists<T> {
+  return {
+    outbox: lists.outbox.filter((q) => q.sale.id !== entry.sale.id),
+    problems: problem ? [...lists.problems, { ...entry, ...problem }] : lists.problems,
+  };
+}
+
+/** Moves a refused sale back to the end of the outbox, for after its cause was fixed. */
+export function requeueProblem<T extends OutboxEntry>(lists: OutboxLists<T>, id: string): OutboxLists<T> {
+  const problem = lists.problems.find((p) => p.sale.id === id);
+  if (!problem) return lists;
+  const { status: _status, error: _error, ...entry } = problem;
+  return {
+    outbox: [...lists.outbox, entry as unknown as T],
+    problems: lists.problems.filter((p) => p.sale.id !== id),
+  };
+}
