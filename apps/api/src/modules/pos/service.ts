@@ -21,7 +21,7 @@ import {
   stockMovements,
   users,
 } from "@billy/db";
-import { and, asc, count, desc, eq, getTableColumns, ilike, inArray, isNull, like, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, getTableColumns, ilike, inArray, isNull, like, ne, sql, type SQL } from "drizzle-orm";
 import type { z } from "zod";
 import type { SessionUser } from "../../env.ts";
 import { likePattern } from "../../lib/search.ts";
@@ -103,7 +103,10 @@ export async function recordSale(db: Db, input: PosSale, cashierId: string) {
     const [existing] = await tx.select({ id: posSales.id }).from(posSales).where(eq(posSales.id, input.id));
     if (existing) return { created: false, sale: await getSale(tx, input.id) };
 
-    const [taken] = await tx.select({ id: posSales.id }).from(posSales).where(eq(posSales.number, input.number));
+    const [taken] = await tx
+      .select({ id: posSales.id })
+      .from(posSales)
+      .where(and(eq(posSales.number, input.number), ne(posSales.id, input.id)));
     if (taken) throw new DomainError("conflict", `Nomor struk ${input.number} sudah dipakai transaksi lain`);
 
     const [account] = await tx.select({ active: accounts.active }).from(accounts).where(eq(accounts.id, input.accountId));
@@ -139,24 +142,31 @@ export async function recordSale(db: Db, input: PosSale, cashierId: string) {
 
     const soldAt = new Date(input.soldAt);
     const date = businessDate(soldAt);
-    await tx.insert(posSales).values({
-      id: input.id,
-      number: input.number,
-      deviceCode: input.number.split("-")[0]!,
-      soldAt,
-      date,
-      cashierId,
-      customerId: input.customerId,
-      subtotal: totals.subtotal,
-      discountKind: input.discount.kind,
-      discountValue: input.discount.value,
-      discountAmount: totals.discountAmount,
-      total: totals.total,
-      method: input.method,
-      accountId: input.accountId,
-      tendered: input.tendered,
-      change: rupiah(input.tendered - totals.total),
-    });
+    // Two uploads of the same new sale can both get here; the one that loses the insert
+    // waits for the winner and answers as a replay.
+    const [inserted] = await tx
+      .insert(posSales)
+      .values({
+        id: input.id,
+        number: input.number,
+        deviceCode: input.number.split("-")[0]!,
+        soldAt,
+        date,
+        cashierId,
+        customerId: input.customerId,
+        subtotal: totals.subtotal,
+        discountKind: input.discount.kind,
+        discountValue: input.discount.value,
+        discountAmount: totals.discountAmount,
+        total: totals.total,
+        method: input.method,
+        accountId: input.accountId,
+        tendered: input.tendered,
+        change: rupiah(input.tendered - totals.total),
+      })
+      .onConflictDoNothing({ target: posSales.id })
+      .returning({ id: posSales.id });
+    if (!inserted) return { created: false, sale: await getSale(tx, input.id) };
     await tx.insert(posLines).values(
       lines.map((line, position) => ({
         saleId: input.id,

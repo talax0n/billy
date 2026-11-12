@@ -46,6 +46,14 @@ describe.skipIf(!server)("POS under concurrent requests (real Postgres)", () => 
   });
   const post = (body: object) => t.call("/api/pos/sales", { method: "POST", cookie: kasir, body });
 
+  it("answers both concurrent uploads of one new sale with 201 / 200, recording it once", async () => {
+    const body = sale();
+    const statuses = (await Promise.all([post(body), post(body), post(body)])).map((r) => r.status).sort();
+    expect(statuses).toEqual([200, 200, 201]);
+    const cash = await t.db.select().from(cashEntries).where(eq(cashEntries.sourceId, body.id));
+    expect(cash).toHaveLength(1);
+  });
+
   it("voids a sale once when two voids race", async () => {
     const body = sale();
     await post(body);
