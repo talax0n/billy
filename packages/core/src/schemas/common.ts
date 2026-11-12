@@ -38,7 +38,7 @@ export const optionalCode = (max: number) =>
 export const text = (max: number) => z.string().trim().max(max).default("");
 
 /** `{ "lines.0.qty": "message" }`, the first message per field. Shared by API errors and forms. */
-export function fieldErrors(error: z.ZodError): Record<string, string> {
+export function fieldErrors(error: z.core.$ZodError): Record<string, string> {
   const fields: Record<string, string> = {};
   for (const issue of error.issues) {
     const key = issue.path.join(".") || "_";

@@ -8,8 +8,7 @@
   "scripts": {
     "typecheck": "tsc -p .",
     "test": "vitest run",
-    "generate": "drizzle-kit generate",
-    "seed": "tsx src/seed-cli.ts"
+    "generate": "drizzle-kit generate"
   },
   "devDependencies": {
     "@types/node": "26.6.6",
