@@ -7,9 +7,7 @@ import { seedInsightDemo } from "./fixture.ts";
 if (process.env.NODE_ENV === "production" || process.env.DATABASE_URL)
   throw new Error("seed:demo hanya untuk PGlite lokal");
 const database = await createDb({
-  dataDir: fileURLToPath(
-    new URL("../../../../../.data/pglite", import.meta.url),
-  ),
+  dataDir: process.env.PGLITE_DIR ?? fileURLToPath(new URL("../../../../../.data/pglite", import.meta.url)),
 });
 try {
   await database.migrate();
