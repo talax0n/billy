@@ -66,6 +66,9 @@ importers:
       hono:
         specifier: ^4.13.18
         version: 4.13.18
+      idb-keyval:
+        specifier: 6.2.2
+        version: 6.2.2
       lucide-react:
         specifier: ^1.72.0
         version: 1.72.0(@types/react@19.3.0)(react@19.3.1)
@@ -1264,6 +1267,9 @@ packages:
     resolution: {integrity: sha512-H9q/E1XizaWstJxUW881dmLxEj+t/TrGGnyxINkm4+sK0qUwsMtFdo2BWI9Vs3cIS19MU6b6iCijoUoEf4f3DA==}
     engines: {node: '>=16.9.0'}
 
+  idb-keyval@6.2.2:
+    resolution: {integrity: sha512-yjD9nARJ/jb1g+CvD0tlhUHOrJ9Sy0P8T9MF3YaLlHnSRpwPfpTX0XIvpmw3gAJUmEu3FiICLBDPXVwyEvrleg==}
+
   isbot@5.2.3:
     resolution: {integrity: sha512-e8gGz3VzAuImtTMnB5PqNRRWGAswObTc+X+X5a8PttKT78VSSFec98w9ZwUoy6jJdlvJkVdLiN+WMgA8TewoZg==}
     engines: {node: '>=18'}
@@ -2328,6 +2334,8 @@ snapshots:
   graceful-fs@4.2.12: {}
 
   hono@4.13.18: {}
+
+  idb-keyval@6.2.2: {}
 
   isbot@5.2.3: {}
 

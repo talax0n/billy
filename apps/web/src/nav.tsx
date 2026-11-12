@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { ProductsPage } from "./routes/products/products-page.tsx";
+import { RiwayatKasirPage } from "./routes/riwayat-kasir/riwayat-kasir-page.tsx";
 import { SettingsPage } from "./routes/settings/settings-page.tsx";
 
 export const navGroups = ["Umum", "Transaksi", "Keuangan", "Persediaan"] as const;
@@ -45,7 +46,7 @@ export const navItems: NavItem[] = [
   { group: "Transaksi", path: "/pembelian", label: "Pembelian", icon: ShoppingCart },
   { group: "Transaksi", path: "/biaya", label: "Biaya", icon: WalletCards },
   { group: "Transaksi", path: "/tukar-faktur", label: "Tukar Faktur", icon: FileStack },
-  { group: "Transaksi", path: "/riwayat-kasir", label: "Riwayat Kasir", icon: History },
+  { group: "Transaksi", path: "/riwayat-kasir", label: "Riwayat Kasir", icon: History, page: RiwayatKasirPage },
   { group: "Keuangan", path: "/kas-bank", label: "Kas & Bank", icon: Wallet },
   { group: "Keuangan", path: "/piutang", label: "Piutang", icon: HandCoins },
   { group: "Keuangan", path: "/hutang", label: "Hutang", icon: ArrowLeftRight },

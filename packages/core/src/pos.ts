@@ -9,18 +9,23 @@ export interface CartTotals extends Totals {
   lineDiscount: Rupiah;
 }
 
+const zero = rupiah(0);
+export const emptyCartTotals: CartTotals = {
+  lineTotals: [],
+  subtotal: zero,
+  discountAmount: zero,
+  taxAmount: zero,
+  total: zero,
+  gross: zero,
+  lineDiscount: zero,
+};
+
 /** Totals of a POS cart; an empty cart is all zeros. Invalid discounts come back as a message. */
 export function cartTotals(
   lines: readonly LineInput[],
   discount: Discount,
 ): { ok: true; totals: CartTotals } | { ok: false; error: string } {
-  if (lines.length === 0) {
-    const zero = rupiah(0);
-    return {
-      ok: true,
-      totals: { lineTotals: [], subtotal: zero, discountAmount: zero, taxAmount: zero, total: zero, gross: zero, lineDiscount: zero },
-    };
-  }
+  if (lines.length === 0) return { ok: true, totals: emptyCartTotals };
   try {
     const totals = computeTotals(lines, discount);
     const lineDiscount = rupiah(lines.reduce((sum, l) => sum + l.discountAmount, 0));

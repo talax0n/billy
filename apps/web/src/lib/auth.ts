@@ -5,14 +5,25 @@ import { api, ApiError, unwrap } from "./api.ts";
 
 export type Me = InferResponseType<typeof api.auth.me.$get, 200>;
 
-/** The signed-in user, or null. Loaded by the router guard, then read from the cache. */
+const LAST_ME = "last-me";
+
+/**
+ * The signed-in user, or null. Loaded by the router guard, then read from the cache.
+ * When the server cannot be reached the last known user is used, so the POS opens offline;
+ * the API still checks the session on every request.
+ */
 export const meQuery = queryOptions({
   queryKey: ["me"],
+  networkMode: "always",
   queryFn: async (): Promise<Me | null> => {
     try {
-      return await unwrap(api.auth.me.$get());
+      const me = await unwrap(api.auth.me.$get());
+      localStorage.setItem(LAST_ME, JSON.stringify(me));
+      return me;
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) return null;
+      const last = localStorage.getItem(LAST_ME);
+      if (err instanceof ApiError && (err.status === 0 || err.status >= 500) && last) return JSON.parse(last) as Me;
       throw err;
     }
   },
@@ -25,6 +36,7 @@ export function useLogout() {
   const navigate = useNavigate();
   return async () => {
     await api.auth.logout.$post().catch(() => undefined);
+    localStorage.removeItem(LAST_ME);
     queryClient.clear();
     queryClient.setQueryData(meQuery.queryKey, null);
     await navigate({ to: "/login" });
