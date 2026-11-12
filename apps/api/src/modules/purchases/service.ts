@@ -1,119 +1,476 @@
-import { addDays, businessDate, computeTotals, deriveInvoiceStatus, DomainError, dueBucket, netUnitCost, rupiah, type purchaseInput, type purchaseListQuery, type purchasePaymentInput, type movementQuery } from "@billy/core";
-import { accounts, cashEntries, contacts, type Db, payments, products, purchaseInvoices, purchaseLines, stockMovements } from "@billy/db";
-import { and, asc, desc, eq, gte, ilike, isNull, lte, sql } from "drizzle-orm";
+import {
+  addDays,
+  businessDate,
+  computeTotals,
+  deriveInvoiceStatus,
+  DomainError,
+  type DueBucket,
+  dueBucket,
+  formatRupiah,
+  netUnitCost,
+  type PaginationQuery,
+  type purchaseInput,
+  type purchaseListQuery,
+  type purchasePaymentInput,
+  rupiah,
+  type Rupiah,
+} from "@billy/core";
+import {
+  accounts,
+  cashEntries,
+  contacts,
+  type Db,
+  payments,
+  products,
+  purchaseInvoices,
+  purchaseLines,
+  stockMovements,
+  users,
+} from "@billy/db";
+import { and, asc, count, desc, eq, gte, ilike, inArray, isNotNull, isNull, lt, lte, sql, type SQL } from "drizzle-orm";
 import type { z } from "zod";
 import { allocateDocNumber } from "../../lib/doc-number.ts";
 import { likePattern } from "../../lib/search.ts";
 
-type Input = z.output<typeof purchaseInput>;
+type PurchaseInput = z.output<typeof purchaseInput>;
 type PaymentInput = z.output<typeof purchasePaymentInput>;
+type ListQuery = z.output<typeof purchaseListQuery>;
 
-export async function suppliers(db: Db, q: string) {
-  return db.select({ id: contacts.id, name: contacts.name, paymentTermsDays: contacts.paymentTermsDays }).from(contacts).where(and(eq(contacts.kind, "supplier"), eq(contacts.active, true), ilike(contacts.name, likePattern(q)))).orderBy(asc(contacts.name)).limit(100);
+const notFound = () => new DomainError("not_found", "Faktur pembelian tidak ditemukan");
+
+/** Every whitespace-separated term must appear somewhere in `haystack`. */
+function matchAllTerms(haystack: SQL, q: string): SQL | undefined {
+  const terms = q.split(/\s+/).filter(Boolean);
+  return terms.length ? and(...terms.map((term) => ilike(haystack, likePattern(term)))) : undefined;
 }
-export async function accountLookup(db: Db) {
-  return db.select({ id: accounts.id, name: accounts.name, kind: accounts.kind }).from(accounts).where(eq(accounts.active, true)).orderBy(asc(accounts.name));
+
+export function lookupSuppliers(db: Db, q: string) {
+  return db
+    .select({ id: contacts.id, code: contacts.code, name: contacts.name, paymentTermsDays: contacts.paymentTermsDays })
+    .from(contacts)
+    .where(
+      and(
+        eq(contacts.kind, "supplier"),
+        eq(contacts.active, true),
+        matchAllTerms(sql`${contacts.name} || ' ' || ${contacts.code}`, q),
+      ),
+    )
+    .orderBy(asc(contacts.name))
+    .limit(20);
+}
+
+export function lookupAccounts(db: Db, q: string) {
+  return db
+    .select({ id: accounts.id, code: accounts.code, name: accounts.name, kind: accounts.kind })
+    .from(accounts)
+    .where(and(eq(accounts.active, true), matchAllTerms(sql`${accounts.name} || ' ' || ${accounts.code}`, q)))
+    .orderBy(asc(accounts.name))
+    .limit(20);
+}
+
+/** Paid = sum of non-voided payments (data-model ground rule 5). */
+function invoiceQuery(db: Db) {
+  const paidByInvoice = db
+    .select({ invoiceId: payments.purchaseInvoiceId, paid: sql<string>`sum(${payments.amount})`.as("paid") })
+    .from(payments)
+    .where(isNull(payments.voidedAt))
+    .groupBy(payments.purchaseInvoiceId)
+    .as("paid_by_invoice");
+  const paid = sql<number>`coalesce(${paidByInvoice.paid}, 0)`.mapWith(Number);
+  const open = and(isNull(purchaseInvoices.voidedAt), sql`${purchaseInvoices.total} > ${paid}`)!;
+
+  const select = () =>
+    db
+      .select({
+        id: purchaseInvoices.id,
+        number: purchaseInvoices.number,
+        supplierInvoiceNumber: purchaseInvoices.supplierInvoiceNumber,
+        supplierId: purchaseInvoices.supplierId,
+        supplierName: contacts.name,
+        date: purchaseInvoices.date,
+        dueDate: purchaseInvoices.dueDate,
+        termsDays: purchaseInvoices.termsDays,
+        subtotal: purchaseInvoices.subtotal,
+        discountKind: purchaseInvoices.discountKind,
+        discountValue: purchaseInvoices.discountValue,
+        discountAmount: purchaseInvoices.discountAmount,
+        taxRateBp: purchaseInvoices.taxRateBp,
+        taxAmount: purchaseInvoices.taxAmount,
+        total: purchaseInvoices.total,
+        note: purchaseInvoices.note,
+        createdAt: purchaseInvoices.createdAt,
+        voidedAt: purchaseInvoices.voidedAt,
+        voidReason: purchaseInvoices.voidReason,
+        paid,
+      })
+      .from(purchaseInvoices)
+      .innerJoin(contacts, eq(contacts.id, purchaseInvoices.supplierId))
+      .leftJoin(paidByInvoice, eq(paidByInvoice.invoiceId, purchaseInvoices.id));
+
+  const aggregate = () =>
+    db
+      .select({
+        count: count(),
+        purchased: sql<number>`coalesce(sum(${purchaseInvoices.total}) filter (where ${purchaseInvoices.voidedAt} is null), 0)`.mapWith(Number),
+        outstanding: sql<number>`coalesce(sum(${purchaseInvoices.total} - ${paid}) filter (where ${open}), 0)`.mapWith(Number),
+      })
+      .from(purchaseInvoices)
+      .innerJoin(contacts, eq(contacts.id, purchaseInvoices.supplierId))
+      .leftJoin(paidByInvoice, eq(paidByInvoice.invoiceId, purchaseInvoices.id));
+
+  return { select, aggregate, paid, open };
+}
+
+type InvoiceRow = Awaited<ReturnType<ReturnType<typeof invoiceQuery>["select"]>>[number];
+
+function withState(row: InvoiceRow, today: string) {
+  const paid = rupiah(row.paid);
+  return { ...row, paid, ...deriveInvoiceStatus({ total: row.total, paid, dueDate: row.dueDate, voided: row.voidedAt !== null, today }) };
+}
+
+/** Each filter matches the StatusTag the row shows, so Telat wins over Sebagian and Belum bayar. */
+function statusWhere(status: NonNullable<ListQuery["status"]>, { paid, open }: { paid: SQL; open: SQL }, today: string) {
+  const live = isNull(purchaseInvoices.voidedAt);
+  switch (status) {
+    case "void":
+      return isNotNull(purchaseInvoices.voidedAt);
+    case "paid":
+      return and(live, sql`${purchaseInvoices.total} <= ${paid}`);
+    case "overdue":
+      return and(open, lt(purchaseInvoices.dueDate, today));
+    case "partial":
+      return and(open, gte(purchaseInvoices.dueDate, today), sql`${paid} > 0`);
+    case "unpaid":
+      return and(open, gte(purchaseInvoices.dueDate, today), sql`${paid} = 0`);
+  }
+}
+
+export async function listPurchases(db: Db, query: ListQuery) {
+  const today = businessDate();
+  const invoices = invoiceQuery(db);
+  const where = and(
+    matchAllTerms(sql`${purchaseInvoices.number} || ' ' || ${purchaseInvoices.supplierInvoiceNumber} || ' ' || ${contacts.name}`, query.q),
+    query.from ? gte(purchaseInvoices.date, query.from) : undefined,
+    query.to ? lte(purchaseInvoices.date, query.to) : undefined,
+    query.supplierId ? eq(purchaseInvoices.supplierId, query.supplierId) : undefined,
+    query.status ? statusWhere(query.status, invoices, today) : undefined,
+  );
+  const [rows, [summary]] = await Promise.all([
+    invoices
+      .select()
+      .where(where)
+      .orderBy(desc(purchaseInvoices.date), desc(purchaseInvoices.number))
+      .limit(query.pageSize)
+      .offset((query.page - 1) * query.pageSize),
+    invoices.aggregate().where(where),
+  ]);
+  return {
+    rows: rows.map((row) => withState(row, today)),
+    total: summary!.count,
+    summary: { purchased: rupiah(summary!.purchased), outstanding: rupiah(summary!.outstanding) },
+  };
+}
+
+export async function getPurchase(db: Db, id: string) {
+  const [invoice] = await invoiceQuery(db).select().where(eq(purchaseInvoices.id, id));
+  if (!invoice) throw notFound();
+  const [lines, history] = await Promise.all([
+    db
+      .select({
+        id: purchaseLines.id,
+        productId: purchaseLines.productId,
+        productName: products.name,
+        variant: products.variant,
+        unit: products.unit,
+        qty: purchaseLines.qty,
+        unitCost: purchaseLines.unitCost,
+        discountAmount: purchaseLines.discountAmount,
+        lineTotal: purchaseLines.lineTotal,
+        note: purchaseLines.note,
+      })
+      .from(purchaseLines)
+      .innerJoin(products, eq(products.id, purchaseLines.productId))
+      .where(eq(purchaseLines.invoiceId, id))
+      .orderBy(asc(purchaseLines.position)),
+    db
+      .select({
+        id: payments.id,
+        date: payments.date,
+        amount: payments.amount,
+        method: payments.method,
+        note: payments.note,
+        accountName: accounts.name,
+        createdByName: users.name,
+        createdAt: payments.createdAt,
+        voidedAt: payments.voidedAt,
+        voidReason: payments.voidReason,
+      })
+      .from(payments)
+      .innerJoin(accounts, eq(accounts.id, payments.accountId))
+      .innerJoin(users, eq(users.id, payments.createdBy))
+      .where(eq(payments.purchaseInvoiceId, id))
+      .orderBy(asc(payments.createdAt)),
+  ]);
+  return { ...withState(invoice, businessDate()), lines, payments: history };
 }
 
 async function lockInvoice(tx: Db, id: string) {
-  const [invoice] = await tx.select().from(purchaseInvoices).where(eq(purchaseInvoices.id, id)).for("update");
-  if (!invoice) throw new DomainError("not_found", "Faktur pembelian tidak ditemukan");
+  const [invoice] = await tx
+    .select({ id: purchaseInvoices.id, total: purchaseInvoices.total, voidedAt: purchaseInvoices.voidedAt })
+    .from(purchaseInvoices)
+    .where(eq(purchaseInvoices.id, id))
+    .for("update");
+  if (!invoice) throw notFound();
   return invoice;
 }
-async function paidAmount(db: Db, id: string) {
-  const [row] = await db.select({ paid: sql<number>`coalesce(sum(${payments.amount}), 0)::bigint` }).from(payments).where(and(eq(payments.purchaseInvoiceId, id), isNull(payments.voidedAt)));
-  return Number(row?.paid ?? 0);
+
+async function paidSoFar(tx: Db, invoiceId: string): Promise<Rupiah> {
+  const [row] = await tx
+    .select({ paid: sql<number>`coalesce(sum(${payments.amount}), 0)`.mapWith(Number) })
+    .from(payments)
+    .where(and(eq(payments.purchaseInvoiceId, invoiceId), isNull(payments.voidedAt)));
+  return rupiah(row!.paid);
 }
-async function recordPayment(tx: Db, invoice: typeof purchaseInvoices.$inferSelect, input: PaymentInput, userId: string) {
-  if (invoice.voidedAt) throw new DomainError("invalid", "Faktur sudah dibatalkan");
-  if (input.amount > invoice.total - await paidAmount(tx, invoice.id)) throw new DomainError("invalid", "Pembayaran melebihi sisa hutang");
-  const [account] = await tx.select({ id: accounts.id }).from(accounts).where(and(eq(accounts.id, input.accountId), eq(accounts.active, true)));
-  if (!account) throw new DomainError("invalid", "Akun tidak ditemukan atau tidak aktif");
-  const [payment] = await tx.insert(payments).values({ ...input, direction: "payable", purchaseInvoiceId: invoice.id, createdBy: userId }).returning();
-  if (!payment) throw new Error("Payment insert failed");
-  await tx.insert(cashEntries).values({ accountId: input.accountId, date: input.date, direction: "out", amount: input.amount, category: "purchase", sourceType: "purchase_payment", sourceId: payment.id, note: input.note, createdBy: userId });
-  return payment;
+
+/** Payment + cash entry `out` / `purchase`. Call with the invoice row locked. */
+async function recordPayment(tx: Db, invoice: Awaited<ReturnType<typeof lockInvoice>>, input: PaymentInput, userId: string) {
+  if (invoice.voidedAt) throw new DomainError("invalid", "Faktur ini sudah di-void");
+  const outstanding = rupiah(invoice.total - (await paidSoFar(tx, invoice.id)));
+  if (input.amount > outstanding) {
+    throw new DomainError("invalid", `Pembayaran melebihi sisa hutang (${formatRupiah(outstanding)})`);
+  }
+  const [account] = await tx
+    .select({ id: accounts.id })
+    .from(accounts)
+    .where(and(eq(accounts.id, input.accountId), eq(accounts.active, true)));
+  if (!account) throw new DomainError("invalid", "Akun pembayaran tidak ditemukan atau nonaktif");
+
+  const [payment] = await tx
+    .insert(payments)
+    .values({ ...input, direction: "payable", purchaseInvoiceId: invoice.id, createdBy: userId })
+    .returning({ id: payments.id });
+  await tx.insert(cashEntries).values({
+    accountId: input.accountId,
+    date: input.date,
+    direction: "out",
+    amount: input.amount,
+    category: "purchase",
+    sourceType: "purchase_payment",
+    sourceId: payment!.id,
+    note: input.note,
+    createdBy: userId,
+  });
+  return payment!;
 }
-export async function createPurchase(db: Db, input: Input, userId: string) {
-  return db.transaction(async (tx) => {
-    const [supplier] = await tx.select({ id: contacts.id }).from(contacts).where(and(eq(contacts.id, input.supplierId), eq(contacts.kind, "supplier"), eq(contacts.active, true)));
-    if (!supplier) throw new DomainError("invalid", "Pemasok tidak ditemukan atau tidak aktif");
-    const totals = computeTotals(input.lines.map((line) => ({ qty: line.qty, unitPrice: line.unitCost, discountAmount: line.discountAmount })), { kind: input.discountKind, value: input.discountValue }, input.taxRateBp);
-    const [invoice] = await tx.insert(purchaseInvoices).values({ number: await allocateDocNumber(tx, "PO", input.date), supplierId: input.supplierId, supplierInvoiceNumber: input.supplierInvoiceNumber, date: input.date, dueDate: addDays(input.date, input.termsDays), termsDays: input.termsDays, discountKind: input.discountKind, discountValue: input.discountValue, taxRateBp: input.taxRateBp, note: input.note, subtotal: totals.subtotal, discountAmount: totals.discountAmount, taxAmount: totals.taxAmount, total: totals.total, createdBy: userId }).returning();
-    if (!invoice) throw new Error("Invoice insert failed");
-    for (const [position, line] of input.lines.entries()) {
-      const lineTotal = totals.lineTotals[position];
-      if (lineTotal === undefined) throw new Error("Missing line total");
-      const [product] = await tx.select({ id: products.id }).from(products).where(and(eq(products.id, line.productId), eq(products.active, true)));
-      if (!product) throw new DomainError("invalid", "Produk tidak ditemukan atau tidak aktif");
-      const cost = netUnitCost(lineTotal, line.qty);
-      await tx.insert(purchaseLines).values({ ...line, invoiceId: invoice.id, position, lineTotal });
-      await tx.insert(stockMovements).values({ productId: line.productId, date: input.date, qty: line.qty, reason: "purchase", unitCost: cost, sourceType: "purchase_invoice", sourceId: invoice.id, note: line.note, createdBy: userId });
-      await tx.update(products).set({ costPrice: cost }).where(eq(products.id, line.productId));
+
+/**
+ * Posts a supplier invoice: lines, a `purchase` stock movement per line valued at its net unit
+ * cost, the products' latest cost, and the optional "bayar sekarang" payment, in one transaction.
+ */
+export async function createPurchase(db: Db, input: PurchaseInput, userId: string) {
+  const totals = computeTotals(
+    input.lines.map((line) => ({ qty: line.qty, unitPrice: line.unitCost, discountAmount: line.discountAmount })),
+    { kind: input.discountKind, value: input.discountValue },
+    input.taxRateBp,
+  );
+  const lines = input.lines.map((line, position) => {
+    const lineTotal = totals.lineTotals[position]!;
+    return { ...line, position, lineTotal, netUnitCost: netUnitCost(lineTotal, line.qty) };
+  });
+
+  const id = await db.transaction(async (tx) => {
+    const [supplier] = await tx
+      .select({ id: contacts.id })
+      .from(contacts)
+      .where(and(eq(contacts.id, input.supplierId), eq(contacts.kind, "supplier")));
+    if (!supplier) throw new DomainError("invalid", "Pemasok tidak ditemukan");
+    const productIds = [...new Set(lines.map((line) => line.productId))];
+    const found = await tx.select({ id: products.id }).from(products).where(inArray(products.id, productIds));
+    if (found.length !== productIds.length) throw new DomainError("invalid", "Ada produk yang tidak ditemukan");
+
+    const [invoice] = await tx
+      .insert(purchaseInvoices)
+      .values({
+        number: await allocateDocNumber(tx, "PO", input.date),
+        supplierInvoiceNumber: input.supplierInvoiceNumber,
+        supplierId: input.supplierId,
+        date: input.date,
+        dueDate: addDays(input.date, input.termsDays),
+        termsDays: input.termsDays,
+        discountKind: input.discountKind,
+        discountValue: input.discountValue,
+        taxRateBp: input.taxRateBp,
+        subtotal: totals.subtotal,
+        discountAmount: totals.discountAmount,
+        taxAmount: totals.taxAmount,
+        total: totals.total,
+        note: input.note,
+        createdBy: userId,
+      })
+      .returning({ id: purchaseInvoices.id, total: purchaseInvoices.total, voidedAt: purchaseInvoices.voidedAt });
+
+    await tx.insert(purchaseLines).values(
+      lines.map((line) => ({
+        invoiceId: invoice!.id,
+        position: line.position,
+        productId: line.productId,
+        note: line.note,
+        qty: line.qty,
+        unitCost: line.unitCost,
+        discountAmount: line.discountAmount,
+        lineTotal: line.lineTotal,
+      })),
+    );
+    await tx.insert(stockMovements).values(
+      lines.map((line) => ({
+        productId: line.productId,
+        date: input.date,
+        qty: line.qty,
+        reason: "purchase" as const,
+        unitCost: line.netUnitCost,
+        sourceType: "purchase_invoice" as const,
+        sourceId: invoice!.id,
+        note: line.note,
+        createdBy: userId,
+      })),
+    );
+    // Latest-cost method: a product listed twice ends at its last line's cost.
+    for (const line of lines) {
+      await tx.update(products).set({ costPrice: line.netUnitCost }).where(eq(products.id, line.productId));
     }
-    if (input.payment) await recordPayment(tx, invoice, input.payment, userId);
-    return invoice;
+    if (input.payment) await recordPayment(tx, invoice!, input.payment, userId);
+    return invoice!.id;
   });
+  return getPurchase(db, id);
 }
+
 export async function payPurchase(db: Db, id: string, input: PaymentInput, userId: string) {
-  return db.transaction(async (tx) => recordPayment(tx, await lockInvoice(tx, id), input, userId));
+  await db.transaction(async (tx) => recordPayment(tx, await lockInvoice(tx, id), input, userId));
+  return getPurchase(db, id);
 }
+
+/** Marks the payment void and puts the money back with a reversal cash entry dated today. */
 export async function voidPayment(db: Db, id: string, paymentId: string, reason: string, userId: string) {
-  return db.transaction(async (tx) => {
+  await db.transaction(async (tx) => {
     await lockInvoice(tx, id);
-    const [payment] = await tx.select().from(payments).where(and(eq(payments.id, paymentId), eq(payments.purchaseInvoiceId, id))).for("update");
+    const [payment] = await tx
+      .select({ accountId: payments.accountId, amount: payments.amount, voidedAt: payments.voidedAt })
+      .from(payments)
+      .where(and(eq(payments.id, paymentId), eq(payments.purchaseInvoiceId, id)));
     if (!payment) throw new DomainError("not_found", "Pembayaran tidak ditemukan");
-    if (payment.voidedAt) throw new DomainError("invalid", "Pembayaran sudah dibatalkan");
-    await tx.update(payments).set({ voidedAt: new Date(), voidedBy: userId, voidReason: reason }).where(eq(payments.id, paymentId));
-    await tx.insert(cashEntries).values({ accountId: payment.accountId, date: businessDate(), direction: "in", amount: payment.amount, category: "reversal", sourceType: "purchase_payment", sourceId: payment.id, note: reason, createdBy: userId });
-    return { ok: true as const };
+    if (payment.voidedAt) throw new DomainError("invalid", "Pembayaran ini sudah di-void");
+
+    await tx
+      .update(payments)
+      .set({ voidedAt: new Date(), voidedBy: userId, voidReason: reason })
+      .where(eq(payments.id, paymentId));
+    await tx.insert(cashEntries).values({
+      accountId: payment.accountId,
+      date: businessDate(),
+      direction: "in",
+      amount: payment.amount,
+      category: "reversal",
+      sourceType: "purchase_payment",
+      sourceId: paymentId,
+      note: reason,
+      createdBy: userId,
+    });
   });
+  return getPurchase(db, id);
 }
+
+/** Refused while a non-voided payment exists; otherwise takes the goods back out of stock. */
 export async function voidPurchase(db: Db, id: string, reason: string, userId: string) {
-  return db.transaction(async (tx) => {
+  await db.transaction(async (tx) => {
     const invoice = await lockInvoice(tx, id);
-    if (invoice.voidedAt) throw new DomainError("invalid", "Faktur sudah dibatalkan");
-    if (await paidAmount(tx, id) > 0) throw new DomainError("invalid", "Batalkan pembayaran terlebih dahulu");
-    await tx.update(purchaseInvoices).set({ voidedAt: new Date(), voidedBy: userId, voidReason: reason }).where(eq(purchaseInvoices.id, id));
-    const movements = await tx.select().from(stockMovements).where(and(eq(stockMovements.sourceType, "purchase_invoice"), eq(stockMovements.sourceId, id), eq(stockMovements.reason, "purchase")));
-    for (const movement of movements) await tx.insert(stockMovements).values({ productId: movement.productId, date: businessDate(), qty: -movement.qty, reason: "reversal", unitCost: movement.unitCost, sourceType: "purchase_invoice", sourceId: id, note: reason, createdBy: userId });
-    // Later purchases may have established a newer cost, so a void never rewinds it.
-    return { ok: true as const };
+    if (invoice.voidedAt) throw new DomainError("invalid", "Faktur ini sudah di-void");
+    if ((await paidSoFar(tx, id)) > 0) {
+      throw new DomainError("invalid", "Faktur masih punya pembayaran. Void pembayarannya dulu.");
+    }
+
+    await tx
+      .update(purchaseInvoices)
+      .set({ voidedAt: new Date(), voidedBy: userId, voidReason: reason })
+      .where(eq(purchaseInvoices.id, id));
+    const posted = await tx
+      .select({ productId: stockMovements.productId, qty: stockMovements.qty, unitCost: stockMovements.unitCost })
+      .from(stockMovements)
+      .where(
+        and(eq(stockMovements.sourceType, "purchase_invoice"), eq(stockMovements.sourceId, id), eq(stockMovements.reason, "purchase")),
+      );
+    await tx.insert(stockMovements).values(
+      posted.map((movement) => ({
+        productId: movement.productId,
+        date: businessDate(),
+        qty: -movement.qty,
+        reason: "reversal" as const,
+        unitCost: movement.unitCost,
+        sourceType: "purchase_invoice" as const,
+        sourceId: id,
+        note: reason,
+        createdBy: userId,
+      })),
+    );
+    // products.cost_price stays as is: a later purchase may already have set a newer cost, and
+    // the previous cost is not recorded anywhere to roll back to.
+  });
+  return getPurchase(db, id);
+}
+
+const emptyBuckets = (): Record<DueBucket, Rupiah> => ({
+  late: rupiah(0),
+  within7: rupiah(0),
+  within30: rupiah(0),
+  later: rupiah(0),
+});
+
+async function openPayables(db: Db, where?: SQL) {
+  const today = businessDate();
+  const invoices = invoiceQuery(db);
+  const rows = await invoices
+    .select()
+    .where(and(invoices.open, where))
+    .orderBy(asc(purchaseInvoices.dueDate), asc(purchaseInvoices.number));
+  return rows.map((row) => {
+    const invoice = withState(row, today);
+    return { ...invoice, bucket: dueBucket(invoice.dueDate, today) };
   });
 }
 
-async function invoiceRows(db: Db) {
-  const rows = await db.select({ invoice: purchaseInvoices, supplierName: contacts.name }).from(purchaseInvoices).innerJoin(contacts, eq(contacts.id, purchaseInvoices.supplierId)).orderBy(desc(purchaseInvoices.date), desc(purchaseInvoices.createdAt));
-  const sums = await db.select({ id: payments.purchaseInvoiceId, paid: sql<number>`sum(${payments.amount})::bigint` }).from(payments).where(isNull(payments.voidedAt)).groupBy(payments.purchaseInvoiceId);
-  const paid = new Map(sums.map((row) => [row.id, Number(row.paid)]));
-  return rows.map(({ invoice, supplierName }) => {
-    const amountPaid = rupiah(paid.get(invoice.id) ?? 0);
-    const state = deriveInvoiceStatus({ total: invoice.total, paid: amountPaid, dueDate: invoice.dueDate, voided: !!invoice.voidedAt, today: businessDate() });
-    return { ...invoice, supplierName, paid: amountPaid, ...state };
-  });
+/**
+ * Open payables per supplier, split into due buckets, most urgent supplier first.
+ * ponytail: groups in memory; open bills number in the hundreds. Group in SQL if that grows.
+ */
+export async function listPayables(db: Db, { q, page, pageSize }: PaginationQuery) {
+  const invoices = await openPayables(db, matchAllTerms(sql`${contacts.name} || ' ' || ${contacts.code}`, q));
+  const totals = { ...emptyBuckets(), total: rupiah(0) };
+  const bySupplier = new Map<string, { id: string; supplierName: string; invoiceCount: number; nextDueDate: string } & typeof totals>();
+  for (const invoice of invoices) {
+    const supplier = bySupplier.get(invoice.supplierId) ?? {
+      id: invoice.supplierId,
+      supplierName: invoice.supplierName,
+      invoiceCount: 0,
+      nextDueDate: invoice.dueDate,
+      ...emptyBuckets(),
+      total: rupiah(0),
+    };
+    supplier.invoiceCount += 1;
+    for (const target of [supplier, totals]) {
+      target[invoice.bucket] = rupiah(target[invoice.bucket] + invoice.outstanding);
+      target.total = rupiah(target.total + invoice.outstanding);
+    }
+    bySupplier.set(invoice.supplierId, supplier);
+  }
+  const suppliers = [...bySupplier.values()];
+  return {
+    rows: suppliers.slice((page - 1) * pageSize, page * pageSize),
+    total: suppliers.length,
+    totals,
+    asOf: businessDate(),
+  };
 }
-export async function listPurchases(db: Db, query: z.output<typeof purchaseListQuery>) {
-  const rows = (await invoiceRows(db)).filter((row) => (!query.q || `${row.number} ${row.supplierName} ${row.supplierInvoiceNumber}`.toLowerCase().includes(query.q.toLowerCase())) && (!query.from || row.date >= query.from) && (!query.to || row.date <= query.to) && (!query.supplierId || row.supplierId === query.supplierId) && (!query.status || (query.status === "overdue" ? row.overdue : row.status === query.status)));
-  return { rows: rows.slice((query.page - 1) * query.pageSize, query.page * query.pageSize), total: rows.length, summary: { total: rows.reduce((sum, r) => sum + (r.status === "void" ? 0 : r.total), 0), outstanding: rows.reduce((sum, r) => sum + r.outstanding, 0) } };
-}
-export async function getPurchase(db: Db, id: string) {
-  const invoice = (await invoiceRows(db)).find((row) => row.id === id);
-  if (!invoice) throw new DomainError("not_found", "Faktur pembelian tidak ditemukan");
-  const lines = await db.select({ line: purchaseLines, productName: products.name, variant: products.variant, unit: products.unit }).from(purchaseLines).innerJoin(products, eq(products.id, purchaseLines.productId)).where(eq(purchaseLines.invoiceId, id)).orderBy(asc(purchaseLines.position));
-  const history = await db.select({ payment: payments, accountName: accounts.name }).from(payments).innerJoin(accounts, eq(accounts.id, payments.accountId)).where(eq(payments.purchaseInvoiceId, id)).orderBy(desc(payments.date), desc(payments.createdAt));
-  return { ...invoice, lines: lines.map(({ line, ...rest }) => ({ ...line, ...rest })), payments: history.map(({ payment, ...rest }) => ({ ...payment, ...rest })) };
-}
-export async function payables(db: Db) {
-  const rows = (await invoiceRows(db)).filter((row) => row.outstanding > 0).map((row) => ({ ...row, bucket: dueBucket(row.dueDate, businessDate()) }));
-  return { rows, total: rows.length };
-}
-export async function listStockMovements(db: Db, query: z.output<typeof movementQuery>) {
-  const conditions = and(query.productId ? eq(stockMovements.productId, query.productId) : undefined, query.from ? gte(stockMovements.date, query.from) : undefined, query.to ? lte(stockMovements.date, query.to) : undefined, query.reason ? eq(stockMovements.reason, query.reason) : undefined, query.q ? ilike(products.name, likePattern(query.q)) : undefined);
-  const running = sql<number>`(select coalesce(sum(m.qty), 0)::int from stock_movements m where m.product_id = ${stockMovements.productId} and (m.date, m.created_at, m.id) <= (${stockMovements.date}, ${stockMovements.createdAt}, ${stockMovements.id}))`;
-  const rows = await db.select({ id: stockMovements.id, productId: products.id, productName: products.name, variant: products.variant, unit: products.unit, date: stockMovements.date, qty: stockMovements.qty, reason: stockMovements.reason, unitCost: stockMovements.unitCost, sourceType: stockMovements.sourceType, sourceId: stockMovements.sourceId, note: stockMovements.note, runningStock: running }).from(stockMovements).innerJoin(products, eq(products.id, stockMovements.productId)).where(conditions).orderBy(desc(stockMovements.date), desc(stockMovements.createdAt), desc(stockMovements.id));
-  return { rows: rows.slice((query.page - 1) * query.pageSize, query.page * query.pageSize), total: rows.length };
-}
-export async function lowStock(db: Db) {
-  const rows = await db.select({ id: products.id, name: products.name, variant: products.variant, unit: products.unit, minStock: products.minStock, stock: sql<number>`coalesce(sum(${stockMovements.qty}), 0)::int` }).from(products).leftJoin(stockMovements, eq(products.id, stockMovements.productId)).where(eq(products.active, true)).groupBy(products.id).having(sql`coalesce(sum(${stockMovements.qty}), 0) <= ${products.minStock}`).orderBy(asc(products.name));
+
+export async function listSupplierPayables(db: Db, supplierId: string) {
+  const rows = await openPayables(db, eq(purchaseInvoices.supplierId, supplierId));
   return { rows, total: rows.length };
 }
