@@ -1,0 +1,27 @@
+{
+  "name": "@billy/db",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p .",
+    "test": "vitest run",
+    "generate": "drizzle-kit generate",
+    "seed": "tsx src/seed-cli.ts"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "@types/pg": "8.23.1",
+    "drizzle-kit": "0.31.11",
+    "tsx": "4.23.15",
+    "vitest": "5.1.0"
+  },
+  "dependencies": {
+    "@billy/core": "workspace:*",
+    "@electric-sql/pglite": "0.5.16",
+    "drizzle-orm": "0.45.4",
+    "pg": "8.23.1"
+  }
+}
