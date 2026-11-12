@@ -181,10 +181,7 @@ export function DashboardPage() {
           data && (
             <div className="flex gap-2.5 rounded-full border border-line px-3.5 py-[7px] whitespace-nowrap text-muted max-[900px]:flex-wrap max-[900px]:whitespace-normal">
               Saldo kas & bank <b className="font-medium text-ink">{formatRupiah(data.totalBalance)}</b>
-              <span>
-                · {data.balances.filter((a) => a.kind !== "ewallet").length}{" "}
-                akun
-              </span>
+              <span>· {data.balances.length} akun</span>
             </div>
           )
         }

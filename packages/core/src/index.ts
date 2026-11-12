@@ -22,3 +22,4 @@ export * from "./schemas/users.ts";
 export * from "./status.ts";
 export * from "./insights.ts";
 export * from "./product-search.ts";
+export * from "./stock.ts";

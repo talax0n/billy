@@ -1,3 +1,4 @@
+import { needsAttentionSql } from "../../lib/stock-level.ts";
 import {
   actionItems,
   addDays,
@@ -182,7 +183,7 @@ export async function stockAlerts(db: Db, today: string) {
     .leftJoin(stockMovements, eq(stockMovements.productId, products.id))
     .where(eq(products.active, true))
     .groupBy(products.id)
-    .having(sql`${stock} < 0 or ${stock} < ${products.minStock}`);
+    .having(needsAttentionSql(stock));
 }
 
 async function weeklyTotals(
@@ -255,11 +256,7 @@ export async function dashboard(
         duePayables: delta(current.duePayables, before.duePayables),
       },
       balances,
-      totalBalance: rupiah(
-        balances
-          .filter((a) => a.kind !== "ewallet")
-          .reduce((n, a) => n + a.balance, 0),
-      ),
+      totalBalance: rupiah(balances.reduce((n, a) => n + a.balance, 0)),
       chart: weeklyCashFlow(chart, query.to, Number(query.weeks)),
       nextAction: actions[0] ?? null,
       actionCount: actions.length,

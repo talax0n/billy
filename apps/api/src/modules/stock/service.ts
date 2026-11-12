@@ -1,3 +1,4 @@
+import { needsAttentionSql } from "../../lib/stock-level.ts";
 import type { movementQuery, PaginationQuery } from "@billy/core";
 import { type Db, posSales, products, purchaseInvoices, salesInvoices, stockMovements, users } from "@billy/db";
 import { and, asc, count, desc, eq, gte, lte, sql } from "drizzle-orm";
@@ -72,7 +73,7 @@ export async function listMovements(db: Db, query: MovementQuery) {
   return { rows, total: counted!.total };
 }
 
-/** Active products with negative stock, or at or under a minimum that is set. Largest shortfall first. */
+/** Active products with negative stock or stock under their minimum. Largest shortfall first. */
 export async function listStockAlerts(db: Db, { page, pageSize }: PaginationQuery) {
   const stockByProduct = db
     .select({ productId: stockMovements.productId, stock: sql<number>`sum(${stockMovements.qty})::int`.as("stock") })
@@ -82,7 +83,7 @@ export async function listStockAlerts(db: Db, { page, pageSize }: PaginationQuer
   const stock = sql<number>`coalesce(${stockByProduct.stock}, 0)`;
   const where = and(
     eq(products.active, true),
-    sql`(${stock} < 0 or (${products.minStock} > 0 and ${stock} <= ${products.minStock}))`,
+    needsAttentionSql(stock),
   );
   const [rows, [counted]] = await Promise.all([
     db

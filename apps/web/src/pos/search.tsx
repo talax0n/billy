@@ -1,4 +1,4 @@
-import { rankProducts } from "@billy/core";
+import { rankProducts, stockLevel } from "@billy/core";
 import { Search } from "lucide-react";
 import type { KeyboardEvent, Ref } from "react";
 import { cx } from "../lib/cx.ts";
@@ -65,7 +65,7 @@ export function SearchBox({
           ) : (
             <ul role="listbox" aria-label="Hasil pencarian">
               {results.map((p, i) => {
-                const low = p.stock <= p.minStock;
+                const low = stockLevel(p.stock, p.minStock) !== "ok";
                 return (
                   <li
                     key={p.id}

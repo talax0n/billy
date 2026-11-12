@@ -1,3 +1,4 @@
+import { needsAttention, stockLevel } from "./stock.ts";
 import { addDays } from "./dates.ts";
 import { rupiah, type Rupiah } from "./money.ts";
 
@@ -71,7 +72,7 @@ export interface AccountBalance {
   balance: Rupiah;
   weeklyChange: Rupiah;
 }
-export interface StockLevel {
+export interface ProductStock {
   id: string;
   name: string;
   stock: number;
@@ -168,7 +169,7 @@ export function rankActions(items: ActionItem[]): ActionItem[] {
   );
 }
 export function actionItems(
-  input: OpenInvoices & { products: StockLevel[]; balances: AccountBalance[] },
+  input: OpenInvoices & { products: ProductStock[]; balances: AccountBalance[] },
   today: string,
 ): ActionItem[] {
   const items: ActionItem[] = [];
@@ -205,7 +206,7 @@ export function actionItems(
         dueDate: invoice.dueDate,
       });
   for (const p of input.products)
-    if (p.stock < 0 || p.stock < p.minStock)
+    if (needsAttention(stockLevel(p.stock, p.minStock)))
       items.push({
         kind: p.stock < 0 ? "negative-stock" : "low-stock",
         id: `stock:${p.id}`,

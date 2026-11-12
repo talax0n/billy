@@ -71,13 +71,16 @@ it("carries running stock for one product, unaffected by date and reason filters
   expect(await filtered.json()).toMatchObject({ total: 1, rows: [{ qty: 4, runningStock: 14 }] });
 });
 
-it("lists negative stock and stock at or under a set minimum, worst first", async () => {
-  const res = await call("/api/stock/alerts", { cookie });
-  expect(await res.json()).toMatchObject({
+it("lists negative stock and stock under its minimum, worst first", async () => {
+  const alerts = async () => (await call("/api/stock/alerts", { cookie })).json();
+  expect(await alerts()).toMatchObject({ total: 1, rows: [{ name: "Thinner", stock: -2, minStock: 0 }] });
+
+  await call(`/api/products/${catId}/adjustments`, { method: "POST", cookie, body: { qty: -1, note: "Rusak", date: today } });
+  expect(await alerts()).toMatchObject({
     total: 2,
     rows: [
       { name: "Thinner", stock: -2, minStock: 0 },
-      { name: "Warnaku Tembok", stock: 5, minStock: 5 },
+      { name: "Warnaku Tembok", stock: 4, minStock: 5 },
     ],
   });
 });
