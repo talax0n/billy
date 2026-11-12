@@ -57,7 +57,7 @@ export function ExpensesPage() {
             <Input
               type="month"
               aria-label="Bulan"
-              className="w-44"
+              className="w-44!"
               value={month}
               onChange={(e) => {
                 setMonth(e.target.value);

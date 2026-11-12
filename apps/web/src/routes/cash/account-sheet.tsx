@@ -54,7 +54,7 @@ export function AccountSheet({
     <Sheet
       open
       onClose={onClose}
-      className="max-w-3xl"
+      className="max-w-3xl!"
       title={accountId ? (account.data?.name ?? "Memuat…") : "Akun baru"}
       description={account.data && `${account.data.code} · ${accountKindLabels[account.data.kind]}`}
     >
@@ -158,12 +158,12 @@ function CashBook({ accountId }: { accountId: string }) {
           )
         }
       >
-        <DateInput aria-label="Dari tanggal" className="w-36" value={filters.from} onChange={(e) => setFilter("from", e.target.value)} />
+        <DateInput aria-label="Dari tanggal" className="w-36!" value={filters.from} onChange={(e) => setFilter("from", e.target.value)} />
         <span className="text-muted">s/d</span>
-        <DateInput aria-label="Sampai tanggal" className="w-36" value={filters.to} onChange={(e) => setFilter("to", e.target.value)} />
+        <DateInput aria-label="Sampai tanggal" className="w-36!" value={filters.to} onChange={(e) => setFilter("to", e.target.value)} />
         <Select
           aria-label="Arah"
-          className="w-28"
+          className="w-28!"
           value={filters.direction}
           onChange={(e) => setFilter("direction", e.target.value as CashBookFilters["direction"])}
         >
@@ -173,7 +173,7 @@ function CashBook({ accountId }: { accountId: string }) {
         </Select>
         <Select
           aria-label="Kategori"
-          className="w-40"
+          className="w-40!"
           value={filters.category}
           onChange={(e) => setFilter("category", e.target.value as CashBookFilters["category"])}
         >
@@ -197,15 +197,15 @@ function CashBook({ accountId }: { accountId: string }) {
               <span className="flex flex-col">
                 <span>
                   {cashCategoryLabels[e.category]}
-                  {e.expenseNumber && <span className="text-muted"> · {e.expenseNumber}</span>}
+                  {e.expenseNumber && <span className="whitespace-nowrap text-muted"> · {e.expenseNumber}</span>}
                 </span>
                 {e.note && <span className="text-xs text-muted">{e.note}</span>}
               </span>
             ),
           },
-          { header: "Masuk", align: "right", cell: (e) => (e.direction === "in" ? <span className="text-up">{formatRupiah(e.amount)}</span> : "") },
-          { header: "Keluar", align: "right", cell: (e) => (e.direction === "out" ? <span className="text-down">{formatRupiah(e.amount)}</span> : "") },
-          { header: "Saldo", align: "right", cell: (e) => <Balance value={e.balance} /> },
+          { header: "Masuk", align: "right", className: "whitespace-nowrap", cell: (e) => (e.direction === "in" ? <span className="text-up">{formatRupiah(e.amount)}</span> : "") },
+          { header: "Keluar", align: "right", className: "whitespace-nowrap", cell: (e) => (e.direction === "out" ? <span className="text-down">{formatRupiah(e.amount)}</span> : "") },
+          { header: "Saldo", align: "right", className: "whitespace-nowrap", cell: (e) => <Balance value={e.balance} /> },
           {
             header: "",
             className: "w-14",
