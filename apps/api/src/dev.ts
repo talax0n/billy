@@ -8,7 +8,7 @@ const DEV_ADMIN_PASSWORD = "admin12345";
 
 const database = await createDb({
   url: process.env.DATABASE_URL,
-  dataDir: fileURLToPath(new URL("../../../.data/pglite", import.meta.url)),
+  dataDir: process.env.PGLITE_DIR ?? fileURLToPath(new URL("../../../.data/pglite", import.meta.url)),
 });
 await database.migrate();
 

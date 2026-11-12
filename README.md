@@ -22,9 +22,12 @@ pnpm dev        # api on :8787, web on :5173 (proxies /api)
 pnpm test
 pnpm typecheck
 pnpm build
+pnpm e2e        # end-to-end suite, see below
 ```
 
 `pnpm dev` needs no database server. Without `DATABASE_URL` the API runs on PGlite stored in `.data/pglite`, applies migrations, and seeds an empty database with sample data and an `admin` user. The password is `SEED_ADMIN_PASSWORD`, or the dev-only default printed in the console. Delete `.data/` to start over.
+
+`pnpm e2e` runs the Playwright suite in `e2e/specs`. It starts the API on a fresh PGlite data dir in a temp folder (migrated and seeded on boot) and the web dev server, each on a free port, runs the specs headless in Chromium, then stops both and deletes the data. The specs run in file order against one database, because later ones count the data earlier ones made. Chromium is not downloaded: set `CHROMIUM_PATH` to a Chromium or Chrome for Testing binary (the default is the Playwright 1252 build under `~/Library/Caches/ms-playwright`). Arguments pass through to `playwright test`, e.g. `pnpm e2e specs/10-pos.spec.ts`.
 
 Set `DATABASE_URL` to use Postgres (the Neon pooled URL in production) instead. Tests always use an in-memory PGlite.
 

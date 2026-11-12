@@ -7,3 +7,5 @@ dist/
 !.env.example
 .audit/
 .data/
+test-results/
+playwright-report/

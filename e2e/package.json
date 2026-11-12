@@ -1,0 +1,13 @@
+{
+  "name": "@billy/e2e",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "e2e": "node run.ts",
+    "typecheck": "tsc -p ."
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.0",
+    "@types/node": "26.6.6"
+  }
+}

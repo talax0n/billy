@@ -9,7 +9,8 @@
     "dev": "turbo run dev",
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
-    "test": "turbo run test"
+    "test": "turbo run test",
+    "e2e": "pnpm --filter @billy/e2e e2e"
   },
   "devDependencies": {
     "turbo": "^2.11.11",
