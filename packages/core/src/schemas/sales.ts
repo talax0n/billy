@@ -2,16 +2,7 @@ import { z } from "zod";
 import { discountKinds } from "../invoice.ts";
 import { rupiah } from "../money.ts";
 import { salesStatusFilters } from "../sales.ts";
-import { businessDateInput, paginationQuery, rupiahInput, text } from "./common.ts";
-
-export const paymentMethods = ["cash", "transfer", "qris", "giro"] as const;
-export type PaymentMethod = (typeof paymentMethods)[number];
-export const paymentMethodLabels: Record<PaymentMethod, string> = {
-  cash: "Tunai",
-  transfer: "Transfer",
-  qris: "QRIS",
-  giro: "Giro",
-};
+import { businessDateInput, paginationQuery, paymentMethods, rupiahInput, text } from "./common.ts";
 
 const positiveRupiah = z
   .number()
@@ -62,8 +53,6 @@ export const salesListQuery = paginationQuery.extend({
   status: z.enum(salesStatusFilters).optional(),
   customerId: z.uuid().optional(),
 });
-
-export const lookupQuery = z.object({ q: z.string().trim().max(100).default("") });
 
 export const invoiceBundleInput = z.object({
   customerId: z.uuid("Pilih pelanggan"),

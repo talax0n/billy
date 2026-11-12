@@ -11,7 +11,9 @@ import { expenseRoutes } from "./modules/expenses/routes.ts";
 import { insightRoutes } from "./modules/insights/routes.ts";
 import { productRoutes } from "./modules/products/routes.ts";
 import { salesRoutes } from "./modules/sales/routes.ts";
+import { purchaseRoutes } from "./modules/purchases/routes.ts";
 import { settingsRoutes } from "./modules/settings/routes.ts";
+import { stockRoutes } from "./modules/stock/routes.ts";
 import { userRoutes } from "./modules/users/routes.ts";
 
 /**
@@ -39,6 +41,8 @@ export function createApp(db: Db) {
     .route("/cash", cashRoutes)
     .route("/expenses", expenseRoutes)
     .route("/contacts", contactRoutes)
+    .route("/purchases", purchaseRoutes)
+    .route("/stock", stockRoutes)
     .route("/", insightRoutes);
 }
 

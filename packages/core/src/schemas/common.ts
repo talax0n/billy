@@ -49,3 +49,14 @@ export function fieldErrors(error: z.core.$ZodError): Record<string, string> {
 
 export const voidInput = z.object({ reason: z.string().trim().min(1, "Alasan void wajib diisi").max(500) });
 export type VoidInput = z.input<typeof voidInput>;
+
+export const paymentMethods = ["cash", "transfer", "qris", "giro"] as const;
+export type PaymentMethod = (typeof paymentMethods)[number];
+export const paymentMethodLabels: Record<PaymentMethod, string> = {
+  cash: "Tunai",
+  transfer: "Transfer",
+  qris: "QRIS",
+  giro: "Giro",
+};
+
+export const lookupQuery = z.object({ q: z.string().trim().max(100).default("") });

@@ -25,7 +25,10 @@ import { DashboardPage } from "./routes/insights/dashboard.tsx";
 import { ProductsPage } from "./routes/products/products-page.tsx";
 import { ReceivablesPage } from "./routes/receivables/receivables-page.tsx";
 import { SalesPage } from "./routes/sales/sales-page.tsx";
+import { PayablesPage } from "./routes/payables/payables-page.tsx";
+import { PurchasesPage } from "./routes/purchases/purchases-page.tsx";
 import { SettingsPage } from "./routes/settings/settings-page.tsx";
+import { StockPage } from "./routes/stock/stock-page.tsx";
 
 export const navGroups = ["Umum", "Transaksi", "Keuangan", "Persediaan"] as const;
 
@@ -49,15 +52,15 @@ export const navItems: NavItem[] = [
   { group: "Umum", path: "/", label: "Ringkasan", icon: LayoutDashboard, page: DashboardPage },
   { group: "Umum", path: "/tindakan", label: "Perlu Tindakan", icon: ActionNavIcon, page: ActionsPage },
   { group: "Transaksi", path: "/penjualan", label: "Penjualan", icon: Receipt, page: SalesPage },
-  { group: "Transaksi", path: "/pembelian", label: "Pembelian", icon: ShoppingCart },
+  { group: "Transaksi", path: "/pembelian", label: "Pembelian", icon: ShoppingCart, page: PurchasesPage },
   { group: "Transaksi", path: "/biaya", label: "Biaya", icon: WalletCards, page: ExpensesPage },
   { group: "Transaksi", path: "/tukar-faktur", label: "Tukar Faktur", icon: FileStack, page: BundlesPage },
   { group: "Transaksi", path: "/riwayat-kasir", label: "Riwayat Kasir", icon: History },
   { group: "Keuangan", path: "/kas-bank", label: "Kas & Bank", icon: Wallet, page: CashPage },
   { group: "Keuangan", path: "/piutang", label: "Piutang", icon: HandCoins, page: ReceivablesPage },
-  { group: "Keuangan", path: "/hutang", label: "Hutang", icon: ArrowLeftRight },
+  { group: "Keuangan", path: "/hutang", label: "Hutang", icon: ArrowLeftRight, page: PayablesPage },
   { group: "Persediaan", path: "/produk", label: "Produk", icon: Package, page: ProductsPage },
-  { group: "Persediaan", path: "/mutasi-stok", label: "Mutasi Stok", icon: Boxes },
+  { group: "Persediaan", path: "/mutasi-stok", label: "Mutasi Stok", icon: Boxes, page: StockPage },
   { group: "Persediaan", path: "/kontak", label: "Kontak", icon: Users, page: ContactsPage },
   { group: null, path: "/pengaturan", label: "Pengaturan", icon: Settings, page: SettingsPage },
 ];
