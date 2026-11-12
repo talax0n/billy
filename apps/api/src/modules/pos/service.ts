@@ -1,0 +1,280 @@
+import {
+  businessDate,
+  computeTotals,
+  docPeriod,
+  DomainError,
+  formatRupiah,
+  type PaginationQuery,
+  type posSaleInput,
+  rupiah,
+} from "@billy/core";
+import {
+  accounts,
+  cashEntries,
+  categories,
+  type Db,
+  posLines,
+  posSales,
+  products,
+  settings,
+  stockMovements,
+  users,
+} from "@billy/db";
+import { and, asc, count, desc, eq, getTableColumns, ilike, inArray, like, sql, type SQL } from "drizzle-orm";
+import type { z } from "zod";
+import type { SessionUser } from "../../env.ts";
+import { likePattern } from "../../lib/search.ts";
+import { stockByProduct } from "../products/service.ts";
+
+type PosSale = z.output<typeof posSaleInput>;
+
+/** A kasir only ever sees their own sales (data-model roles). */
+const visibleTo = (user: SessionUser): SQL | undefined =>
+  user.role === "kasir" ? eq(posSales.cashierId, user.id) : undefined;
+
+/**
+ * Everything the cashier device caches to keep selling offline. Cost prices stay on the server.
+ * `lastNumber` is the device's highest receipt number today, so a device whose local counter
+ * was wiped continues after it instead of colliding.
+ */
+export async function getCatalog(db: Db) {
+  const stock = stockByProduct(db);
+  const [shop] = await db
+    .select({
+      shopName: settings.shopName,
+      address: settings.address,
+      phone: settings.phone,
+      receiptFooter: settings.receiptFooter,
+      deviceCode: settings.posDeviceCode,
+    })
+    .from(settings);
+  if (!shop) throw new DomainError("not_found", "Pengaturan toko belum dibuat");
+
+  const [productRows, accountRows, [last]] = await Promise.all([
+    db
+      .select({
+        id: products.id,
+        code: products.code,
+        barcode: products.barcode,
+        name: products.name,
+        variant: products.variant,
+        unit: products.unit,
+        categoryName: categories.name,
+        sellPrice: products.sellPrice,
+        minStock: products.minStock,
+        stock: sql<number>`coalesce(${stock.stock}, 0)`,
+      })
+      .from(products)
+      .leftJoin(categories, eq(categories.id, products.categoryId))
+      .leftJoin(stock, eq(stock.productId, products.id))
+      .where(eq(products.active, true))
+      .orderBy(asc(products.name), asc(products.variant)),
+    db
+      .select({ id: accounts.id, name: accounts.name, kind: accounts.kind })
+      .from(accounts)
+      .where(eq(accounts.active, true))
+      .orderBy(asc(accounts.code)),
+    db
+      .select({ number: posSales.number })
+      .from(posSales)
+      .where(like(posSales.number, `${shop.deviceCode}-${docPeriod(businessDate())}-%`))
+      .orderBy(desc(posSales.number))
+      .limit(1),
+  ]);
+
+  return { products: productRows, accounts: accountRows, shop, lastNumber: last?.number ?? null };
+}
+
+/**
+ * Idempotent by the device-generated id: a replay returns the stored sale untouched
+ * (`created: false`). Prices come from the server's catalog; a line priced differently or a
+ * total that disagrees is refused, so a stale offline price surfaces instead of silently
+ * changing what the customer paid.
+ */
+export async function recordSale(db: Db, input: PosSale, cashierId: string) {
+  return db.transaction(async (tx) => {
+    const [existing] = await tx.select({ id: posSales.id }).from(posSales).where(eq(posSales.id, input.id));
+    if (existing) return { created: false, sale: await getSale(tx, input.id) };
+
+    const [taken] = await tx.select({ id: posSales.id }).from(posSales).where(eq(posSales.number, input.number));
+    if (taken) throw new DomainError("conflict", `Nomor struk ${input.number} sudah dipakai transaksi lain`);
+
+    const [account] = await tx.select({ active: accounts.active }).from(accounts).where(eq(accounts.id, input.accountId));
+    if (!account?.active) throw new DomainError("invalid", "Akun pembayaran tidak ditemukan atau nonaktif");
+
+    const productIds = [...new Set(input.lines.map((l) => l.productId))];
+    const catalog = await tx
+      .select({ id: products.id, name: products.name, variant: products.variant, sellPrice: products.sellPrice, costPrice: products.costPrice })
+      .from(products)
+      .where(inArray(products.id, productIds));
+    const byId = new Map(catalog.map((p) => [p.id, p]));
+
+    const lines = input.lines.map((line) => {
+      const product = byId.get(line.productId);
+      if (!product) throw new DomainError("invalid", "Produk di struk tidak ditemukan");
+      if (line.unitPrice !== product.sellPrice) {
+        throw new DomainError(
+          "invalid",
+          `Harga ${product.name} ${product.variant} berubah: ${formatRupiah(line.unitPrice)} di kasir, ${formatRupiah(product.sellPrice)} sekarang`,
+        );
+      }
+      return { ...line, unitCost: product.costPrice };
+    });
+
+    const totals = computeTotals(lines, input.discount);
+    if (totals.total !== input.total) {
+      throw new DomainError(
+        "invalid",
+        `Total struk ${formatRupiah(input.total)} tidak sama dengan hitungan server ${formatRupiah(totals.total)}`,
+      );
+    }
+    if (input.tendered < totals.total) throw new DomainError("invalid", "Uang diterima kurang dari total");
+
+    const soldAt = new Date(input.soldAt);
+    const date = businessDate(soldAt);
+    await tx.insert(posSales).values({
+      id: input.id,
+      number: input.number,
+      deviceCode: input.number.split("-")[0]!,
+      soldAt,
+      date,
+      cashierId,
+      customerId: input.customerId,
+      subtotal: totals.subtotal,
+      discountKind: input.discount.kind,
+      discountValue: input.discount.value,
+      discountAmount: totals.discountAmount,
+      total: totals.total,
+      method: input.method,
+      accountId: input.accountId,
+      tendered: input.tendered,
+      change: rupiah(input.tendered - totals.total),
+    });
+    await tx.insert(posLines).values(
+      lines.map((line, position) => ({
+        saleId: input.id,
+        position,
+        productId: line.productId,
+        note: line.note,
+        qty: line.qty,
+        unitPrice: line.unitPrice,
+        discountAmount: line.discountAmount,
+        lineTotal: totals.lineTotals[position]!,
+        unitCost: line.unitCost,
+      })),
+    );
+    await tx.insert(stockMovements).values(
+      lines.map((line) => ({
+        productId: line.productId,
+        date,
+        qty: -line.qty,
+        reason: "pos" as const,
+        unitCost: line.unitCost,
+        sourceType: "pos_sale" as const,
+        sourceId: input.id,
+        note: input.number,
+        createdBy: cashierId,
+      })),
+    );
+    // A fully discounted sale moves no money; cash entry amounts must be positive.
+    if (totals.total > 0) {
+      await tx.insert(cashEntries).values({
+        accountId: input.accountId,
+        date,
+        direction: "in",
+        amount: totals.total,
+        category: "sale",
+        sourceType: "pos_sale",
+        sourceId: input.id,
+        note: input.number,
+        createdBy: cashierId,
+      });
+    }
+    return { created: true, sale: await getSale(tx, input.id) };
+  });
+}
+
+const saleColumns = {
+  ...getTableColumns(posSales),
+  cashierName: users.name,
+  accountName: accounts.name,
+};
+
+export async function listSales(db: Db, user: SessionUser, { q, page, pageSize }: PaginationQuery) {
+  const where = and(visibleTo(user), q ? ilike(posSales.number, likePattern(q)) : undefined);
+  const [rows, [counted]] = await Promise.all([
+    db
+      .select(saleColumns)
+      .from(posSales)
+      .innerJoin(users, eq(users.id, posSales.cashierId))
+      .innerJoin(accounts, eq(accounts.id, posSales.accountId))
+      .where(where)
+      .orderBy(desc(posSales.soldAt))
+      .limit(pageSize)
+      .offset((page - 1) * pageSize),
+    db.select({ total: count() }).from(posSales).where(where),
+  ]);
+  return { rows, total: counted!.total };
+}
+
+/** The sale with its lines, for the detail sheet and reprints. */
+export async function getSale(db: Db, id: string, user?: SessionUser) {
+  const [sale] = await db
+    .select(saleColumns)
+    .from(posSales)
+    .innerJoin(users, eq(users.id, posSales.cashierId))
+    .innerJoin(accounts, eq(accounts.id, posSales.accountId))
+    .where(and(eq(posSales.id, id), user && visibleTo(user)));
+  if (!sale) throw new DomainError("not_found", "Struk tidak ditemukan");
+  const lines = await db
+    .select({
+      ...getTableColumns(posLines),
+      productName: products.name,
+      variant: products.variant,
+      unit: products.unit,
+    })
+    .from(posLines)
+    .innerJoin(products, eq(products.id, posLines.productId))
+    .where(eq(posLines.saleId, id))
+    .orderBy(asc(posLines.position));
+  return { ...sale, lines };
+}
+
+/** Sets the void columns and writes reversal rows for the stock and the money. */
+export async function voidSale(db: Db, id: string, reason: string, userId: string) {
+  return db.transaction(async (tx) => {
+    const sale = await getSale(tx, id);
+    if (sale.voidedAt) throw new DomainError("conflict", "Struk sudah di-void");
+    const date = businessDate();
+    const note = `Void ${sale.number}: ${reason}`;
+
+    await tx.update(posSales).set({ voidedAt: new Date(), voidedBy: userId, voidReason: reason }).where(eq(posSales.id, id));
+    await tx.insert(stockMovements).values(
+      sale.lines.map((line) => ({
+        productId: line.productId,
+        date,
+        qty: line.qty,
+        reason: "reversal" as const,
+        unitCost: line.unitCost,
+        sourceType: "pos_sale" as const,
+        sourceId: id,
+        note,
+        createdBy: userId,
+      })),
+    );
+    if (sale.total > 0) {
+      await tx.insert(cashEntries).values({
+        accountId: sale.accountId,
+        date,
+        direction: "out",
+        amount: sale.total,
+        category: "reversal",
+        sourceType: "pos_sale",
+        sourceId: id,
+        note,
+        createdBy: userId,
+      });
+    }
+    return getSale(tx, id);
+  });
+}
