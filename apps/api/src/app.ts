@@ -4,6 +4,7 @@ import { authRoutes } from "./auth/routes.ts";
 import type { AppEnv } from "./env.ts";
 import { onError } from "./lib/errors.ts";
 import { categoryRoutes } from "./modules/categories/routes.ts";
+import { purchaseRoutes } from "./modules/purchases/routes.ts";
 import { productRoutes } from "./modules/products/routes.ts";
 import { settingsRoutes } from "./modules/settings/routes.ts";
 import { userRoutes } from "./modules/users/routes.ts";
@@ -26,7 +27,8 @@ export function createApp(db: Db) {
     .route("/users", userRoutes)
     .route("/settings", settingsRoutes)
     .route("/categories", categoryRoutes)
-    .route("/products", productRoutes);
+    .route("/products", productRoutes)
+    .route("/purchases", purchaseRoutes);
 }
 
 export type AppType = ReturnType<typeof createApp>;

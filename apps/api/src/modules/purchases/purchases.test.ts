@@ -1,0 +1,32 @@
+import { accounts, cashEntries, contacts, products, stockMovements } from "@billy/db";
+import { rupiah } from "@billy/core";
+import { eq } from "drizzle-orm";
+import { expect, it } from "vitest";
+import { createTestApp } from "../../testing.ts";
+
+it("posts a purchase, payments and their reversals with literal PPN and stock effects", async () => {
+  const { db, call, signIn } = await createTestApp();
+  const { cookie } = await signIn("staff");
+  const [supplier] = await db.insert(contacts).values({ code: "S1", name: "Pemasok", kind: "supplier", paymentTermsDays: 60 }).returning();
+  const [product] = await db.insert(products).values({ name: "Cat", unit: "kaleng", costPrice: rupiah(50) }).returning();
+  const [account] = await db.insert(accounts).values({ code: "K1", name: "Kas", kind: "cash" }).returning();
+  if (!supplier || !product || !account) throw new Error("Missing fixtures");
+  const created = await call("/api/purchases", { method: "POST", cookie, body: { supplierId: supplier.id, supplierInvoiceNumber: "SUP-1", date: "2026-11-13", termsDays: 60, discountKind: "amount", discountValue: 1000, taxRateBp: 1100, note: "", lines: [{ productId: product.id, qty: 2, unitCost: 10000, discountAmount: 2000, note: "" }] } });
+  expect(created.status).toBe(201); const invoice = await created.json() as { id: string; number: string };
+  expect(invoice.number).toBe("PO-261113-0001");
+  const detail = await call(`/api/purchases/${invoice.id}`, { cookie });
+  expect(await detail.json()).toMatchObject({ subtotal: 18000, discountAmount: 1000, taxAmount: 1870, total: 18870, dueDate: "2027-01-12" });
+  expect(await db.select().from(stockMovements).where(eq(stockMovements.sourceId, invoice.id))).toMatchObject([{ qty: 2, reason: "purchase", unitCost: 9000 }]);
+  expect((await db.select().from(products).where(eq(products.id, product.id)))[0]?.costPrice).toBe(9000);
+  const pay = { accountId: account.id, date: "2026-11-13", amount: 10000, method: "cash", note: "" };
+  const over = await call(`/api/purchases/${invoice.id}/payments`, { method: "POST", cookie, body: { ...pay, amount: 18871 } }); expect(over.status).toBe(422);
+  const payment = await call(`/api/purchases/${invoice.id}/payments`, { method: "POST", cookie, body: pay }); expect(payment.status).toBe(201); const paid = await payment.json() as { id: string };
+  expect(await db.select().from(cashEntries)).toMatchObject([{ direction: "out", category: "purchase", amount: 10000, sourceId: paid.id }]);
+  const blocked = await call(`/api/purchases/${invoice.id}/void`, { method: "POST", cookie, body: { reason: "Salah" } }); expect(blocked.status).toBe(422);
+  expect((await call(`/api/purchases/${invoice.id}/payments/${paid.id}/void`, { method: "POST", cookie, body: { reason: "Salah bayar" } })).status).toBe(200);
+  expect((await call(`/api/purchases/${invoice.id}/void`, { method: "POST", cookie, body: { reason: "Salah faktur" } })).status).toBe(200);
+  expect(await db.select().from(cashEntries)).toMatchObject([{ direction: "out", amount: 10000 }, { direction: "in", category: "reversal", amount: 10000 }]);
+  expect(await db.select().from(stockMovements).where(eq(stockMovements.sourceId, invoice.id))).toMatchObject([{ qty: 2, reason: "purchase" }, { qty: -2, reason: "reversal", unitCost: 9000 }]);
+  expect((await db.select().from(products).where(eq(products.id, product.id)))[0]?.costPrice).toBe(9000);
+  const kasir = await signIn("kasir"); expect((await call("/api/purchases", { cookie: kasir.cookie })).status).toBe(403);
+});
