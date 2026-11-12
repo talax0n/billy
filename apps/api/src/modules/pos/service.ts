@@ -98,10 +98,13 @@ export async function getCatalog(db: Db) {
  * actually charged, even when the catalog price changed while the device was offline. The
  * server still recomputes the totals from those lines and refuses a total that disagrees.
  */
-export async function recordSale(db: Db, input: PosSale, cashierId: string) {
+export async function recordSale(db: Db, input: PosSale, user: SessionUser) {
+  const cashierId = user.id;
+  // A replay answers like GET: a kasir never sees another cashier's sale.
+  const replay = (tx: Db) => getSale(tx, input.id, user).then((sale) => ({ created: false, sale }));
   return db.transaction(async (tx) => {
     const [existing] = await tx.select({ id: posSales.id }).from(posSales).where(eq(posSales.id, input.id));
-    if (existing) return { created: false, sale: await getSale(tx, input.id) };
+    if (existing) return replay(tx);
 
     const [taken] = await tx
       .select({ id: posSales.id })
@@ -166,7 +169,7 @@ export async function recordSale(db: Db, input: PosSale, cashierId: string) {
       })
       .onConflictDoNothing({ target: posSales.id })
       .returning({ id: posSales.id });
-    if (!inserted) return { created: false, sale: await getSale(tx, input.id) };
+    if (!inserted) return replay(tx);
     await tx.insert(posLines).values(
       lines.map((line, position) => ({
         saleId: input.id,
@@ -234,7 +237,7 @@ export async function listSales(db: Db, user: SessionUser, { q, page, pageSize }
   return { rows, total: counted!.total };
 }
 
-/** The sale with its lines, for the detail sheet and reprints. */
+/** The sale with its lines, for the detail sheet and reprints. Receipt-safe: no cost prices. */
 export async function getSale(db: Db, id: string, user?: SessionUser) {
   const [sale] = await db
     .select(saleColumns)
@@ -245,7 +248,14 @@ export async function getSale(db: Db, id: string, user?: SessionUser) {
   if (!sale) throw new DomainError("not_found", "Struk tidak ditemukan");
   const lines = await db
     .select({
-      ...getTableColumns(posLines),
+      id: posLines.id,
+      position: posLines.position,
+      productId: posLines.productId,
+      note: posLines.note,
+      qty: posLines.qty,
+      unitPrice: posLines.unitPrice,
+      discountAmount: posLines.discountAmount,
+      lineTotal: posLines.lineTotal,
       productName: products.name,
       variant: products.variant,
       unit: products.unit,
@@ -273,8 +283,12 @@ export async function voidSale(db: Db, id: string, reason: string, userId: strin
     const date = businessDate();
     const note = `Void ${sale.number}: ${reason}`;
 
+    const lines = await tx
+      .select({ productId: posLines.productId, qty: posLines.qty, unitCost: posLines.unitCost })
+      .from(posLines)
+      .where(eq(posLines.saleId, id));
     await tx.insert(stockMovements).values(
-      sale.lines.map((line) => ({
+      lines.map((line) => ({
         productId: line.productId,
         date,
         qty: line.qty,

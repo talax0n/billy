@@ -13,7 +13,7 @@ export const posRoutes = new Hono<AppEnv>()
     c.json(await listSales(c.var.db, c.var.user, c.req.valid("query"))),
   )
   .post("/sales", validate("json", posSaleInput), async (c) => {
-    const { created, sale } = await recordSale(c.var.db, c.req.valid("json"), c.var.user.id);
+    const { created, sale } = await recordSale(c.var.db, c.req.valid("json"), c.var.user);
     return c.json(sale, created ? 201 : 200);
   })
   .get("/sales/:id", validate("param", idParam), async (c) =>

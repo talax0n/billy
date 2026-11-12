@@ -229,6 +229,22 @@ describe("history, reprint and void", () => {
     expect(all.total).toBe(2);
   });
 
+  it("answers a kasir replaying another cashier's sale id with 404, like GET", async () => {
+    const res = await post(kasir, other);
+    expect([res.status, await res.json()]).toEqual([404, { error: "Struk tidak ditemukan" }]);
+  });
+
+  it("never shows the cost price to a kasir", async () => {
+    const fresh = saleBody({ number: "K1-261113-0012" });
+    const created = (await (await post(kasir, fresh)).json()) as { lines: object[] };
+    const replayed = (await (await post(kasir, fresh)).json()) as { lines: object[] };
+    const fetched = (await (await call(`/api/pos/sales/${fresh.id}`, { cookie: kasir })).json()) as { lines: object[] };
+    expect([created, replayed, fetched].flatMap((sale) => sale.lines.map((line) => "unitCost" in line))).toEqual([
+      false, false, false, false, false, false,
+    ]);
+    await call(`/api/pos/sales/${fresh.id}/void`, { method: "POST", cookie: staff, body: { reason: "Uji" } });
+  });
+
   it("returns a sale with its lines for reprint", async () => {
     const res = await call(`/api/pos/sales/${own.id}`, { cookie: kasir });
     expect(await res.json()).toMatchObject({
