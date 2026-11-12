@@ -17,9 +17,11 @@ import {
   WalletCards,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { PurchasesPage, PayablesPage, StockMovementsPage } from "./routes/purchases/pages.tsx";
+import { PayablesPage } from "./routes/payables/payables-page.tsx";
 import { ProductsPage } from "./routes/products/products-page.tsx";
+import { PurchasesPage } from "./routes/purchases/purchases-page.tsx";
 import { SettingsPage } from "./routes/settings/settings-page.tsx";
+import { StockPage } from "./routes/stock/stock-page.tsx";
 
 export const navGroups = ["Umum", "Transaksi", "Keuangan", "Persediaan"] as const;
 
@@ -51,7 +53,7 @@ export const navItems: NavItem[] = [
   { group: "Keuangan", path: "/piutang", label: "Piutang", icon: HandCoins },
   { group: "Keuangan", path: "/hutang", label: "Hutang", icon: ArrowLeftRight, page: PayablesPage },
   { group: "Persediaan", path: "/produk", label: "Produk", icon: Package, page: ProductsPage },
-  { group: "Persediaan", path: "/mutasi-stok", label: "Mutasi Stok", icon: Boxes, page: StockMovementsPage },
+  { group: "Persediaan", path: "/mutasi-stok", label: "Mutasi Stok", icon: Boxes, page: StockPage },
   { group: "Persediaan", path: "/kontak", label: "Kontak", icon: Users },
   { group: null, path: "/pengaturan", label: "Pengaturan", icon: Settings, page: SettingsPage },
 ];
