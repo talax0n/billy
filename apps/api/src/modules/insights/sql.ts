@@ -1,5 +1,5 @@
 import { rupiah, type Rupiah } from "@billy/core";
-import { cashEntries } from "@billy/db";
+import { cashEntries, type posSales, type salesInvoices } from "@billy/db";
 import { sql, type SQL } from "drizzle-orm";
 
 /** A summed bigint column as whole rupiah; an empty sum is 0. */
@@ -10,3 +10,10 @@ export const signedAmount = sql`case when ${cashEntries.direction} = 'in' then $
 
 /** Every read of one report sees the same ledger state. */
 export const snapshot = { isolationLevel: "repeatable read" } as const;
+
+/**
+ * Sales revenue of a document: the lines net of the document discount, before any PPN
+ * (`subtotal` is the sum of line totals). Gross profit is this minus `sum(qty * unit_cost)`.
+ */
+export const netSales = (document: typeof salesInvoices | typeof posSales) =>
+  sql`${document.subtotal} - ${document.discountAmount}`;

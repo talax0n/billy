@@ -40,7 +40,7 @@ import {
   sql,
   type AnyColumn,
 } from "drizzle-orm";
-import { money, signedAmount, snapshot } from "./sql.ts";
+import { money, netSales, signedAmount, snapshot } from "./sql.ts";
 
 /** Void timestamps count from their Jakarta business date. */
 const activeAt = (date: AnyColumn, voidedAt: AnyColumn, at: string) =>
@@ -67,25 +67,25 @@ export async function periodTotals(
 ): Promise<PeriodTotals> {
   const sold = (date: AnyColumn, voidedAt: AnyColumn) =>
     and(between(date, window.from, window.to), isNull(voidedAt));
-  const profit = (line: typeof salesLines | typeof posLines) =>
-    money(sql`sum(${line.lineTotal} - ${line.qty} * ${line.unitCost})`);
-  const [[invoice], [pos], [invoiceProfit], [posProfit], [flow]] =
+  const cost = (line: typeof salesLines | typeof posLines) =>
+    money(sql`sum(${line.qty} * ${line.unitCost})`);
+  const [[invoice], [pos], [invoiceCost], [posCost], [flow]] =
     await Promise.all([
       db
-        .select({ total: money(sql`sum(${salesInvoices.total})`) })
+        .select({ total: money(sql`sum(${netSales(salesInvoices)})`) })
         .from(salesInvoices)
         .where(sold(salesInvoices.date, salesInvoices.voidedAt)),
       db
-        .select({ total: money(sql`sum(${posSales.total})`) })
+        .select({ total: money(sql`sum(${netSales(posSales)})`) })
         .from(posSales)
         .where(sold(posSales.date, posSales.voidedAt)),
       db
-        .select({ profit: profit(salesLines) })
+        .select({ cost: cost(salesLines) })
         .from(salesLines)
         .innerJoin(salesInvoices, eq(salesInvoices.id, salesLines.invoiceId))
         .where(sold(salesInvoices.date, salesInvoices.voidedAt)),
       db
-        .select({ profit: profit(posLines) })
+        .select({ cost: cost(posLines) })
         .from(posLines)
         .innerJoin(posSales, eq(posSales.id, posLines.saleId))
         .where(sold(posSales.date, posSales.voidedAt)),
@@ -104,7 +104,7 @@ export async function periodTotals(
   return {
     invoiceSales: invoice!.total,
     posSales: pos!.total,
-    profit: rupiah(invoiceProfit!.profit + posProfit!.profit),
+    profit: rupiah(invoice!.total + pos!.total - invoiceCost!.cost - posCost!.cost),
     incoming: flow!.incoming,
     outgoing: flow!.outgoing,
   };

@@ -10,7 +10,7 @@ import {
 } from "@billy/db";
 import { and, between, eq, isNull, sql } from "drizzle-orm";
 import ExcelJS from "exceljs";
-import { money, signedAmount, snapshot } from "./sql.ts";
+import { money, netSales, signedAmount, snapshot } from "./sql.ts";
 
 export const RUPIAH_FORMAT = '"Rp" #,##0;[Red]("Rp" #,##0)';
 
@@ -28,9 +28,9 @@ function salesRows(db: Db, window: DateWindow) {
         date: document.date,
         number: document.number,
         source: sql<string>`${source}::text`,
-        total: document.total,
+        total: money(netSales(document)),
         profit: money(
-          sql`sum(${line.lineTotal} - ${line.qty} * ${line.unitCost})`,
+          sql`${netSales(document)} - coalesce(sum(${line.qty} * ${line.unitCost}), 0)`,
         ),
       })
       .from(document)
