@@ -1,3 +1,4 @@
+import { rankProducts } from "@billy/core";
 import { Search } from "lucide-react";
 import type { KeyboardEvent, Ref } from "react";
 import { cx } from "../lib/cx.ts";
@@ -6,17 +7,9 @@ import { Kbd, money } from "./ui.tsx";
 
 const MAX_RESULTS = 8;
 
-/** Every whitespace-separated term must appear in the name, variant, code, barcode or category. */
-export function searchProducts(products: CatalogProduct[], query: string): CatalogProduct[] {
-  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
-  if (terms.length === 0) return [];
-  return products
-    .filter((p) => {
-      const haystack = `${p.name} ${p.variant} ${p.code ?? ""} ${p.barcode ?? ""} ${p.categoryName ?? ""}`.toLowerCase();
-      return terms.every((t) => haystack.includes(t));
-    })
-    .slice(0, MAX_RESULTS);
-}
+/** The best matches for the search field; the ranking is shared with the back-office product search. */
+export const searchProducts = (products: CatalogProduct[], query: string): CatalogProduct[] =>
+  rankProducts(products, query).slice(0, MAX_RESULTS);
 
 /** A scanner types the barcode and Enter: an exact barcode or code match wins over the highlighted row. */
 export function exactMatch(products: CatalogProduct[], query: string): CatalogProduct | undefined {

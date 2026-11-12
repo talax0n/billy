@@ -97,3 +97,15 @@ it("returns 404 for an unknown product", async () => {
   expect(res.status).toBe(404);
   expect(await res.json()).toEqual({ error: "Produk tidak ditemukan" });
 });
+
+it("ranks a search: whole-word matches before the rest, and pages the ranked list", async () => {
+  await create({ ...product, code: "AV-25", name: "Avian Tembok", variant: "Putih 25 kg" });
+  await create({ ...product, code: "AV-5", name: "Avian Tembok", variant: "Putih 5 kg" });
+  const search = async (query: string) =>
+    (await (await call(`/api/products?${query}`, { cookie })).json()) as { total: number; rows: { code: string }[] };
+
+  const all = await search("q=avian%20putih%205");
+  expect([all.total, all.rows.map((r) => r.code)]).toEqual([2, ["AV-5", "AV-25"]]);
+  const second = await search("q=avian%20putih%205&page=2&pageSize=1");
+  expect([second.total, second.rows.map((r) => r.code)]).toEqual([2, ["AV-25"]]);
+});

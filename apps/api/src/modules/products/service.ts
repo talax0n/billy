@@ -2,6 +2,7 @@ import {
   businessDate,
   DomainError,
   type PaginationQuery,
+  rankProducts,
   type productInput,
   type stockAdjustmentInput,
 } from "@billy/core";
@@ -47,15 +48,24 @@ function selectProducts(db: Db) {
     .leftJoin(stock, eq(stock.productId, products.id));
 }
 
+/**
+ * One page of products. A search is ranked with `rankProducts` (exact code first, then whole
+ * words…), so its matches are ranked and paged here rather than in SQL.
+ */
 export async function listProducts(db: Db, { q, page, pageSize }: PaginationQuery) {
-  const where = searchWhere(q);
+  const offset = (page - 1) * pageSize;
+  const order = [desc(products.active), asc(products.name), asc(products.variant)];
+  if (q) {
+    // ponytail: every match is loaded to rank it; fine while a search matches a few hundred products.
+    const matches = rankProducts(await selectProducts(db).where(searchWhere(q)).orderBy(...order), q);
+    return { rows: matches.slice(offset, offset + pageSize), total: matches.length };
+  }
   const [rows, [counted]] = await Promise.all([
     selectProducts(db)
-      .where(where)
-      .orderBy(desc(products.active), asc(products.name), asc(products.variant))
+      .orderBy(...order)
       .limit(pageSize)
-      .offset((page - 1) * pageSize),
-    db.select({ total: count() }).from(products).where(where),
+      .offset(offset),
+    db.select({ total: count() }).from(products),
   ]);
   return { rows, total: counted!.total };
 }
