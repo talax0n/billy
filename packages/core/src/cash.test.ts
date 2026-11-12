@@ -1,17 +1,31 @@
-import { describe, expect, it } from "vitest";
-import { cashBalance, runningBalances, validateTransfer } from "./cash.ts";
+import { expect, it } from "vitest";
+import { manualCashCategory, monthRange, reversalOf, transferMovements } from "./cash.ts";
 import { rupiah } from "./money.ts";
 
-describe("cash", () => {
-  const entries = [{ direction: "in" as const, amount: rupiah(100000) }, { direction: "out" as const, amount: rupiah(25000) }];
-  it("derives balances with incoming money positive", () => {
-    expect(cashBalance(entries)).toBe(75000);
-    expect(runningBalances(entries, rupiah(5000)).map((entry) => entry.balance)).toEqual([105000, 80000]);
-    expect(cashBalance([])).toBe(0);
+it("moves a transfer out of the source and into the destination", () => {
+  expect(transferMovements({ fromAccountId: "kas", toAccountId: "bca", date: "2026-11-13", amount: rupiah(2_500_000) })).toEqual([
+    { accountId: "kas", date: "2026-11-13", direction: "out", amount: 2_500_000 },
+    { accountId: "bca", date: "2026-11-13", direction: "in", amount: 2_500_000 },
+  ]);
+});
+
+it("reverses an entry on the same account and date in the opposite direction", () => {
+  expect(reversalOf({ accountId: "kas", date: "2026-11-02", direction: "out", amount: rupiah(150_000) })).toEqual({
+    accountId: "kas",
+    date: "2026-11-02",
+    direction: "in",
+    amount: 150_000,
   });
-  it("rejects invalid transfers", () => {
-    expect(() => validateTransfer({ fromAccountId: "a", toAccountId: "a", amount: rupiah(1) })).toThrow();
-    expect(() => validateTransfer({ fromAccountId: "a", toAccountId: "b", amount: rupiah(0) })).toThrow();
-    expect(() => validateTransfer({ fromAccountId: "a", toAccountId: "b", amount: rupiah(1) })).not.toThrow();
-  });
+  expect(reversalOf({ accountId: "bca", date: "2026-11-02", direction: "in", amount: rupiah(1) }).direction).toBe("out");
+});
+
+it("categorises manual cash by direction", () => {
+  expect(manualCashCategory("in")).toBe("other_in");
+  expect(manualCashCategory("out")).toBe("other_out");
+});
+
+it("turns a month into a half-open date range, across the year end", () => {
+  expect(monthRange("2026-11")).toEqual({ from: "2026-11-01", until: "2026-12-01" });
+  expect(monthRange("2026-12")).toEqual({ from: "2026-12-01", until: "2027-01-01" });
+  expect(monthRange("2027-01")).toEqual({ from: "2027-01-01", until: "2027-02-01" });
 });
