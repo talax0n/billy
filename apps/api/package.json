@@ -10,7 +10,9 @@
     "typecheck": "tsc -p .",
     "test": "vitest run",
     "seed:demo": "tsx src/modules/insights/seed-demo.ts",
-    "import:legacy": "tsx src/legacy-import/import.ts"
+    "import:legacy": "tsx src/legacy-import/import.ts",
+    "build:vercel": "tsx build-vercel.ts",
+    "deploy:db": "tsx src/deploy-db.ts"
   },
   "dependencies": {
     "@billy/core": "workspace:*",
@@ -24,6 +26,7 @@
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
+    "esbuild": "0.28.2",
     "tsx": "^4.23.15",
     "vitest": "^5.1.0"
   }

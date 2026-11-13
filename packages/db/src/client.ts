@@ -1,11 +1,8 @@
 import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { PGlite } from "@electric-sql/pglite";
 import { drizzle as drizzlePg } from "drizzle-orm/node-postgres";
 import { migrate as migratePg } from "drizzle-orm/node-postgres/migrator";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
-import { drizzle as drizzlePglite } from "drizzle-orm/pglite";
-import { migrate as migratePglite } from "drizzle-orm/pglite/migrator";
 import pg from "pg";
 import * as schema from "./schema.ts";
 
@@ -32,6 +29,12 @@ export async function createDb(options: { url?: string | undefined; dataDir?: st
     return { db, migrate: () => migratePg(db, { migrationsFolder }), close: () => pool.end() };
   }
   if (options.dataDir) mkdirSync(options.dataDir, { recursive: true });
+  // Loaded only here, so the deployed API (Postgres only) never bundles PGlite and its WASM.
+  const [{ PGlite }, { drizzle: drizzlePglite }, { migrate: migratePglite }] = await Promise.all([
+    import("@electric-sql/pglite"),
+    import("drizzle-orm/pglite"),
+    import("drizzle-orm/pglite/migrator"),
+  ]);
   const client = await PGlite.create(options.dataDir);
   const db = drizzlePglite({ client, schema, casing: "snake_case" });
   return { db, migrate: () => migratePglite(db, { migrationsFolder }), close: () => client.close() };
