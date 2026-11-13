@@ -9,7 +9,8 @@
     "dev": "tsx watch src/dev.ts",
     "typecheck": "tsc -p .",
     "test": "vitest run",
-    "seed:demo": "tsx src/modules/insights/seed-demo.ts"
+    "seed:demo": "tsx src/modules/insights/seed-demo.ts",
+    "import:legacy": "tsx src/legacy-import/import.ts"
   },
   "dependencies": {
     "@billy/core": "workspace:*",

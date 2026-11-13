@@ -1,9 +1,25 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "tasks": {
-    "build": { "dependsOn": ["^build"], "outputs": ["dist/**"] },
+    "build": {
+      "dependsOn": [
+        "^build"
+      ],
+      "outputs": [
+        "dist/**"
+      ]
+    },
     "typecheck": {},
     "test": {},
-    "dev": { "cache": false, "persistent": true }
+    "dev": {
+      "cache": false,
+      "persistent": true,
+      "passThroughEnv": [
+        "PGLITE_DIR",
+        "DATABASE_URL",
+        "SEED_ADMIN_PASSWORD",
+        "PORT"
+      ]
+    }
   }
 }

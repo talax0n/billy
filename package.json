@@ -7,6 +7,7 @@
   },
   "scripts": {
     "dev": "turbo run dev --filter=!@billy/desktop",
+    "dev:legacy": "PGLITE_DIR=$PWD/.data/legacy turbo run dev --filter=!@billy/desktop",
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",

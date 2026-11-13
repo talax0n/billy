@@ -180,6 +180,7 @@ Decided on 2026-11-12:
 
 - **Scope.** The new app serves one shop and is for internal use. It is not multi-tenant and it is not SaaS.
 - **Data.** Records are picked and entered by hand from the existing website. There is no automated migration of the legacy database.
+  *Superseded 2026-11-13:* the owner asked for the full history, so `tools/legacy/` now downloads it (read-only) and `apps/api/src/legacy-import/` imports it. See `tools/legacy/README.md`.
 
 - **Accounting model.** The app uses a correct cash book plus open invoices. Invoice lines store the product cost, so double-entry postings can be generated later without a schema change. See §9.
 
