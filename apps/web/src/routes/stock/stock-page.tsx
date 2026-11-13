@@ -1,6 +1,6 @@
 import { formatDate, formatRupiah, type stockReasons } from "@billy/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import type { InferResponseType } from "hono/client";
 import { SlidersHorizontal } from "lucide-react";
 import { useState } from "react";
@@ -9,7 +9,6 @@ import { type Column, DataTable, usePagedQuery } from "../../components/ui/data-
 import { Select } from "../../components/ui/field.tsx";
 import { EmptyState, FilterRow, PageBody, PageHeader } from "../../components/ui/page.tsx";
 import { api, unwrap } from "../../lib/api.ts";
-import { cx } from "../../lib/cx.ts";
 import { StockAdjustDialog } from "../products/stock-adjust-dialog.tsx";
 import { StockQty } from "../products/stock-qty.tsx";
 import { timeOfDay } from "../purchases/bits.tsx";
@@ -31,60 +30,43 @@ const reasonLabels: Record<Reason, string> = {
 const qty = new Intl.NumberFormat("id-ID");
 const signed = (n: number) => (n > 0 ? `+${qty.format(n)}` : qty.format(n));
 
-/** Mutasi Stok: the ledger of every stock movement, and the products that need restocking. */
+/** Mutasi Stok: the ledger of every stock movement; `?productId=` opens it on one product. */
 export function StockPage() {
-  const [tab, setTab] = useState<"ledger" | "alerts">("ledger");
-  const [productId, setProductId] = useState<string | null>(null);
-  const alerts = usePagedQuery(["stock", "alerts"], (params) =>
-    unwrap(api.stock.alerts.$get({ query: { page: String(params.page), pageSize: String(params.pageSize) } })),
-  );
-  const alertCount = alerts.query.data?.total;
-  const tabs = [
-    { key: "ledger", label: "Mutasi" },
-    { key: "alerts", label: `Stok minus / di bawah minimum${alertCount ? ` (${alertCount})` : ""}` },
-  ] as const;
-
+  const search: { productId?: string } = useSearch({ strict: false });
+  const [productId, setProductId] = useState<string | null>(search.productId ?? null);
   return (
     <>
       <PageHeader title="Mutasi Stok" />
-      <div role="tablist" className="flex gap-1 overflow-x-auto border-b border-line px-6 max-md:px-4">
-        {tabs.map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            role="tab"
-            aria-selected={tab === t.key}
-            onClick={() => setTab(t.key)}
-            className={cx(
-              "-mb-px border-b-2 px-2 py-2.5 text-muted",
-              tab === t.key ? "border-ink font-medium text-ink" : "border-transparent hover:text-ink",
-            )}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
       <PageBody>
-        {tab === "ledger" ? (
-          <Ledger productId={productId} onProductChange={setProductId} />
-        ) : (
-          <DataTable
-            paged={alerts}
-            search={false}
-            onRowClick={(row) => {
-              setProductId(row.id);
-              setTab("ledger");
-            }}
-            empty={<EmptyState title="Semua stok aman" description="Tidak ada produk aktif yang stoknya minus atau di bawah minimum." />}
-            columns={[
-              { header: "Kode", cell: (p) => <span className="text-muted">{p.code ?? "—"}</span>, className: "w-28" },
-              { header: "Produk", cell: (p) => [p.name, p.variant].filter(Boolean).join(" ") },
-              { header: "Stok", align: "right", cell: (p) => <StockQty product={p} /> },
-              { header: "Minimum", align: "right", cell: (p) => qty.format(p.minStock) },
-              { header: "Kurang", align: "right", cell: (p) => <span className="text-down">{qty.format(p.minStock - p.stock)}</span> },
-            ]}
-          />
-        )}
+        <Ledger productId={productId} onProductChange={setProductId} />
+      </PageBody>
+    </>
+  );
+}
+
+/** Stok Menipis: active products that are negative or under their minimum; a row opens its ledger. */
+export function StockAlertsPage() {
+  const navigate = useNavigate();
+  const alerts = usePagedQuery(["stock", "alerts"], (params) =>
+    unwrap(api.stock.alerts.$get({ query: { page: String(params.page), pageSize: String(params.pageSize) } })),
+  );
+  return (
+    <>
+      <PageHeader title="Stok Menipis" />
+      <PageBody>
+        <DataTable
+          paged={alerts}
+          search={false}
+          onRowClick={(row) => void navigate({ to: "/mutasi-stok", search: { productId: row.id } })}
+          empty={<EmptyState title="Semua stok aman" description="Tidak ada produk aktif yang stoknya minus atau di bawah minimum." />}
+          columns={[
+            { header: "Kode", cell: (p) => <span className="text-muted">{p.code ?? "—"}</span>, className: "w-28" },
+            { header: "Produk", cell: (p) => [p.name, p.variant].filter(Boolean).join(" ") },
+            { header: "Stok", align: "right", cell: (p) => <StockQty product={p} /> },
+            { header: "Minimum", align: "right", cell: (p) => qty.format(p.minStock) },
+            { header: "Kurang", align: "right", cell: (p) => <span className="text-down">{qty.format(p.minStock - p.stock)}</span> },
+          ]}
+        />
       </PageBody>
     </>
   );

@@ -18,6 +18,7 @@ import {
   Settings,
   ShoppingCart,
   Users,
+  TriangleAlert,
   Wallet,
   WalletCards,
 } from "lucide-react";
@@ -39,7 +40,7 @@ import { RiwayatKasirPage } from "./routes/riwayat-kasir/riwayat-kasir-page.tsx"
 import { SettingsPage } from "./routes/settings/settings-page.tsx";
 import { OpnamePage } from "./routes/opname/opname-page.tsx";
 import { ShiftsPage } from "./routes/shifts/shifts-page.tsx";
-import { StockPage } from "./routes/stock/stock-page.tsx";
+import { StockAlertsPage, StockPage } from "./routes/stock/stock-page.tsx";
 import { DailySummaryPage } from "./routes/watchdog/daily-page.tsx";
 
 export const navGroups = ["Umum", "Transaksi", "Keuangan", "Persediaan"] as const;
@@ -81,6 +82,7 @@ export const navItems: NavItem[] = [
   { group: "hidden", section: "/piutang", path: "/hutang", label: "Hutang", icon: ArrowLeftRight, page: PayablesPage },
   { group: "Persediaan", path: "/produk", label: "Produk & Stok", tab: "Produk", icon: Package, page: ProductsPage },
   { group: "hidden", section: "/produk", path: "/mutasi-stok", label: "Mutasi Stok", icon: Boxes, page: StockPage },
+  { group: "hidden", section: "/produk", path: "/stok-menipis", label: "Stok Menipis", icon: TriangleAlert, page: StockAlertsPage },
   { group: "hidden", section: "/produk", path: "/stok-opname", label: "Stok Opname", icon: ClipboardList, page: OpnamePage },
   { group: "Persediaan", path: "/kontak", label: "Kontak", icon: Users, page: ContactsPage },
   // In the account menu at the bottom of the sidebar.
