@@ -23,7 +23,7 @@ import {
   stockAdjustmentInput,
   uuidv7,
 } from "@billy/core";
-import { categories, createDb, products, settings, stockMovements, users } from "@billy/db";
+import { categories, createDb, isEmpty, products, settings, stockMovements, users } from "@billy/db";
 import { sql } from "drizzle-orm";
 import { hashPassword } from "../auth/password.ts";
 import { createAccount, createCashEntry } from "../modules/cash/service.ts";
@@ -49,8 +49,10 @@ interface Detail {
 
 const root = fileURLToPath(new URL("../../../../", import.meta.url));
 const src = `${root}.legacy/`;
+// DATABASE_URL: import into that (empty) Postgres instead of a new local PGlite directory.
+const url = process.env.DATABASE_URL;
 const dataDir = process.argv[2] ?? `${root}.data/legacy`;
-if (existsSync(dataDir)) throw new Error(`${dataDir} already exists. Delete it first; the import always starts from an empty database.`);
+if (!url && existsSync(dataDir)) throw new Error(`${dataDir} already exists. Delete it first; the import always starts from an empty database.`);
 
 const list = (name: string): Row[] => JSON.parse(readFileSync(`${src}lists/${name}.json`, "utf8"));
 const details = (name: string): Detail[] => {
@@ -90,9 +92,10 @@ async function attempt(kind: string, ref: string, fn: () => Promise<unknown>) {
   if ((c.ok + c.failed) % 1000 === 0) console.log(`  ${kind} ${c.ok + c.failed}`);
 }
 
-const database = await createDb({ dataDir });
+const database = url ? await createDb({ url }) : await createDb({ dataDir });
 await database.migrate();
 const { db } = database;
+if (!(await isEmpty(db))) throw new Error("The target database is not empty; the import always starts from an empty database.");
 
 // --- users and settings -----------------------------------------------------------------------
 const [admin] = await db
