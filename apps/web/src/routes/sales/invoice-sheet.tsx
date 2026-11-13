@@ -1,8 +1,9 @@
 import { formatDate, formatRupiah, paymentMethodLabels, rupiah } from "@billy/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Ban, FileText, HandCoins, Truck } from "lucide-react";
+import { Ban, FileText, HandCoins, Pencil, Truck } from "lucide-react";
 import { useState } from "react";
+import { RevisionLinks } from "../../components/revision-links.tsx";
 import { StatusTag } from "../../components/ui/badge.tsx";
 import { Button } from "../../components/ui/button.tsx";
 import { Sheet } from "../../components/ui/dialog.tsx";
@@ -26,15 +27,32 @@ export function InvoiceSheet({
   onClose: () => void;
 }) {
   const invoice = useQuery({ ...invoiceQuery(invoiceId ?? ""), enabled: invoiceId !== null });
+  const [editing, setEditing] = useState(false);
+  const number = invoice.data?.number ?? "Memuat…";
   return (
     <Sheet
       open
       onClose={onClose}
-      className={invoiceId === null ? "max-w-5xl" : "max-w-2xl"}
-      title={invoiceId === null ? "Faktur penjualan baru" : (invoice.data?.number ?? "Memuat…")}
+      className={invoiceId === null || editing ? "max-w-5xl" : "max-w-2xl"}
+      title={invoiceId === null ? "Faktur penjualan baru" : editing ? `Ubah ${number}` : number}
       description={invoice.data && `${invoice.data.customer.name} · ${formatDate(invoice.data.date)}`}
     >
-      {invoiceId === null ? <InvoiceForm onSaved={onOpenInvoice} /> : invoice.data && <InvoiceDetail invoice={invoice.data} />}
+      {invoiceId === null ? (
+        <InvoiceForm onSaved={onOpenInvoice} />
+      ) : (
+        invoice.data &&
+        (editing ? (
+          <InvoiceForm
+            edit={invoice.data}
+            onSaved={(id) => {
+              setEditing(false);
+              onOpenInvoice(id);
+            }}
+          />
+        ) : (
+          <InvoiceDetail invoice={invoice.data} onEdit={() => setEditing(true)} />
+        ))
+      )}
     </Sheet>
   );
 }
@@ -42,7 +60,7 @@ export function InvoiceSheet({
 const money = (value: number) => formatRupiah(rupiah(value));
 const openPrint = (path: string) => window.open(path, "_blank", "noopener");
 
-function InvoiceDetail({ invoice }: { invoice: Invoice }) {
+function InvoiceDetail({ invoice, onEdit }: { invoice: Invoice; onEdit: () => void }) {
   const queryClient = useQueryClient();
   const [dialog, setDialog] = useState<"pay" | "void" | { voidPayment: string } | null>(null);
   const voided = invoice.state.status === "void";
@@ -58,6 +76,7 @@ function InvoiceDetail({ invoice }: { invoice: Invoice }) {
       <div className="flex flex-wrap items-center gap-2">
         <StatusTag state={invoice.state} />
         {voided && <span className="text-muted">Alasan void: {invoice.voidReason}</span>}
+        <RevisionLinks path="/penjualan" revisionOf={invoice.revisionOf} revisedBy={invoice.revisedBy} />
         {invoice.quotation && (
           <Link to="/penawaran" search={{ id: invoice.quotation.id }} className="text-ink-2 underline hover:text-ink">
             Dari penawaran {invoice.quotation.number}
@@ -78,6 +97,12 @@ function InvoiceDetail({ invoice }: { invoice: Invoice }) {
             <Truck className="size-3.5" />
             Cetak surat jalan
           </Button>
+          {!voided && (
+            <Button size="sm" onClick={onEdit}>
+              <Pencil className="size-3.5" />
+              Ubah
+            </Button>
+          )}
           {!voided && (
             <Button
               size="sm"

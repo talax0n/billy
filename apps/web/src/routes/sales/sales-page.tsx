@@ -2,6 +2,7 @@ import { formatDate, formatRupiah, rupiah, type SalesStatusFilter, salesStatusFi
 import { Plus } from "lucide-react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useState } from "react";
+import { ExportButton } from "../../components/export-button.tsx";
 import { StatusTag } from "../../components/ui/badge.tsx";
 import { Button } from "../../components/ui/button.tsx";
 import { DataTable, usePagedQuery } from "../../components/ui/data-table.tsx";
@@ -32,6 +33,7 @@ export function SalesPage() {
   const [period, setPeriod] = useState<Period>(() => presetPeriod("month"));
   const [status, setStatus] = useState<SalesStatusFilter | "">("");
   const [customer, setCustomer] = useState<Contact | null>(null);
+  const filters = { ...periodQuery(period), ...(status && { status }), ...(customer && { customerId: customer.id }) };
   const paged = usePagedQuery(["sales", "list", period, status, customer?.id], (params) =>
     unwrap(
       api.sales.$get({
@@ -55,10 +57,13 @@ export function SalesPage() {
       <PageHeader
         title="Penjualan"
         actions={
-          <Button variant="primary" onClick={() => setCreating(true)}>
-            <Plus className="size-4" />
-            Faktur baru
-          </Button>
+          <>
+            <ExportButton path={`/api/sales/export.xlsx?${new URLSearchParams({ ...filters, ...(paged.q && { q: paged.q }) })}`} />
+            <Button variant="primary" onClick={() => setCreating(true)}>
+              <Plus className="size-4" />
+              Faktur baru
+            </Button>
+          </>
         }
       />
       <PageBody>

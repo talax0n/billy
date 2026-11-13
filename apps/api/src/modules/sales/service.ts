@@ -1,6 +1,8 @@
 import {
   ageReceivables,
   addDays,
+  type ApprovalKind,
+  approvalKindLabels,
   assertInvoiceVoidable,
   assertPaymentAllowed,
   breachMessage,
@@ -11,8 +13,11 @@ import {
   DomainError,
   formatBp,
   formatRupiah,
+  invoiceStatusLabel,
+  revisionNumber,
   rupiah,
   saleLimitBreaches,
+  type salesInvoiceEditInput,
   type salesInvoiceInput,
   type salesListQuery,
   type salesPaymentInput,
@@ -20,11 +25,13 @@ import {
 } from "@billy/core";
 import {
   accounts,
+  bundleInvoices,
   cashEntries,
   contacts,
   type Db,
   payments,
   products,
+  invoiceBundles,
   quotations,
   salesInvoices,
   salesLines,
@@ -40,10 +47,15 @@ import { costAsOf } from "../../lib/cost-as-of.ts";
 import { getLimits } from "../pos/service.ts";
 import { allocateDocNumber } from "../../lib/doc-number.ts";
 import { invoiceState } from "../../lib/invoice-state.ts";
+import { revisionLinks } from "../../lib/revisions.ts";
 import { matchAllTerms } from "../../lib/search.ts";
+import { assertExportable, xlsxFile } from "../../lib/xlsx.ts";
 
 type PaymentFields = Omit<z.output<typeof salesPaymentInput>, "date">;
 type InvoiceInput = z.output<typeof salesInvoiceInput>;
+type InvoiceEditInput = z.output<typeof salesInvoiceEditInput>;
+/** The document itself, without the payment and approval that may come with it. */
+type InvoiceFields = Omit<InvoiceInput, "payment" | "approval">;
 
 function invoiceQuery(db: Db) {
   const state = invoiceState(db, salesInvoices, payments.salesInvoiceId);
@@ -98,16 +110,21 @@ export async function invoicesWithState(db: Db, where: SQL | undefined) {
   return rows.map((row) => withState(row, today));
 }
 
-export async function listInvoices(db: Db, query: z.output<typeof salesListQuery>) {
-  const today = businessDate();
-  const invoices = invoiceQuery(db);
-  const where = and(
+type ListFilter = Omit<z.output<typeof salesListQuery>, "page" | "pageSize">;
+
+const listWhere = (invoices: ReturnType<typeof invoiceQuery>, query: ListFilter, today: string) =>
+  and(
     query.from ? gte(salesInvoices.date, query.from) : undefined,
     query.to ? lte(salesInvoices.date, query.to) : undefined,
     query.customerId ? eq(salesInvoices.customerId, query.customerId) : undefined,
     matchAllTerms(sql`${salesInvoices.number} || ' ' || ${contacts.name}`, query.q),
     query.status ? invoices.statusWhere(query.status, today) : undefined,
   );
+
+export async function listInvoices(db: Db, query: z.output<typeof salesListQuery>) {
+  const today = businessDate();
+  const invoices = invoiceQuery(db);
+  const where = listWhere(invoices, query, today);
   const [rows, [summary]] = await Promise.all([
     invoices
       .select()
@@ -131,6 +148,37 @@ export async function listInvoices(db: Db, query: z.output<typeof salesListQuery
   };
 }
 
+/** Every invoice the Penjualan filters match, oldest first, as an .xlsx with a totals row. */
+export async function exportInvoices(db: Db, query: ListFilter) {
+  const today = businessDate();
+  const { rows, summary } = await db.transaction(
+    async (tx) => {
+      const invoices = invoiceQuery(tx);
+      const where = listWhere(invoices, query, today);
+      const [summary] = await invoices.aggregate(today).where(where);
+      assertExportable(summary!.rows);
+      const rows = await invoices.select().where(where).orderBy(asc(salesInvoices.date), asc(salesInvoices.number));
+      return { rows: rows.map((row) => withState(row, today)), summary: summary! };
+    },
+    { isolationLevel: "repeatable read" },
+  );
+  return xlsxFile(
+    "Penjualan",
+    [
+      { header: "Tanggal", width: 13, kind: "date" },
+      { header: "Nomor", width: 22, kind: "text" },
+      { header: "Pelanggan", width: 30, kind: "text" },
+      { header: "Jatuh tempo", width: 13, kind: "date" },
+      { header: "Status", width: 12, kind: "text" },
+      { header: "Total", width: 18, kind: "money" },
+      { header: "Dibayar", width: 18, kind: "money" },
+      { header: "Sisa", width: 18, kind: "money" },
+    ],
+    rows.map((r) => [r.date, r.number, r.customerName, r.dueDate, invoiceStatusLabel(r.state), r.total, r.paid, r.state.outstanding]),
+    [null, `${summary.count} faktur, tanpa void`, null, null, null, summary.total, summary.paid, summary.outstanding],
+  );
+}
+
 export async function getInvoice(db: Db, id: string) {
   const [invoice] = await db
     .select({
@@ -145,6 +193,7 @@ export async function getInvoice(db: Db, id: string) {
       discountAmount: salesInvoices.discountAmount,
       total: salesInvoices.total,
       note: salesInvoices.note,
+      revisionOfId: salesInvoices.revisionOf,
       createdAt: salesInvoices.createdAt,
       createdByName: users.name,
       voidedAt: salesInvoices.voidedAt,
@@ -163,7 +212,7 @@ export async function getInvoice(db: Db, id: string) {
     .where(eq(salesInvoices.id, id));
   if (!invoice) throw new DomainError("not_found", "Faktur tidak ditemukan");
 
-  const [lines, paymentRows, [quotation]] = await Promise.all([
+  const [lines, paymentRows, [quotation], links] = await Promise.all([
     db
       .select({
         id: salesLines.id,
@@ -203,6 +252,7 @@ export async function getInvoice(db: Db, id: string) {
       .where(eq(payments.salesInvoiceId, id))
       .orderBy(asc(payments.date), asc(payments.createdAt)),
     db.select({ id: quotations.id, number: quotations.number }).from(quotations).where(eq(quotations.invoiceId, id)),
+    revisionLinks(db, salesInvoices, { id, revisionOf: invoice.revisionOfId }),
   ]);
 
   const paid = rupiah(paymentRows.reduce((sum, p) => (p.voidedAt ? sum : sum + p.amount), 0));
@@ -213,7 +263,8 @@ export async function getInvoice(db: Db, id: string) {
     voided: invoice.voidedAt !== null,
     today: businessDate(),
   });
-  return { ...invoice, paid, state, lines, payments: paymentRows, quotation: quotation ?? null };
+  const { revisionOfId: _, ...fields } = invoice;
+  return { ...fields, paid, state, lines, payments: paymentRows, quotation: quotation ?? null, ...links };
 }
 
 /** Locks the invoice row so concurrent payments and voids on it run one after another. */
@@ -259,25 +310,74 @@ async function insertPayment(
   });
 }
 
-/** A non-admin's invoice whose line and document discounts together pass the kasir cap needs approval. */
-export async function invoiceRequirement(tx: Db, input: InvoiceInput, actor: Pick<Actor, "role">): Promise<Requirement | null> {
-  if (actor.role === "admin") return null;
+/** What the approved subject binds: the exact document, so an approval fits no other invoice. */
+function invoiceSubject(input: InvoiceFields) {
+  const discount = { kind: input.discountKind, value: input.discountValue };
+  return {
+    customerId: input.customerId,
+    date: input.date,
+    total: computeTotals(input.lines, discount).total,
+    discount,
+    lines: input.lines.map(({ productId, qty, unitPrice, discountAmount }) => ({ productId, qty, unitPrice, discountAmount })),
+  };
+}
+
+interface Need {
+  kind: ApprovalKind;
+  label: string;
+  message: string;
+}
+
+/** A non-admin's line and document discounts together past the kasir cap. */
+async function discountNeed(tx: Db, input: InvoiceFields): Promise<Need | null> {
   const discount = { kind: input.discountKind, value: input.discountValue };
   const breaches = saleLimitBreaches(input.lines, discount, await getLimits(tx)).filter((b) => b.kind === "discount");
   if (breaches.length === 0) return null;
-  const total = computeTotals(input.lines, discount).total;
+  return { kind: "discount", label: `Diskon ${formatBp(combinedDiscountBp(input.lines, discount))}`, message: breachMessage(breaches) };
+}
+
+/** A non-admin's invoice whose line and document discounts together pass the kasir cap needs approval. */
+export async function invoiceRequirement(tx: Db, input: InvoiceFields, actor: Pick<Actor, "role">): Promise<Requirement | null> {
+  if (actor.role === "admin") return null;
+  const need = await discountNeed(tx, input);
+  if (!need) return null;
+  const subject = invoiceSubject(input);
+  return { kind: need.kind, subject, summary: `${need.label} · faktur ${input.date} · ${formatRupiah(subject.total)}`, message: need.message };
+}
+
+/**
+ * What a non-admin's Ubah needs approved, in one approval: a lower total (`revisi_lower`, as on
+ * the Kasir) and the new invoice's own discount cap. The subject binds the original and the
+ * exact new invoice, its total included.
+ */
+async function editRequirement(
+  tx: Db,
+  original: { id: string; number: string; total: number },
+  input: InvoiceFields,
+  actor: Pick<Actor, "role">,
+): Promise<Requirement | null> {
+  if (actor.role === "admin") return null;
+  const subject = { originalId: original.id, ...invoiceSubject(input) };
+  const needs: Need[] = [];
+  if (subject.total < original.total) {
+    needs.push({ kind: "revisi_lower", label: approvalKindLabels.revisi_lower, message: "Perubahan yang menurunkan total faktur butuh persetujuan admin." });
+  }
+  const discount = await discountNeed(tx, input);
+  if (discount) needs.push(discount);
+  if (needs.length === 0) return null;
   return {
-    kind: "discount",
-    subject: {
-      customerId: input.customerId,
-      date: input.date,
-      total,
-      discount,
-      lines: input.lines.map(({ productId, qty, unitPrice, discountAmount }) => ({ productId, qty, unitPrice, discountAmount })),
-    },
-    summary: `Diskon ${formatBp(combinedDiscountBp(input.lines, discount))} · faktur ${input.date} · ${formatRupiah(total)}`,
-    message: breachMessage(breaches),
+    kind: needs[0]!.kind,
+    subject,
+    summary: `Ubah ${original.number} · ${formatRupiah(rupiah(original.total))} → ${formatRupiah(subject.total)} · ${needs.map((n) => n.label).join(" + ")}`,
+    message: needs.map((n) => n.message).join(" "),
   };
+}
+
+/** For a remote approval request: what this Ubah would need approved, computed as `editInvoice` does. */
+export async function invoiceEditApproval(db: Db, originalId: string, input: InvoiceEditInput, actor: Pick<Actor, "role">) {
+  const original = await getInvoice(db, originalId);
+  if (original.voidedAt) throw new DomainError("conflict", "Faktur ini sudah di-void atau diubah");
+  return editRequirement(db, original, input, actor);
 }
 
 export const invoiceApproval = (db: Db, input: InvoiceInput, actor: Pick<Actor, "role">) => invoiceRequirement(db, input, actor);
@@ -293,7 +393,20 @@ export async function createInvoice(db: Db, input: InvoiceInput, actor: Actor) {
 
 /** The invoice, its lines and stock movements, its audit event and an optional payment. Runs inside the caller's transaction. */
 export async function insertInvoice(tx: Db, input: InvoiceInput, actor: Actor, approvalId: string | null) {
-  const userId = actor.id;
+  const invoice = await writeInvoice(tx, input, actor.id, await allocateDocNumber(tx, "SO", input.date), null);
+  await audit(tx, actor, {
+    action: "sales.invoice.create",
+    entityId: invoice.id,
+    summary: `Faktur ${invoice.number} ${formatRupiah(invoice.total)}`,
+    after: invoice.snapshot,
+    approvalId,
+  });
+  if (input.payment) await insertPayment(tx, invoice, { ...input.payment, date: input.date }, actor);
+  return invoice;
+}
+
+/** The invoice row, its lines and its stock movements under `number`. Logs nothing. */
+async function writeInvoice(tx: Db, input: InvoiceFields, userId: string, number: string, revisionOf: string | null) {
   const [customer] = await tx
     .select({ id: contacts.id })
     .from(contacts)
@@ -309,7 +422,6 @@ export async function insertInvoice(tx: Db, input: InvoiceInput, actor: Actor, a
   if (costs.size !== productIds.length) throw new DomainError("invalid", "Ada produk yang tidak ditemukan");
 
   const totals = computeTotals(input.lines, { kind: input.discountKind, value: input.discountValue });
-  const number = await allocateDocNumber(tx, "SO", input.date);
   const [invoice] = await tx
     .insert(salesInvoices)
     .values({
@@ -324,6 +436,7 @@ export async function insertInvoice(tx: Db, input: InvoiceInput, actor: Actor, a
       discountAmount: totals.discountAmount,
       total: totals.total,
       note: input.note,
+      revisionOf,
       createdBy: userId,
     })
     .returning({ id: salesInvoices.id, number: salesInvoices.number });
@@ -344,23 +457,16 @@ export async function insertInvoice(tx: Db, input: InvoiceInput, actor: Actor, a
     })),
   );
 
-  await audit(tx, actor, {
-    action: "sales.invoice.create",
-    entityId: invoice!.id,
-    summary: `Faktur ${number} ${formatRupiah(totals.total)}`,
-    after: {
-      number,
-      customerId: input.customerId,
-      date: input.date,
-      subtotal: totals.subtotal,
-      discountAmount: totals.discountAmount,
-      total: totals.total,
-      lines: lines.map(({ productId, qty, unitPrice, discountAmount }) => ({ productId, qty, unitPrice, discountAmount })),
-    },
-    approvalId,
-  });
-  if (input.payment) await insertPayment(tx, invoice!, { ...input.payment, date: input.date }, actor);
-  return invoice!;
+  const snapshot = {
+    number,
+    customerId: input.customerId,
+    date: input.date,
+    subtotal: totals.subtotal,
+    discountAmount: totals.discountAmount,
+    total: totals.total,
+    lines: lines.map(({ productId, qty, unitPrice, discountAmount }) => ({ productId, qty, unitPrice, discountAmount })),
+  };
+  return { id: invoice!.id, number, total: totals.total, snapshot };
 }
 
 export async function recordPayment(db: Db, invoiceId: string, input: z.output<typeof salesPaymentInput>, actor: Actor) {
@@ -411,7 +517,6 @@ export async function voidPayment(
 }
 
 export async function voidInvoice(db: Db, invoiceId: string, { reason }: z.output<typeof voidInput>, actor: Actor) {
-  const userId = actor.id;
   return db.transaction(async (tx) => {
     const invoice = await lockInvoice(tx, invoiceId);
     const current = await getInvoice(tx, invoiceId);
@@ -419,27 +524,7 @@ export async function voidInvoice(db: Db, invoiceId: string, { reason }: z.outpu
       voided: current.voidedAt !== null,
       activePayments: current.payments.filter((p) => !p.voidedAt).length,
     });
-    await tx
-      .update(salesInvoices)
-      .set({ voidedAt: new Date(), voidedBy: userId, voidReason: reason })
-      .where(eq(salesInvoices.id, invoiceId));
-    const sold = await tx
-      .select({ productId: stockMovements.productId, qty: stockMovements.qty, unitCost: stockMovements.unitCost })
-      .from(stockMovements)
-      .where(and(eq(stockMovements.sourceType, "sales_invoice"), eq(stockMovements.sourceId, invoiceId)));
-    await tx.insert(stockMovements).values(
-      sold.map((m) => ({
-        productId: m.productId,
-        date: businessDate(),
-        qty: -m.qty,
-        reason: "reversal" as const,
-        unitCost: m.unitCost,
-        sourceType: "sales_invoice" as const,
-        sourceId: invoiceId,
-        note: `Void ${invoice.number}: ${reason}`,
-        createdBy: userId,
-      })),
-    );
+    await reverseInvoice(tx, invoice, reason, actor.id);
     await audit(tx, actor, {
       action: "sales.invoice.void",
       entityId: invoiceId,
@@ -449,6 +534,99 @@ export async function voidInvoice(db: Db, invoiceId: string, { reason }: z.outpu
       reason,
     });
     return getInvoice(tx, invoiceId);
+  });
+}
+
+/** Marks the invoice void and puts its goods back in stock, dated today (ground rule 3). Logs nothing. */
+async function reverseInvoice(tx: Db, invoice: { id: string; number: string }, reason: string, userId: string) {
+  await tx
+    .update(salesInvoices)
+    .set({ voidedAt: new Date(), voidedBy: userId, voidReason: reason })
+    .where(eq(salesInvoices.id, invoice.id));
+  const sold = await tx
+    .select({ productId: stockMovements.productId, qty: stockMovements.qty, unitCost: stockMovements.unitCost })
+    .from(stockMovements)
+    .where(and(eq(stockMovements.sourceType, "sales_invoice"), eq(stockMovements.sourceId, invoice.id)));
+  await tx.insert(stockMovements).values(
+    sold.map((m) => ({
+      productId: m.productId,
+      date: businessDate(),
+      qty: -m.qty,
+      reason: "reversal" as const,
+      unitCost: m.unitCost,
+      sourceType: "sales_invoice" as const,
+      sourceId: invoice.id,
+      note: `Void ${invoice.number}: ${reason}`,
+      createdBy: userId,
+    })),
+  );
+}
+
+/**
+ * Ubah: voids the invoice ("Diubah: <reason>") and posts the corrected one as `<number>/R<n>`,
+ * linked by `revision_of`, in one transaction with one audit event. The original's live payments
+ * move to the new invoice, so no money moves; refused when they exceed the new total. A live
+ * tukar faktur and the penawaran it came from follow it to the new invoice.
+ */
+export async function editInvoice(db: Db, invoiceId: string, input: InvoiceEditInput, actor: Actor) {
+  const pinAdmin = await pinApprover(db, actor, input.approval);
+  return db.transaction(async (tx) => {
+    await lockInvoice(tx, invoiceId);
+    const original = await getInvoice(tx, invoiceId);
+    if (original.voidedAt) throw new DomainError("conflict", "Faktur ini sudah di-void atau diubah");
+    const approvalId = await authorize(tx, actor, await editRequirement(tx, original, input, actor), input.approval, pinAdmin);
+    const total = invoiceSubject(input).total;
+    if (original.paid > total) {
+      throw new DomainError(
+        "invalid",
+        `Faktur ini sudah dibayar ${formatRupiah(original.paid)}, lebih dari total baru ${formatRupiah(total)}. Void pembayaran yang berlebih dulu.`,
+      );
+    }
+    const bundles = await tx
+      .select({ id: invoiceBundles.id, number: invoiceBundles.number })
+      .from(bundleInvoices)
+      .innerJoin(invoiceBundles, eq(invoiceBundles.id, bundleInvoices.bundleId))
+      .where(and(eq(bundleInvoices.invoiceId, invoiceId), isNull(invoiceBundles.voidedAt)));
+    if (bundles.length > 0 && input.customerId !== original.customer.id) {
+      throw new DomainError("invalid", `Faktur ini ada di tukar faktur ${bundles[0]!.number}, jadi pelanggannya tidak bisa diganti`);
+    }
+
+    await reverseInvoice(tx, original, `Diubah: ${input.reason}`, actor.id);
+    const invoice = await writeInvoice(tx, input, actor.id, revisionNumber(original.number), original.id);
+    const moved = await tx
+      .update(payments)
+      .set({ salesInvoiceId: invoice.id })
+      .where(and(eq(payments.salesInvoiceId, invoiceId), isNull(payments.voidedAt)))
+      .returning({ id: payments.id });
+    if (bundles.length > 0) {
+      await tx
+        .update(bundleInvoices)
+        .set({ invoiceId: invoice.id })
+        .where(and(eq(bundleInvoices.invoiceId, invoiceId), inArray(bundleInvoices.bundleId, bundles.map((b) => b.id))));
+    }
+    await tx.update(quotations).set({ invoiceId: invoice.id }).where(eq(quotations.invoiceId, invoiceId));
+    await audit(tx, actor, {
+      action: "sales.invoice.edit",
+      entityId: invoice.id,
+      summary: `Ubah ${original.number} → ${invoice.number} · ${formatRupiah(original.total)} → ${formatRupiah(invoice.total)}`,
+      before: {
+        invoiceId,
+        number: original.number,
+        customerId: original.customer.id,
+        date: original.date,
+        total: original.total,
+        lines: original.lines.map(({ productId, qty, unitPrice, discountAmount }) => ({ productId, qty, unitPrice, discountAmount })),
+      },
+      after: {
+        invoiceId: invoice.id,
+        ...invoice.snapshot,
+        paymentIds: moved.map((p) => p.id),
+        ...(bundles.length > 0 && { bundleIds: bundles.map((b) => b.id) }),
+      },
+      reason: input.reason,
+      approvalId,
+    });
+    return getInvoice(tx, invoice.id);
   });
 }
 

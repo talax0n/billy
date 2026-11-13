@@ -1,5 +1,5 @@
 import { businessDate, formatDate, formatRupiah, rupiah } from "@billy/core";
-import type { InferResponseType } from "hono/client";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Plus } from "lucide-react";
 import { useState } from "react";
 import { Badge } from "../../components/ui/badge.tsx";
@@ -10,8 +10,6 @@ import { EmptyState, PageBody, PageHeader, StatTile } from "../../components/ui/
 import { api, unwrap } from "../../lib/api.ts";
 import { ExpenseSheet } from "./expense-sheet.tsx";
 
-type ExpensePage = InferResponseType<typeof api.expenses.$get, 200>;
-export type ExpenseRow = ExpensePage["rows"][number];
 
 const monthLabel = new Intl.DateTimeFormat("id-ID", { month: "long", year: "numeric", timeZone: "UTC" });
 
@@ -26,15 +24,18 @@ export function ExpensesPage() {
     ),
   );
   const amountTotal = paged.query.data?.amountTotal;
-  /** null: closed; "new": create form; a row: the expense being viewed. */
-  const [open, setOpen] = useState<ExpenseRow | "new" | null>(null);
+  /** The open expense lives in the URL (`/biaya?id=…`) so other pages can link to it. */
+  const search: { id?: string } = useSearch({ strict: false });
+  const navigate = useNavigate();
+  const openExpense = (id: string | null) => void navigate({ to: "/biaya", search: id ? { id } : {} });
+  const [creating, setCreating] = useState(false);
 
   return (
     <>
       <PageHeader
         title="Biaya"
         actions={
-          <Button variant="primary" onClick={() => setOpen("new")}>
+          <Button variant="primary" onClick={() => setCreating(true)}>
             <Plus className="size-4" />
             Catat biaya
           </Button>
@@ -63,8 +64,8 @@ export function ExpensesPage() {
               }}
             />
           }
-          onRowClick={setOpen}
-          empty={<EmptyState title="Belum ada biaya di periode ini" action={<Button onClick={() => setOpen("new")}>Catat biaya</Button>} />}
+          onRowClick={(row) => openExpense(row.id)}
+          empty={<EmptyState title="Belum ada biaya di periode ini" action={<Button onClick={() => setCreating(true)}>Catat biaya</Button>} />}
           columns={[
             { header: "Tanggal", cell: (e) => formatDate(e.date), className: "whitespace-nowrap" },
             { header: "Nomor", cell: (e) => <span className="text-muted">{e.number}</span>, className: "whitespace-nowrap" },
@@ -80,7 +81,8 @@ export function ExpensesPage() {
           ]}
         />
       </PageBody>
-      {open && <ExpenseSheet expense={open === "new" ? null : open} onClose={() => setOpen(null)} />}
+      {creating && <ExpenseSheet expenseId={null} onClose={() => setCreating(false)} />}
+      {search.id && <ExpenseSheet expenseId={search.id} onClose={() => openExpense(null)} />}
     </>
   );
 }

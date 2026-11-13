@@ -5,6 +5,7 @@ import {
   Boxes,
   ClipboardCheck,
   ClipboardList,
+  FileSpreadsheet,
   FileStack,
   FileText,
   HandCoins,
@@ -26,6 +27,7 @@ import type { ReactNode } from "react";
 import { AuditPage } from "./routes/audit/audit-page.tsx";
 import { BundlesPage } from "./routes/invoice-bundles/bundles-page.tsx";
 import { CashPage } from "./routes/cash/cash-page.tsx";
+import { CashReportPage } from "./routes/cash-report/cash-report-page.tsx";
 import { ContactsPage } from "./routes/contacts/contacts-page.tsx";
 import { ExpensesPage } from "./routes/expenses/expenses-page.tsx";
 import { ActionsPage } from "./routes/insights/actions.tsx";
@@ -77,6 +79,7 @@ export const navItems: NavItem[] = [
   { group: "Transaksi", path: "/pembelian", label: "Pembelian", icon: ShoppingCart, page: PurchasesPage },
   { group: "Keuangan", path: "/kas-bank", label: "Kas & Biaya", tab: "Kas & Bank", icon: Wallet, page: CashPage },
   { group: "hidden", section: "/kas-bank", path: "/biaya", label: "Biaya", icon: WalletCards, page: ExpensesPage },
+  { group: "hidden", section: "/kas-bank", path: "/laporan-kas", label: "Laporan Kas", icon: FileSpreadsheet, page: CashReportPage, roles: ["admin", "staff"] },
   { group: "hidden", section: "/kas-bank", path: "/laporan-shift", label: "Laporan Shift", icon: ClipboardCheck, page: ShiftsPage, roles: ["admin"] },
   { group: "Keuangan", path: "/piutang", label: "Piutang & Hutang", tab: "Piutang", icon: HandCoins, page: ReceivablesPage },
   { group: "hidden", section: "/piutang", path: "/hutang", label: "Hutang", icon: ArrowLeftRight, page: PayablesPage },

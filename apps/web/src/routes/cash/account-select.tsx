@@ -17,6 +17,7 @@ export function AccountSelect({
 }: {
   id: string;
   "aria-invalid"?: true;
+  "aria-label"?: string;
   value: string;
   onChange: (accountId: string) => void;
   placeholder?: string;

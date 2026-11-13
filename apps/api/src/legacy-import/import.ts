@@ -7,7 +7,6 @@
  *   pnpm --filter @billy/api import:legacy [dataDir]     (default .data/legacy; must not exist yet)
  */
 import { appendFileSync, existsSync, readFileSync, rmSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import {
   accountInput,
   cashEntryInput,
@@ -35,43 +34,14 @@ import { recordSale } from "../modules/pos/service.ts";
 import { adjustStock, createProduct } from "../modules/products/service.ts";
 import { createPurchase, getPurchase, payPurchase } from "../modules/purchases/service.ts";
 import { createInvoice, getInvoice, recordPayment } from "../modules/sales/service.ts";
-import { daysBetween, isoDate, money, normName, percentToBp, posNumber, receiptAmount, receiptLines, splitTint } from "./parse.ts";
+import { daysBetween, isoDate, money, normName, percentToBp, receiptAmount, receiptLines, splitTint } from "./parse.ts";
+import { details, errorsFile, list, numberedReceipts, oldestFirst, type Page, posAccounts, posMethod, root, src } from "./source.ts";
 
-type Row = string[];
-interface Page {
-  inputs: Record<string, string>;
-  rows: Row[];
-}
-interface Detail {
-  id: string;
-  row: Row;
-  pages: Record<string, Page>;
-}
-
-const root = fileURLToPath(new URL("../../../../", import.meta.url));
-const src = `${root}.legacy/`;
 // DATABASE_URL: import into that (empty) Postgres instead of a new local PGlite directory.
 const url = process.env.DATABASE_URL;
 const dataDir = process.argv[2] ?? `${root}.data/legacy`;
 if (!url && existsSync(dataDir)) throw new Error(`${dataDir} already exists. Delete it first; the import always starts from an empty database.`);
 
-const list = (name: string): Row[] => JSON.parse(readFileSync(`${src}lists/${name}.json`, "utf8"));
-const details = (name: string): Detail[] => {
-  const file = `${src}details/${name}.jsonl`;
-  if (!existsSync(file)) return [];
-  const byId = new Map<string, Detail>();
-  for (const line of readFileSync(file, "utf8").split("\n")) {
-    try {
-      const d = JSON.parse(line) as Detail;
-      byId.set(d.id, d);
-    } catch {
-      // partial line from an interrupted download
-    }
-  }
-  return [...byId.values()];
-};
-
-const errorsFile = `${src}import-errors.jsonl`;
 rmSync(errorsFile, { force: true });
 const counts: Record<string, { ok: number; failed: number }> = {};
 /** The app recomputes totals from the lines; a document whose legacy total disagrees is logged, not changed. */
@@ -251,7 +221,6 @@ function documentDiscount(h: Record<string, string>, lineTotals: number[]) {
   const bp = percentToBp(h.persentase_diskon);
   return bp > 0 && bp <= 10_000 ? { discountKind: "percent" as const, discountValue: bp } : { discountKind: "none" as const, discountValue: 0 };
 }
-const oldestFirst = <T extends { date: string }>(docs: T[]) => docs.sort((a, b) => a.date.localeCompare(b.date));
 
 // --- purchases --------------------------------------------------------------------------------
 console.log("purchases");
@@ -405,20 +374,10 @@ for (const r of jurnal.filter((r) => r[2] === "terima uang" || r[2] === "transfe
 
 // --- cashier receipts -------------------------------------------------------------------------
 console.log("cashier receipts");
-// Legacy receipt numbers repeat now and then; a repeat gets two extra digits so both receipts are kept.
-const usedNumbers = new Set<string>();
-const uniquePosNumber = (number: string) => {
-  let candidate = number;
-  for (let n = 1; usedNumbers.has(candidate); n++) candidate = `${number}${String(n).padStart(2, "0")}`;
-  usedNumbers.add(candidate);
-  return candidate;
-};
-/** Which account each receipt's money went to, from the ledger's "kasir" rows. */
-const posAccount = new Map(jurnal.filter((r) => r[2] === "kasir" && r[1]).map((r) => [r[1]!.trim(), normName(r[3] ?? "")]));
-const posMethod = (accountName: string) => (accountName === "KAS" ? "cash" : accountName === "QR" ? "qris" : "transfer");
-const receipts = oldestFirst(details("kasir").map((d) => ({ ...d, date: isoDate(d.row[2]!) })));
-for (const d of receipts) {
+const posAccount = posAccounts(jurnal);
+for (const d of numberedReceipts()) {
   await attempt("pos", d.row[1]!, async () => {
+    if (!d.number) throw new Error(`Unreadable receipt number "${d.row[1]}"`);
     const rows = d.pages.receipt!.rows;
     const lines = [];
     for (const l of receiptLines(rows)) {
@@ -431,7 +390,7 @@ for (const d of receipts) {
       db,
       posSaleInput.parse({
         id: uuidv7(),
-        number: uniquePosNumber(posNumber(d.row[1]!)),
+        number: d.number,
         soldAt: `${d.date}T12:00:00+07:00`,
         lines,
         discount: { kind: discount > 0 ? "amount" : "none", value: discount },

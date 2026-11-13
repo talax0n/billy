@@ -1,6 +1,11 @@
 import { businessDate, expenseCategories, expenseInput, formatDate, formatRupiah } from "@billy/core";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
+import type { InferResponseType } from "hono/client";
+import { Pencil } from "lucide-react";
 import { type ReactNode, useId, useState } from "react";
+import { z } from "zod";
+import { RevisionLinks } from "../../components/revision-links.tsx";
 import { Badge } from "../../components/ui/badge.tsx";
 import { Button } from "../../components/ui/button.tsx";
 import { Sheet } from "../../components/ui/dialog.tsx";
@@ -10,29 +15,64 @@ import { api, unwrap } from "../../lib/api.ts";
 import { useForm } from "../../lib/form.ts";
 import { AccountSelect } from "../cash/account-select.tsx";
 import { VoidDialog } from "../cash/void-dialog.tsx";
-import type { ExpenseRow } from "./expenses-page.tsx";
 
-/** Record a new expense (`expense` null), or read one and void it. */
-export function ExpenseSheet({ expense, onClose }: { expense: ExpenseRow | null; onClose: () => void }) {
+type Expense = InferResponseType<(typeof api.expenses)[":id"]["$get"], 200>;
+
+/** The create fields plus the reason an Ubah needs; the server requires it on an edit. */
+const expenseForm = expenseInput.extend({ reason: z.string().trim().max(500).optional() });
+
+/** Record a new expense (`expenseId` null), or read one, correct it (Ubah) or void it. */
+export function ExpenseSheet({ expenseId, onClose }: { expenseId: string | null; onClose: () => void }) {
+  const navigate = useNavigate();
+  const [editing, setEditing] = useState(false);
+  const expense = useQuery({
+    queryKey: ["expenses", expenseId],
+    queryFn: () => unwrap(api.expenses[":id"].$get({ param: { id: expenseId! } })),
+    enabled: expenseId !== null,
+  });
+  const e = expense.data;
+  const title = expenseId === null ? "Catat biaya" : e ? (editing ? `Ubah ${e.number}` : e.number) : "Memuat…";
   return (
-    <Sheet open onClose={onClose} title={expense ? expense.number : "Catat biaya"} description={expense && formatDate(expense.date)}>
-      {expense ? <ExpenseDetail expense={expense} onVoided={onClose} /> : <ExpenseForm onDone={onClose} />}
+    <Sheet open onClose={onClose} title={title} description={e && formatDate(e.date)}>
+      {expenseId === null ? (
+        <ExpenseForm onDone={onClose} />
+      ) : (
+        e &&
+        (editing ? (
+          <ExpenseForm
+            edit={e}
+            onDone={(newId) => {
+              setEditing(false);
+              if (newId) void navigate({ to: "/biaya", search: { id: newId } });
+            }}
+          />
+        ) : (
+          <ExpenseDetail expense={e} onVoided={onClose} onEdit={() => setEditing(true)} />
+        ))
+      )}
     </Sheet>
   );
 }
 
-function ExpenseForm({ onDone }: { onDone: () => void }) {
+function ExpenseForm({ edit, onDone }: { edit?: Expense; onDone: (savedId?: string) => void }) {
   const queryClient = useQueryClient();
   const categoryListId = useId();
-  const form = useForm(expenseInput, { date: businessDate(), accountId: "", category: "", description: "", amount: 0, proofUrl: "" });
-  const submit = form.onSubmit(async (json) => {
-    const saved = await unwrap(api.expenses.$post({ json }));
+  const form = useForm(
+    expenseForm,
+    edit
+      ? { date: edit.date, accountId: edit.accountId, category: edit.category, description: edit.description, amount: edit.amount, proofUrl: edit.proofUrl ?? "", reason: "" }
+      : { date: businessDate(), accountId: "", category: "", description: "", amount: 0, proofUrl: "" },
+  );
+  const submit = form.onSubmit(async ({ reason, ...json }) => {
+    const saved = edit
+      ? await unwrap(api.expenses[":id"].edit.$post({ param: { id: edit.id }, json: { ...json, reason: reason ?? "" } }))
+      : await unwrap(api.expenses.$post({ json }));
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["expenses"] }),
       queryClient.invalidateQueries({ queryKey: ["accounts"] }),
     ]);
-    toast(`Biaya ${saved.number} dicatat`, "up");
-    onDone();
+    toast(edit ? `${edit.number} diubah menjadi ${saved.number}` : `Biaya ${saved.number} dicatat`, "up");
+    onDone(saved.id);
   });
   const v = form.values;
   return (
@@ -64,18 +104,25 @@ function ExpenseForm({ onDone }: { onDone: () => void }) {
       <Field label="Tautan bukti" hint="Opsional: foto nota" error={form.errors.proofUrl}>
         {(p) => <Input {...p} type="url" value={v.proofUrl ?? ""} onChange={(e) => form.set("proofUrl", e.target.value)} />}
       </Field>
-      <p className="col-span-2 text-muted">Nomor BY-… dibuat otomatis saat disimpan.</p>
+      {edit && (
+        <Field label="Alasan perubahan" error={form.errors.reason} className="col-span-2">
+          {(p) => <Input {...p} value={v.reason ?? ""} onChange={(e) => form.set("reason", e.target.value)} />}
+        </Field>
+      )}
+      <p className="col-span-2 text-muted">
+        {edit ? `${edit.number} di-void dan diganti biaya baru bernomor ${edit.number}/R….` : "Nomor BY-… dibuat otomatis saat disimpan."}
+      </p>
       <div className="col-span-2 flex justify-end gap-2">
-        <Button onClick={onDone}>Batal</Button>
+        <Button onClick={() => onDone()}>Batal</Button>
         <Button type="submit" variant="primary" disabled={form.submitting}>
-          Simpan biaya
+          {edit ? "Simpan perubahan" : "Simpan biaya"}
         </Button>
       </div>
     </form>
   );
 }
 
-function ExpenseDetail({ expense, onVoided }: { expense: ExpenseRow; onVoided: () => void }) {
+function ExpenseDetail({ expense, onVoided, onEdit }: { expense: Expense; onVoided: () => void; onEdit: () => void }) {
   const queryClient = useQueryClient();
   const [voiding, setVoiding] = useState(false);
   const rows: [string, ReactNode][] = [
@@ -113,6 +160,11 @@ function ExpenseDetail({ expense, onVoided }: { expense: ExpenseRow; onVoided: (
         </span>
         {expense.voidedAt && <Badge>Void</Badge>}
       </div>
+      {(expense.revisionOf || expense.revisedBy) && (
+        <div className="flex flex-wrap gap-3">
+          <RevisionLinks path="/biaya" revisionOf={expense.revisionOf} revisedBy={expense.revisedBy} />
+        </div>
+      )}
       <dl className="grid grid-cols-[8rem_1fr] gap-y-2">
         {rows.map(([label, value]) => (
           <div key={label} className="contents">
@@ -128,7 +180,11 @@ function ExpenseDetail({ expense, onVoided }: { expense: ExpenseRow; onVoided: (
         )}
       </dl>
       {!expense.voidedAt && (
-        <div className="flex justify-end border-t border-line pt-4">
+        <div className="flex justify-end gap-2 border-t border-line pt-4">
+          <Button onClick={onEdit}>
+            <Pencil className="size-3.5" />
+            Ubah
+          </Button>
           <Button variant="danger" onClick={() => setVoiding(true)}>
             Void biaya
           </Button>

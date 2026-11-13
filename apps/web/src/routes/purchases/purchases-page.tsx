@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Plus } from "lucide-react";
 import { useState } from "react";
+import { ExportButton } from "../../components/export-button.tsx";
 import { StatusTag } from "../../components/ui/badge.tsx";
 import { Button } from "../../components/ui/button.tsx";
 import { DataTable, usePagedQuery } from "../../components/ui/data-table.tsx";
@@ -58,10 +59,13 @@ export function PurchasesPage() {
       <PageHeader
         title="Pembelian"
         actions={
-          <Button variant="primary" onClick={() => setCreating(true)}>
-            <Plus className="size-4" />
-            Pembelian baru
-          </Button>
+          <>
+            <ExportButton path={`/api/purchases/export.xlsx?${new URLSearchParams({ ...filters, ...(paged.q && { q: paged.q }) })}`} />
+            <Button variant="primary" onClick={() => setCreating(true)}>
+              <Plus className="size-4" />
+              Pembelian baru
+            </Button>
+          </>
         }
       />
       <PageBody>

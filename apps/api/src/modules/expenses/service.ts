@@ -1,10 +1,11 @@
-import { DomainError, type expenseInput, type expenseQuery, formatRupiah, monthRange } from "@billy/core";
+import { DomainError, type expenseEditInput, type expenseInput, type expenseQuery, formatRupiah, monthRange, revisionNumber } from "@billy/core";
 import { accounts, cashEntries, type Db, expenses, users } from "@billy/db";
 import { and, count, desc, eq, gte, lt, type SQL, sql } from "drizzle-orm";
 import type { z } from "zod";
 import type { Actor } from "../../env.ts";
 import { audit } from "../../lib/audit.ts";
 import { allocateDocNumber } from "../../lib/doc-number.ts";
+import { revisionLinks } from "../../lib/revisions.ts";
 import { matchAllTerms } from "../../lib/search.ts";
 import { writeReversals } from "../cash/service.ts";
 
@@ -26,6 +27,7 @@ function selectExpenses(db: Db) {
       description: expenses.description,
       amount: expenses.amount,
       proofUrl: expenses.proofUrl,
+      revisionOfId: expenses.revisionOf,
       createdByName: users.name,
       createdAt: expenses.createdAt,
       voidedAt: expenses.voidedAt,
@@ -59,56 +61,68 @@ export async function listExpenses(db: Db, query: z.output<typeof expenseQuery>)
 export async function getExpense(db: Db, id: string) {
   const [row] = await selectExpenses(db).where(eq(expenses.id, id));
   if (!row) throw new DomainError("not_found", "Biaya tidak ditemukan");
-  return row;
+  const { revisionOfId, ...expense } = row;
+  return { ...expense, ...(await revisionLinks(db, expenses, { id, revisionOf: revisionOfId })) };
 }
 
-/** Writes the expense and its cash entry `out` / `expense` on the paying account. */
-export async function createExpense(db: Db, input: z.output<typeof expenseInput>, actor: Actor) {
-  const userId = actor.id;
+type ExpenseInput = z.output<typeof expenseInput>;
+
+/** The expense row and its cash entry `out` / `expense` on the paying account. Logs nothing. */
+async function writeExpense(tx: Db, input: ExpenseInput, userId: string, number: string, revisionOf: string | null) {
+  const [account] = await tx.select({ active: accounts.active }).from(accounts).where(eq(accounts.id, input.accountId));
+  if (!account?.active) throw new DomainError("invalid", "Akun tidak ditemukan atau sudah nonaktif");
+  const [row] = await tx
+    .insert(expenses)
+    .values({ ...input, number, revisionOf, createdBy: userId })
+    .returning({ id: expenses.id });
+  await tx.insert(cashEntries).values({
+    accountId: input.accountId,
+    date: input.date,
+    direction: "out",
+    amount: input.amount,
+    category: "expense",
+    sourceType: "expense",
+    sourceId: row!.id,
+    note: input.description ? `${input.category}: ${input.description}` : input.category,
+    createdBy: userId,
+  });
+  return row!.id;
+}
+
+export async function createExpense(db: Db, input: ExpenseInput, actor: Actor) {
   return db.transaction(async (tx) => {
-    const [account] = await tx.select({ active: accounts.active }).from(accounts).where(eq(accounts.id, input.accountId));
-    if (!account?.active) throw new DomainError("invalid", "Akun tidak ditemukan atau sudah nonaktif");
     const number = await allocateDocNumber(tx, "BY", input.date);
-    const [row] = await tx
-      .insert(expenses)
-      .values({ ...input, number, createdBy: userId })
-      .returning({ id: expenses.id });
-    await tx.insert(cashEntries).values({
-      accountId: input.accountId,
-      date: input.date,
-      direction: "out",
-      amount: input.amount,
-      category: "expense",
-      sourceType: "expense",
-      sourceId: row!.id,
-      note: input.description ? `${input.category}: ${input.description}` : input.category,
-      createdBy: userId,
-    });
+    const id = await writeExpense(tx, input, actor.id, number, null);
     await audit(tx, actor, {
       action: "expense.create",
-      entityId: row!.id,
+      entityId: id,
       summary: `Biaya ${number} ${input.category} ${formatRupiah(input.amount)}`,
       after: { number, ...input },
     });
-    return getExpense(tx, row!.id);
+    return getExpense(tx, id);
   });
 }
 
+async function lockExpense(tx: Db, id: string) {
+  const [row] = await tx.select().from(expenses).where(eq(expenses.id, id)).for("update");
+  if (!row) throw new DomainError("not_found", "Biaya tidak ditemukan");
+  return row;
+}
+
+/** Marks the expense void and puts its money back with a reversal entry dated today. Logs nothing. */
+async function reverseExpense(tx: Db, id: string, reason: string, userId: string) {
+  await tx
+    .update(expenses)
+    .set({ voidedAt: new Date(), voidedBy: userId, voidReason: reason })
+    .where(eq(expenses.id, id));
+  await writeReversals(tx, "expense", id, reason, userId);
+}
+
 export async function voidExpense(db: Db, id: string, reason: string, actor: Actor) {
-  const userId = actor.id;
   return db.transaction(async (tx) => {
-    const [row] = await tx
-      .select({ voidedAt: expenses.voidedAt, number: expenses.number, amount: expenses.amount })
-      .from(expenses)
-      .where(eq(expenses.id, id))
-      .for("update");
-    if (!row) throw new DomainError("not_found", "Biaya tidak ditemukan");
+    const row = await lockExpense(tx, id);
     if (row.voidedAt) throw new DomainError("conflict", "Biaya ini sudah di-void");
-    await tx
-      .update(expenses)
-      .set({ voidedAt: new Date(), voidedBy: userId, voidReason: reason })
-      .where(eq(expenses.id, id));
-    await writeReversals(tx, "expense", id, reason, userId);
+    await reverseExpense(tx, id, reason, actor.id);
     await audit(tx, actor, {
       action: "expense.void",
       entityId: id,
@@ -118,5 +132,29 @@ export async function voidExpense(db: Db, id: string, reason: string, actor: Act
       reason,
     });
     return getExpense(tx, id);
+  });
+}
+
+/**
+ * Ubah: voids the expense ("Diubah: <reason>", its money back in a reversal entry) and records
+ * the corrected one as `<number>/R<n>`, linked by `revision_of`, with one audit event.
+ */
+export async function editExpense(db: Db, id: string, { reason, ...input }: z.output<typeof expenseEditInput>, actor: Actor) {
+  return db.transaction(async (tx) => {
+    const original = await lockExpense(tx, id);
+    if (original.voidedAt) throw new DomainError("conflict", "Biaya ini sudah di-void atau diubah");
+    await reverseExpense(tx, id, `Diubah: ${reason}`, actor.id);
+    const number = revisionNumber(original.number);
+    const newId = await writeExpense(tx, input, actor.id, number, id);
+    const fields = ({ date, accountId, category, description, amount, proofUrl }: ExpenseInput) => ({ date, accountId, category, description, amount, proofUrl });
+    await audit(tx, actor, {
+      action: "expense.edit",
+      entityId: newId,
+      summary: `Ubah ${original.number} → ${number} · ${formatRupiah(original.amount)} → ${formatRupiah(input.amount)}`,
+      before: { expenseId: id, number: original.number, ...fields(original) },
+      after: { expenseId: newId, number, ...fields(input) },
+      reason,
+    });
+    return getExpense(tx, newId);
   });
 }

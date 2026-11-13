@@ -1,8 +1,20 @@
-import { accountInput, cashBookQuery, cashEntryInput, idParam, paginationQuery, transferInput, voidInput } from "@billy/core";
+import {
+  accountInput,
+  cashBookQuery,
+  cashEntryInput,
+  cashReportFilter,
+  cashReportQuery,
+  idParam,
+  paginationQuery,
+  transferInput,
+  voidInput,
+} from "@billy/core";
 import { Hono } from "hono";
 import { anySignedIn, backOffice } from "../../auth/require-role.ts";
 import type { AppEnv } from "../../env.ts";
 import { validate } from "../../lib/validate.ts";
+import { exportFileName, xlsxResponse } from "../../lib/xlsx.ts";
+import { cashReport, cashReportXlsx } from "./report.ts";
 import {
   cashBook,
   createAccount,
@@ -31,6 +43,11 @@ export const accountRoutes = new Hono<AppEnv>()
 
 export const cashRoutes = new Hono<AppEnv>()
   .use(backOffice())
+  .get("/report", validate("query", cashReportQuery), async (c) => c.json(await cashReport(c.var.db, c.req.valid("query"))))
+  .get("/report.xlsx", validate("query", cashReportFilter), async (c) => {
+    const filter = c.req.valid("query");
+    return xlsxResponse(await cashReportXlsx(c.var.db, filter), exportFileName("laporan-kas", filter));
+  })
   .post("/entries", validate("json", cashEntryInput), async (c) =>
     c.json(await createCashEntry(c.var.db, c.req.valid("json"), c.var.actor), 201),
   )

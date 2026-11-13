@@ -1,8 +1,11 @@
 import { businessDate, formatDate, formatRupiah, invoiceBundleInput, rupiah } from "@billy/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import type { InferResponseType } from "hono/client";
-import { Ban, FileText, Plus } from "lucide-react";
+import { Ban, FileText, Pencil, Plus } from "lucide-react";
 import { useState } from "react";
+import { z } from "zod";
+import { RevisionLinks } from "../../components/revision-links.tsx";
 import { Badge, StatusTag } from "../../components/ui/badge.tsx";
 import { Button } from "../../components/ui/button.tsx";
 import { DataTable, usePagedQuery } from "../../components/ui/data-table.tsx";
@@ -18,20 +21,27 @@ type Bundle = InferResponseType<(typeof api)["invoice-bundles"][":id"]["$get"], 
 
 const money = (value: number) => formatRupiah(rupiah(value));
 
+/** The create fields plus the reason an Ubah needs; the server requires it on an edit. */
+const bundleForm = invoiceBundleInput.extend({ reason: z.string().trim().max(500).optional() });
+
 export function BundlesPage() {
   const paged = usePagedQuery(["invoice-bundles"], (params) =>
     unwrap(
       api["invoice-bundles"].$get({ query: { q: params.q, page: String(params.page), pageSize: String(params.pageSize) } }),
     ),
   );
-  const [open, setOpen] = useState<string | null>(null);
+  /** The open bundle lives in the URL (`/tukar-faktur?id=…`) so other pages can link to it. */
+  const search: { id?: string } = useSearch({ strict: false });
+  const navigate = useNavigate();
+  const openBundle = (id: string | null) => void navigate({ to: "/tukar-faktur", search: id ? { id } : {} });
+  const [creating, setCreating] = useState(false);
 
   return (
     <>
       <PageHeader
         title="Tukar Faktur"
         actions={
-          <Button variant="primary" onClick={() => setOpen("new")}>
+          <Button variant="primary" onClick={() => setCreating(true)}>
             <Plus className="size-4" />
             Tukar faktur baru
           </Button>
@@ -41,7 +51,7 @@ export function BundlesPage() {
         <DataTable
           paged={paged}
           searchPlaceholder="Cari nomor atau pelanggan…"
-          onRowClick={(row) => setOpen(row.id)}
+          onRowClick={(row) => openBundle(row.id)}
           empty={<EmptyState title="Belum ada tukar faktur" />}
           columns={[
             { header: "Nomor", cell: (b) => <span className="font-medium">{b.number}</span>, className: "whitespace-nowrap" },
@@ -54,16 +64,33 @@ export function BundlesPage() {
           ]}
         />
       </PageBody>
-      {open === "new" && <NewBundleSheet onSaved={setOpen} onClose={() => setOpen(null)} />}
-      {open && open !== "new" && <BundleSheet bundleId={open} onClose={() => setOpen(null)} />}
+      {creating && (
+        <Sheet open onClose={() => setCreating(false)} title="Tukar faktur baru">
+          <BundleForm
+            onSaved={(id) => {
+              setCreating(false);
+              openBundle(id);
+            }}
+          />
+        </Sheet>
+      )}
+      {search.id && <BundleSheet bundleId={search.id} onOpen={openBundle} onClose={() => openBundle(null)} />}
     </>
   );
 }
 
-function NewBundleSheet({ onSaved, onClose }: { onSaved: (id: string) => void; onClose: () => void }) {
+/** A new tukar faktur, or with `edit` an Ubah of a saved one: a corrected copy that replaces it. */
+function BundleForm({ edit, onSaved }: { edit?: Bundle; onSaved: (id: string) => void }) {
   const queryClient = useQueryClient();
-  const [customer, setCustomer] = useState<Contact | null>(null);
-  const form = useForm(invoiceBundleInput, { customerId: "", date: businessDate(), note: "", invoiceIds: [] });
+  const [customer, setCustomer] = useState<Contact | null>(
+    edit ? { id: edit.customer.id, code: edit.customer.code, name: edit.customer.name, paymentTermsDays: 0 } : null,
+  );
+  const form = useForm(
+    bundleForm,
+    edit
+      ? { customerId: edit.customer.id, date: edit.date, note: edit.note, invoiceIds: edit.invoices.filter((i) => i.state.outstanding > 0).map((i) => i.id), reason: "" }
+      : { customerId: "", date: businessDate(), note: "", invoiceIds: [] },
+  );
   const invoices = useQuery({
     queryKey: ["sales", "list", "open", customer?.id],
     queryFn: () => unwrap(api.sales.$get({ query: { customerId: customer!.id, status: "open", pageSize: "100" } })),
@@ -72,81 +99,87 @@ function NewBundleSheet({ onSaved, onClose }: { onSaved: (id: string) => void; o
   const selected = new Set(form.values.invoiceIds);
   const selectedTotal = (invoices.data?.rows ?? []).filter((i) => selected.has(i.id)).reduce((sum, i) => sum + i.state.outstanding, 0);
 
-  const submit = form.onSubmit(async (input) => {
-    const saved = await unwrap(api["invoice-bundles"].$post({ json: input }));
+  const submit = form.onSubmit(async ({ reason, ...input }) => {
+    const saved = edit
+      ? await unwrap(api["invoice-bundles"][":id"].edit.$post({ param: { id: edit.id }, json: { ...input, reason: reason ?? "" } }))
+      : await unwrap(api["invoice-bundles"].$post({ json: input }));
     await queryClient.invalidateQueries({ queryKey: ["invoice-bundles"] });
-    toast(`${saved.number} dibuat`, "up");
+    toast(edit ? `${edit.number} diubah menjadi ${saved.number}` : `${saved.number} dibuat`, "up");
     onSaved(saved.id);
   });
 
   return (
-    <Sheet open onClose={onClose} title="Tukar faktur baru">
-      <form onSubmit={submit} noValidate className="flex flex-col gap-4">
-        <Field label="Pelanggan" error={form.errors.customerId}>
-          {(p) => (
-            <LookupPicker
-              {...p}
-              kind="customer"
-              lookup={lookups.customer}
-              value={customer}
-              placeholder="Cari pelanggan…"
-              onChange={(c) => {
-                setCustomer(c);
-                form.setValues((v) => ({ ...v, customerId: c?.id ?? "", invoiceIds: [] }));
-              }}
-            />
-          )}
+    <form onSubmit={submit} noValidate className="flex flex-col gap-4">
+      <Field label="Pelanggan" error={form.errors.customerId}>
+        {(p) => (
+          <LookupPicker
+            {...p}
+            kind="customer"
+            lookup={lookups.customer}
+            value={customer}
+            placeholder="Cari pelanggan…"
+            onChange={(c) => {
+              setCustomer(c);
+              form.setValues((v) => ({ ...v, customerId: c?.id ?? "", invoiceIds: [] }));
+            }}
+          />
+        )}
+      </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Tanggal" error={form.errors.date}>
+          {(p) => <DateInput {...p} value={form.values.date} onChange={(e) => form.set("date", e.target.value)} />}
         </Field>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Tanggal" error={form.errors.date}>
-            {(p) => <DateInput {...p} value={form.values.date} onChange={(e) => form.set("date", e.target.value)} />}
-          </Field>
-          <Field label="Catatan" error={form.errors.note}>
-            {(p) => <Input {...p} value={form.values.note ?? ""} onChange={(e) => form.set("note", e.target.value)} />}
-          </Field>
-        </div>
-        <fieldset className="flex flex-col gap-1">
-          <legend className="mb-1.5 text-ink-2">Faktur belum lunas</legend>
-          {!customer && <p className="text-muted">Pilih pelanggan dulu.</p>}
-          {invoices.data?.rows.length === 0 && <p className="text-muted">Pelanggan ini tidak punya faktur belum lunas.</p>}
-          {invoices.data?.rows.map((inv) => (
-            <label key={inv.id} className="flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-line-2">
-              <input
-                type="checkbox"
-                checked={selected.has(inv.id)}
-                onChange={(e) =>
-                  form.set(
-                    "invoiceIds",
-                    e.target.checked ? [...form.values.invoiceIds, inv.id] : form.values.invoiceIds.filter((id) => id !== inv.id),
-                  )
-                }
-              />
-              <span className="flex-1">
-                <span className="font-medium">{inv.number}</span>
-                <span className="ml-2 text-muted">jatuh tempo {formatDate(inv.dueDate)}</span>
-              </span>
-              <StatusTag state={inv.state} />
-              <span className="w-32 text-right tabular-nums">{money(inv.state.outstanding)}</span>
-            </label>
-          ))}
-          {form.errors.invoiceIds && <p className="text-xs text-down">{form.errors.invoiceIds}</p>}
-        </fieldset>
-        <div className="flex items-center justify-between border-t border-line pt-3">
-          <span className="text-ink-2">
-            {selected.size} faktur · <span className="font-medium text-ink tabular-nums">{money(selectedTotal)}</span>
-          </span>
-          <Button type="submit" variant="primary" disabled={form.submitting}>
-            Simpan tukar faktur
-          </Button>
-        </div>
-      </form>
-    </Sheet>
+        <Field label="Catatan" error={form.errors.note}>
+          {(p) => <Input {...p} value={form.values.note ?? ""} onChange={(e) => form.set("note", e.target.value)} />}
+        </Field>
+      </div>
+      <fieldset className="flex flex-col gap-1">
+        <legend className="mb-1.5 text-ink-2">Faktur belum lunas</legend>
+        {!customer && <p className="text-muted">Pilih pelanggan dulu.</p>}
+        {invoices.data?.rows.length === 0 && <p className="text-muted">Pelanggan ini tidak punya faktur belum lunas.</p>}
+        {invoices.data?.rows.map((inv) => (
+          <label key={inv.id} className="flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-line-2">
+            <input
+              type="checkbox"
+              checked={selected.has(inv.id)}
+              onChange={(e) =>
+                form.set(
+                  "invoiceIds",
+                  e.target.checked ? [...form.values.invoiceIds, inv.id] : form.values.invoiceIds.filter((id) => id !== inv.id),
+                )
+              }
+            />
+            <span className="flex-1">
+              <span className="font-medium">{inv.number}</span>
+              <span className="ml-2 text-muted">jatuh tempo {formatDate(inv.dueDate)}</span>
+            </span>
+            <StatusTag state={inv.state} />
+            <span className="w-32 text-right tabular-nums">{money(inv.state.outstanding)}</span>
+          </label>
+        ))}
+        {form.errors.invoiceIds && <p className="text-xs text-down">{form.errors.invoiceIds}</p>}
+      </fieldset>
+      {edit && (
+        <Field label="Alasan perubahan" error={form.errors.reason}>
+          {(p) => <Input {...p} value={form.values.reason ?? ""} onChange={(e) => form.set("reason", e.target.value)} />}
+        </Field>
+      )}
+      <div className="flex items-center justify-between border-t border-line pt-3">
+        <span className="text-ink-2">
+          {selected.size} faktur · <span className="font-medium text-ink tabular-nums">{money(selectedTotal)}</span>
+        </span>
+        <Button type="submit" variant="primary" disabled={form.submitting}>
+          {edit ? "Simpan perubahan" : "Simpan tukar faktur"}
+        </Button>
+      </div>
+    </form>
   );
 }
 
-function BundleSheet({ bundleId, onClose }: { bundleId: string; onClose: () => void }) {
+function BundleSheet({ bundleId, onOpen, onClose }: { bundleId: string; onOpen: (id: string) => void; onClose: () => void }) {
   const queryClient = useQueryClient();
   const [confirming, setConfirming] = useState(false);
+  const [editing, setEditing] = useState(false);
   const bundle = useQuery({
     queryKey: ["invoice-bundles", bundleId],
     queryFn: () => unwrap(api["invoice-bundles"][":id"].$get({ param: { id: bundleId } })),
@@ -161,8 +194,24 @@ function BundleSheet({ bundleId, onClose }: { bundleId: string; onClose: () => v
   }
 
   return (
-    <Sheet open onClose={onClose} title={b?.number ?? "Memuat…"} description={b && `${b.customer.name} · ${formatDate(b.date)}`}>
-      {b && <BundleDetail bundle={b} onVoid={() => setConfirming(true)} />}
+    <Sheet
+      open
+      onClose={onClose}
+      title={b ? (editing ? `Ubah ${b.number}` : b.number) : "Memuat…"}
+      description={b && `${b.customer.name} · ${formatDate(b.date)}`}
+    >
+      {b &&
+        (editing ? (
+          <BundleForm
+            edit={b}
+            onSaved={(id) => {
+              setEditing(false);
+              onOpen(id);
+            }}
+          />
+        ) : (
+          <BundleDetail bundle={b} onVoid={() => setConfirming(true)} onEdit={() => setEditing(true)} />
+        ))}
       {b && (
         <Dialog
           open={confirming}
@@ -182,16 +231,24 @@ function BundleSheet({ bundleId, onClose }: { bundleId: string; onClose: () => v
   );
 }
 
-function BundleDetail({ bundle, onVoid }: { bundle: Bundle; onVoid: () => void }) {
+function BundleDetail({ bundle, onVoid, onEdit }: { bundle: Bundle; onVoid: () => void; onEdit: () => void }) {
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         {bundle.voidedAt ? <Badge>Void</Badge> : <Badge tone="up">Aktif</Badge>}
+        {bundle.voidReason && <span className="text-muted">Alasan void: {bundle.voidReason}</span>}
+        <RevisionLinks path="/tukar-faktur" revisionOf={bundle.revisionOf} revisedBy={bundle.revisedBy} />
         <div className="ml-auto flex gap-2">
           <Button size="sm" onClick={() => window.open(`/cetak/tukar-faktur/${bundle.id}`, "_blank", "noopener")}>
             <FileText className="size-3.5" />
             Cetak
           </Button>
+          {!bundle.voidedAt && (
+            <Button size="sm" onClick={onEdit}>
+              <Pencil className="size-3.5" />
+              Ubah
+            </Button>
+          )}
           {!bundle.voidedAt && (
             <Button size="sm" variant="danger" onClick={onVoid}>
               <Ban className="size-3.5" />

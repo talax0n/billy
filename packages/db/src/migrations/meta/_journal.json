@@ -36,6 +36,13 @@
       "when": 1794555612786,
       "tag": "0004_watchdog_opname",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794569284768,
+      "tag": "0005_ubah_laporan_kas",
+      "breakpoints": true
     }
   ]
 }

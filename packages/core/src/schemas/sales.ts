@@ -3,7 +3,7 @@ import { approvalInput } from "../approvals.ts";
 import { discountKinds } from "../invoice.ts";
 import { rupiah } from "../money.ts";
 import { salesStatusFilters } from "../sales.ts";
-import { businessDateInput, paginationQuery, paymentMethods, rupiahInput, text } from "./common.ts";
+import { businessDateInput, editReason, paginationQuery, paymentMethods, rupiahInput, text } from "./common.ts";
 
 const positiveRupiah = z
   .number()
@@ -47,6 +47,10 @@ export const salesInvoiceInput = z.object({
 });
 export type SalesInvoiceInput = z.input<typeof salesInvoiceInput>;
 
+/** Ubah: the corrected invoice in full. The original's payments move to it, so it takes none of its own. */
+export const salesInvoiceEditInput = salesInvoiceInput.omit({ payment: true }).extend({ reason: editReason });
+export type SalesInvoiceEditInput = z.input<typeof salesInvoiceEditInput>;
+
 export const salesPaymentInput = z.object({ ...paymentFields, date: businessDateInput });
 export type SalesPaymentInput = z.input<typeof salesPaymentInput>;
 
@@ -64,3 +68,6 @@ export const invoiceBundleInput = z.object({
   invoiceIds: z.array(z.uuid()).min(1, "Pilih minimal satu faktur").max(200),
 });
 export type InvoiceBundleInput = z.input<typeof invoiceBundleInput>;
+
+export const invoiceBundleEditInput = invoiceBundleInput.extend({ reason: editReason });
+export type InvoiceBundleEditInput = z.input<typeof invoiceBundleEditInput>;

@@ -44,6 +44,24 @@ async function stop(child: ChildProcess) {
   clearTimeout(timeout);
 }
 
+/** The watchdog flags activity outside opening hours, so a run after closing time would see extra flags. */
+async function openAllDay(api: string) {
+  const login = await fetch(`${api}/api/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ username: "admin", password: "admin12345" }),
+  });
+  if (!login.ok) throw new Error(`e2e admin login failed: ${login.status}`);
+  const headers = { cookie: login.headers.getSetCookie().map((c) => c.split(";")[0]).join("; "), "content-type": "application/json" };
+  const current = await (await fetch(`${api}/api/settings/watchdog`, { headers })).json();
+  const res = await fetch(`${api}/api/settings/watchdog`, {
+    method: "PUT",
+    headers,
+    body: JSON.stringify({ ...current, openTime: "00:00", closeTime: "23:59" }),
+  });
+  if (!res.ok) throw new Error(`e2e opening hours failed: ${res.status} ${await res.text()}`);
+}
+
 async function waitFor(url: string, timeoutMs = 60_000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -73,6 +91,7 @@ try {
     }),
   );
   await waitFor(`http://localhost:${apiPort}/api/auth/me`);
+  await openAllDay(`http://localhost:${apiPort}`);
   servers.push(
     start("web", join(root, "apps/web/node_modules/.bin/vite"), ["--port", String(webPort), "--strictPort"], join(root, "apps/web"), {
       API_URL: `http://localhost:${apiPort}`,

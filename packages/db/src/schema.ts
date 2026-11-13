@@ -3,6 +3,7 @@ import {
   approvalMethods,
   approvalStatuses,
   auditSources,
+  cashSourceTypes,
   discountKinds,
   opnameStatuses,
   quotationStatuses,
@@ -38,6 +39,9 @@ const money = () => bigint({ mode: "number" }).$type<Rupiah>();
 const businessDate = () => date({ mode: "string" });
 const createdAt = () => timestamp({ withTimezone: true }).notNull().defaultNow();
 const userRef = () => uuid().references(() => users.id);
+/** Ubah: the document this one replaced, voided in the same transaction. At most one edit per document. */
+const revisionOf = (original: () => AnyPgColumn) => uuid().references(original);
+
 const voidColumns = () => ({
   voidedAt: timestamp({ withTimezone: true }),
   voidedBy: userRef(),
@@ -58,14 +62,7 @@ export const cashCategory = pgEnum("cash_category", [
   "other_out",
   "reversal",
 ]);
-export const cashSourceType = pgEnum("cash_source_type", [
-  "sales_payment",
-  "purchase_payment",
-  "pos_sale",
-  "expense",
-  "transfer",
-  "manual",
-]);
+export const cashSourceType = pgEnum("cash_source_type", cashSourceTypes);
 export const stockReason = pgEnum("stock_reason", ["purchase", "sale", "pos", "adjustment", "reversal"]);
 export const stockSourceType = pgEnum("stock_source_type", ["sales_invoice", "purchase_invoice", "pos_sale", "stock_opname"]);
 export const paymentDirection = pgEnum("payment_direction", ["receivable", "payable"]);
@@ -221,6 +218,8 @@ export const cashEntries = pgTable(
   },
   (t) => [
     index().on(t.accountId, t.date),
+    // Laporan Kas lists every account's entries of a period in date order.
+    index().on(t.date, t.createdAt),
     index().on(t.sourceType, t.sourceId),
     check("cash_entries_amount_positive", sql`${t.amount} > 0`),
   ],
@@ -273,11 +272,12 @@ export const salesInvoices = pgTable(
     ...documentDiscount(),
     total: money().notNull(),
     note: text().notNull().default(""),
+    revisionOf: revisionOf((): AnyPgColumn => salesInvoices.id),
     createdBy: userRef().notNull(),
     createdAt: createdAt(),
     ...voidColumns(),
   },
-  (t) => [index().on(t.customerId), index().on(t.date)],
+  (t) => [index().on(t.customerId), index().on(t.date), uniqueIndex().on(t.revisionOf)],
 );
 
 export const salesLines = pgTable(
@@ -319,11 +319,12 @@ export const purchaseInvoices = pgTable(
     taxAmount: money().notNull().default(0 as Rupiah),
     total: money().notNull(),
     note: text().notNull().default(""),
+    revisionOf: revisionOf((): AnyPgColumn => purchaseInvoices.id),
     createdBy: userRef().notNull(),
     createdAt: createdAt(),
     ...voidColumns(),
   },
-  (t) => [index().on(t.supplierId), index().on(t.date)],
+  (t) => [index().on(t.supplierId), index().on(t.date), uniqueIndex().on(t.revisionOf)],
 );
 
 export const purchaseLines = pgTable(
@@ -390,11 +391,12 @@ export const expenses = pgTable(
     description: text().notNull().default(""),
     amount: money().notNull(),
     proofUrl: text(),
+    revisionOf: revisionOf((): AnyPgColumn => expenses.id),
     createdBy: userRef().notNull(),
     createdAt: createdAt(),
     ...voidColumns(),
   },
-  (t) => [index().on(t.date), check("expenses_amount_positive", sql`${t.amount} > 0`)],
+  (t) => [index().on(t.date), uniqueIndex().on(t.revisionOf), check("expenses_amount_positive", sql`${t.amount} > 0`)],
 );
 
 export const transfers = pgTable(
@@ -432,11 +434,12 @@ export const invoiceBundles = pgTable(
       .references(() => contacts.id),
     date: businessDate().notNull(),
     note: text().notNull().default(""),
+    revisionOf: revisionOf((): AnyPgColumn => invoiceBundles.id),
     createdBy: userRef().notNull(),
     createdAt: createdAt(),
-    voidedAt: timestamp({ withTimezone: true }),
+    ...voidColumns(),
   },
-  (t) => [index().on(t.customerId)],
+  (t) => [index().on(t.customerId), uniqueIndex().on(t.revisionOf)],
 );
 
 export const bundleInvoices = pgTable(

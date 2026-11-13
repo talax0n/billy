@@ -1,5 +1,7 @@
 import {
   addDays,
+  type ApprovalInput,
+  type ApprovalRequestInput,
   businessDate,
   computeTotals,
   type DiscountKind,
@@ -11,6 +13,8 @@ import {
   quotationInput,
   type QuotationInput,
   rupiah,
+  salesInvoiceEditInput,
+  type SalesInvoiceEditInput,
   salesInvoiceInput,
   type SalesInvoiceInput,
   type Totals,
@@ -28,13 +32,15 @@ import { lineTable } from "../../components/ui/line-table.ts";
 import { cx } from "../../lib/cx.ts";
 import { type Contact, LookupPicker, lookups } from "../../components/lookup-picker.tsx";
 import { PaymentFields, type PaymentValues } from "./payment-fields.tsx";
+import type { InvoiceDetail } from "./queries.ts";
 
 interface LineProduct {
   id: string;
   name: string;
   variant: string;
   unit: string;
-  stock: number;
+  /** Unknown for a line loaded from a saved invoice until the product is picked again. */
+  stock?: number;
 }
 
 interface Line {
@@ -61,6 +67,17 @@ const focusLater = (id: string) =>
 
 const percentFormat = new Intl.NumberFormat("id-ID", { maximumFractionDigits: 2 });
 
+/** The lines of a saved invoice, ready to correct. */
+const linesOf = (invoice: InvoiceDetail): Line[] =>
+  invoice.lines.map((l) => ({
+    key: nextKey++,
+    product: { id: l.productId, name: l.productName, variant: l.variant, unit: l.unit },
+    qty: l.qty,
+    unitPrice: l.unitPrice,
+    discountAmount: l.discountAmount,
+    note: l.note,
+  }));
+
 /** "2,5" → 250 basis points. */
 const parsePercent = (text: string) => Math.round(Number(text.replace(",", ".")) * 100) || 0;
 
@@ -76,26 +93,40 @@ function tryTotals(lines: Line[], kind: DiscountKind, value: number): { totals: 
 
 /**
  * The invoice as a document: header (customer, date, terms), a keyboard-first line table and a
- * read-only totals panel. The server recomputes every number on save.
+ * read-only totals panel. The server recomputes every number on save. With `edit` it opens on a
+ * saved invoice and saves an Ubah: a corrected copy that replaces it, with a reason.
  */
-export function InvoiceForm({ onSaved, kind = "invoice" }: { onSaved: (id: string) => void; kind?: "invoice" | "quote" }) {
+export function InvoiceForm({
+  onSaved,
+  kind = "invoice",
+  edit,
+}: {
+  onSaved: (id: string) => void;
+  kind?: "invoice" | "quote";
+  edit?: InvoiceDetail;
+}) {
   const quote = kind === "quote";
   const queryClient = useQueryClient();
-  const [customer, setCustomer] = useState<Contact | null>(null);
-  const [date, setDate] = useState(businessDate());
-  const [termsDays, setTermsDays] = useState(0);
+  const [customer, setCustomer] = useState<Contact | null>(
+    edit ? { id: edit.customer.id, code: edit.customer.code, name: edit.customer.name, paymentTermsDays: edit.termsDays } : null,
+  );
+  const [date, setDate] = useState(edit?.date ?? businessDate());
+  const [termsDays, setTermsDays] = useState(edit?.termsDays ?? 0);
   const [validUntil, setValidUntil] = useState(() => addDays(businessDate(), QUOTATION_VALID_DAYS));
-  const [lines, setLines] = useState<Line[]>(() => [blankLine()]);
-  const [showLineDiscount, setShowLineDiscount] = useState(false);
-  const [discountKind, setDiscountKind] = useState<DiscountKind>("none");
-  const [discountText, setDiscountText] = useState("");
-  const [discountAmount, setDiscountAmount] = useState(0);
-  const [note, setNote] = useState("");
+  const [lines, setLines] = useState<Line[]>(() => (edit ? linesOf(edit) : [blankLine()]));
+  const [showLineDiscount, setShowLineDiscount] = useState(() => edit?.lines.some((l) => l.discountAmount > 0) ?? false);
+  const [discountKind, setDiscountKind] = useState<DiscountKind>(edit?.discountKind ?? "none");
+  const [discountText, setDiscountText] = useState(edit?.discountKind === "percent" ? percentFormat.format(edit.discountValue / 100) : "");
+  const [discountAmount, setDiscountAmount] = useState(edit?.discountKind === "amount" ? edit.discountValue : 0);
+  const [note, setNote] = useState(edit?.note ?? "");
+  const [reason, setReason] = useState("");
   const [payment, setPayment] = useState<PaymentValues | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
-  /** Refused for a discount over the cap until an admin approves. */
-  const [blocked, setBlocked] = useState<{ invoice: SalesInvoiceInput; message: string } | null>(null);
+  /** Refused until an admin approves: a discount over the cap, or an Ubah that lowers the total. */
+  const [blocked, setBlocked] = useState<{ request: ApprovalRequestInput; retry: (approval: ApprovalInput) => Promise<void>; message: string } | null>(
+    null,
+  );
 
   const filled = lines.filter((l) => l.product);
   const discountValue = discountKind === "percent" ? parsePercent(discountText) : discountKind === "amount" ? discountAmount : 0;
@@ -130,7 +161,8 @@ export function InvoiceForm({ onSaved, kind = "invoice" }: { onSaved: (id: strin
     };
     const invoice = salesInvoiceInput.safeParse({ ...base, termsDays, payment });
     const quotation = quotationInput.safeParse({ ...base, validUntil });
-    const parsed = quote ? quotation : invoice;
+    const change = salesInvoiceEditInput.safeParse({ ...base, termsDays, reason });
+    const parsed = quote ? quotation : edit ? change : invoice;
     if (!parsed.success) {
       setErrors(fieldErrors(parsed.error));
       return;
@@ -139,11 +171,23 @@ export function InvoiceForm({ onSaved, kind = "invoice" }: { onSaved: (id: strin
     setSubmitting(true);
     try {
       if (quotation.success && quote) await saveQuote(quotation.data);
+      else if (edit && change.success) await saveEdit(edit, change.data);
       else if (invoice.success) await save(invoice.data);
     } catch (err) {
       if (!(err instanceof ApiError)) throw err;
-      if (err.approval && invoice.success) setBlocked({ invoice: invoice.data, message: err.message });
-      else {
+      if (err.approval && edit && change.success) {
+        setBlocked({
+          request: { action: "sales.invoice.edit", originalId: edit.id, edit: change.data },
+          retry: (approval) => saveEdit(edit, { ...change.data, approval }),
+          message: err.message,
+        });
+      } else if (err.approval && invoice.success) {
+        setBlocked({
+          request: { action: "sales.invoice", invoice: invoice.data },
+          retry: (approval) => save({ ...invoice.data, approval }),
+          message: err.message,
+        });
+      } else {
         setErrors(err.fields);
         toast(err.message, "down");
       }
@@ -157,6 +201,15 @@ export function InvoiceForm({ onSaved, kind = "invoice" }: { onSaved: (id: strin
     await queryClient.invalidateQueries({ queryKey: ["sales"] });
     await queryClient.invalidateQueries({ queryKey: ["products"] });
     toast(`${saved.number} disimpan`, "up");
+    onSaved(saved.id);
+  }
+
+  async function saveEdit(original: InvoiceDetail, input: SalesInvoiceEditInput) {
+    const saved = await unwrap(api.sales[":id"].edit.$post({ param: { id: original.id }, json: input }));
+    await queryClient.invalidateQueries({ queryKey: ["sales"] });
+    await queryClient.invalidateQueries({ queryKey: ["products"] });
+    await queryClient.invalidateQueries({ queryKey: ["invoice-bundles"] });
+    toast(`${original.number} diubah menjadi ${saved.number}`, "up");
     onSaved(saved.id);
   }
 
@@ -275,7 +328,12 @@ export function InvoiceForm({ onSaved, kind = "invoice" }: { onSaved: (id: strin
           <Field label={quote ? "Catatan penawaran" : "Catatan faktur"} error={errors.note}>
             {(p) => <Input {...p} value={note} onChange={(e) => setNote(e.target.value)} />}
           </Field>
-          {!quote && (
+          {edit && (
+            <Field label="Alasan perubahan" error={errors.reason}>
+              {(p) => <Input {...p} value={reason} onChange={(e) => setReason(e.target.value)} />}
+            </Field>
+          )}
+          {!quote && !edit && (
             <label className="flex items-center gap-2">
               <input
                 type="checkbox"
@@ -339,17 +397,10 @@ export function InvoiceForm({ onSaved, kind = "invoice" }: { onSaved: (id: strin
 
       <div className="flex justify-end">
         <Button type="submit" variant="primary" disabled={submitting}>
-          {quote ? "Simpan penawaran" : "Simpan faktur"}
+          {quote ? "Simpan penawaran" : edit ? "Simpan perubahan" : "Simpan faktur"}
         </Button>
       </div>
-      {blocked && (
-        <ApprovalDialog
-          message={blocked.message}
-          request={{ action: "sales.invoice", invoice: blocked.invoice }}
-          submit={(approval) => save({ ...blocked.invoice, approval })}
-          onClose={() => setBlocked(null)}
-        />
-      )}
+      {blocked && <ApprovalDialog message={blocked.message} request={blocked.request} submit={blocked.retry} onClose={() => setBlocked(null)} />}
     </form>
   );
 }
@@ -408,9 +459,11 @@ function LineRow({
             >
               {line.product.name}
               <span className="text-muted">{line.product.variant}</span>
-              <span className={cx("text-xs", line.product.stock < line.qty ? "text-warn" : "text-faint")}>
-                stok {line.product.stock} {line.product.unit}
-              </span>
+              {line.product.stock !== undefined && (
+                <span className={cx("text-xs", line.product.stock < line.qty ? "text-warn" : "text-faint")}>
+                  stok {line.product.stock} {line.product.unit}
+                </span>
+              )}
             </button>
             <input
               aria-label={`Catatan baris ${index + 1}`}

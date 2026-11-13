@@ -346,17 +346,22 @@ async function insertSale(
   return true;
 }
 
-/** Puts a sale's goods back in stock, dated `date` (the void or revisi day). */
+/**
+ * Puts a sale's goods back in stock, dated `date` (the void or revisi day). Reverses the sale's
+ * own stock movements, not its lines: a line that moved no stock (an imported "Selisih impor")
+ * moves none now either.
+ */
 async function reverseStock(tx: Db, saleId: string, date: string, note: string, userId: string) {
-  const lines = await tx
-    .select({ productId: posLines.productId, qty: posLines.qty, unitCost: posLines.unitCost })
-    .from(posLines)
-    .where(eq(posLines.saleId, saleId));
+  const moved = await tx
+    .select({ productId: stockMovements.productId, qty: stockMovements.qty, unitCost: stockMovements.unitCost })
+    .from(stockMovements)
+    .where(and(eq(stockMovements.sourceType, "pos_sale"), eq(stockMovements.sourceId, saleId), eq(stockMovements.reason, "pos")));
+  if (moved.length === 0) return;
   await tx.insert(stockMovements).values(
-    lines.map((line) => ({
+    moved.map((line) => ({
       productId: line.productId,
       date,
-      qty: line.qty,
+      qty: -line.qty,
       reason: "reversal" as const,
       unitCost: line.unitCost,
       sourceType: "pos_sale" as const,

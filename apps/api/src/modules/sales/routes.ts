@@ -1,11 +1,14 @@
-import { idParam, salesInvoiceInput, salesListQuery, salesPaymentInput, voidInput } from "@billy/core";
+import { idParam, salesInvoiceEditInput, salesInvoiceInput, salesListQuery, salesPaymentInput, voidInput } from "@billy/core";
 import { Hono } from "hono";
 import { z } from "zod";
 import { backOffice } from "../../auth/require-role.ts";
 import type { AppEnv } from "../../env.ts";
 import { validate } from "../../lib/validate.ts";
+import { exportFileName, xlsxResponse } from "../../lib/xlsx.ts";
 import {
   createInvoice,
+  editInvoice,
+  exportInvoices,
   getInvoice,
   listInvoices,
   listReceivables,
@@ -20,6 +23,10 @@ export const salesRoutes = new Hono<AppEnv>()
   .use(backOffice())
   .get("/receivables", async (c) => c.json(await listReceivables(c.var.db)))
   .get("/", validate("query", salesListQuery), async (c) => c.json(await listInvoices(c.var.db, c.req.valid("query"))))
+  .get("/export.xlsx", validate("query", salesListQuery), async (c) => {
+    const query = c.req.valid("query");
+    return xlsxResponse(await exportInvoices(c.var.db, query), exportFileName("penjualan", query));
+  })
   .post("/", validate("json", salesInvoiceInput), async (c) =>
     c.json(await createInvoice(c.var.db, c.req.valid("json"), c.var.actor), 201),
   )
@@ -33,4 +40,7 @@ export const salesRoutes = new Hono<AppEnv>()
   })
   .post("/:id/void", validate("param", idParam), validate("json", voidInput), async (c) =>
     c.json(await voidInvoice(c.var.db, c.req.valid("param").id, c.req.valid("json"), c.var.actor)),
+  )
+  .post("/:id/edit", validate("param", idParam), validate("json", salesInvoiceEditInput), async (c) =>
+    c.json(await editInvoice(c.var.db, c.req.valid("param").id, c.req.valid("json"), c.var.actor), 201),
   );

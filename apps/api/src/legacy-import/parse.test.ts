@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { isoDate, money, percentToBp, posNumber, receiptAmount, receiptLines, splitTint } from "./parse.ts";
+import { adjustedReceipt, isoDate, money, percentToBp, posNumber, receiptAmount, receiptLines, splitTint } from "./parse.ts";
 
 it("reads the legacy money, date, percent and receipt-number formats", () => {
   expect(money("Rp. 3.460.000,00")).toBe(3_460_000);
@@ -30,4 +30,22 @@ it("parses receipt item rows and tint notes", () => {
   expect(receiptAmount(rows, "Subtotal")).toBe(6_032_000);
   expect(splitTint("KANSAI ECO CLEAN 20 LITER (BRILLIANT WHITE)")).toEqual({ name: "KANSAI ECO CLEAN 20 LITER", note: "BRILLIANT WHITE" });
   expect(splitTint("KUAS 3 IN")).toEqual({ name: "KUAS 3 IN", note: "" });
+});
+
+it("keeps a receipt's printed total and puts the gap on one adjustment amount", () => {
+  const above = adjustedReceipt([
+    ["CAT A (MERAH) 2 x 50.000", "110.000"],
+    ["KUAS 1 x 20.000 (-2.000)", "18.000"],
+    ["Subtotal", "128.000"],
+    ["Diskon", "8.000"],
+    ["Total Tagihan", "120.000"],
+  ]);
+  expect(above.lines.map((l) => [l.qty, l.unitPrice, l.discountAmount, l.appLineTotal])).toEqual([
+    [2, 50_000, 0, 100_000],
+    [1, 20_000, 2_000, 18_000],
+  ]);
+  expect(above).toMatchObject({ computedTotal: 110_000, total: 120_000, adjustment: 10_000, subtotal: 128_000, discount: 8_000 });
+
+  const below = adjustedReceipt([["KUAS 3 x 10.000", "30.000"], ["Diskon", "0"], ["Total Tagihan", "25.000"]]);
+  expect(below).toMatchObject({ computedTotal: 30_000, total: 25_000, adjustment: -5_000, subtotal: 25_000 });
 });

@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { docPeriod, formatDocNumber, nextPosNumber } from "./numbering.ts";
+import { docPeriod, formatDocNumber, nextPosNumber, revisionNumber } from "./numbering.ts";
 
 it("formats server document numbers", () => {
   expect(docPeriod("2026-11-13")).toBe("261113");
@@ -15,4 +15,10 @@ it("counts POS receipts per device and restarts each day", () => {
     value: 42,
   });
   expect(nextPosNumber("K1", "2026-11-14", { period: "261113", value: 41 }).number).toBe("K1-261114-0001");
+});
+
+it("numbers an edit after its original, counting further edits", () => {
+  expect(revisionNumber("SO-261113-0001")).toBe("SO-261113-0001/R1");
+  expect(revisionNumber("SO-261113-0001/R1")).toBe("SO-261113-0001/R2");
+  expect(revisionNumber("BY-261113-0003/R9")).toBe("BY-261113-0003/R10");
 });

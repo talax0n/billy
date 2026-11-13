@@ -11,7 +11,9 @@ import {
 } from "@billy/core";
 import { useQueryClient } from "@tanstack/react-query";
 import { X } from "lucide-react";
+import type { InferResponseType } from "hono/client";
 import { useId, useState } from "react";
+import { z } from "zod";
 import { Button } from "../../components/ui/button.tsx";
 import { Combobox } from "../../components/ui/combobox.tsx";
 import { DateInput, Field, Input, MoneyInput } from "../../components/ui/field.tsx";
@@ -26,8 +28,14 @@ import { AccountSelect } from "../cash/account-select.tsx";
 import { LookupPicker, lookups, type Product, type Contact, useLookup } from "../../components/lookup-picker.tsx";
 
 type Line = PurchaseInput["lines"][number];
+type Purchase = InferResponseType<(typeof api.purchases)[":id"]["$get"], 200>;
+type LineProduct = Pick<Product, "name" | "variant" | "unit">;
 
-const emptyPurchase = (): PurchaseInput => ({
+/** The create form's fields plus the reason an Ubah needs; the server requires it on an edit. */
+const purchaseForm = purchaseInput.extend({ reason: z.string().trim().max(500).optional() });
+type PurchaseFormInput = z.input<typeof purchaseForm>;
+
+const emptyPurchase = (): PurchaseFormInput => ({
   supplierId: "",
   supplierInvoiceNumber: "",
   date: businessDate(),
@@ -39,8 +47,24 @@ const emptyPurchase = (): PurchaseInput => ({
   lines: [],
 });
 
+/** A saved supplier invoice as form values, ready to correct. */
+const purchaseValues = (p: Purchase): PurchaseFormInput => ({
+  supplierId: p.supplierId,
+  supplierInvoiceNumber: p.supplierInvoiceNumber,
+  date: p.date,
+  termsDays: p.termsDays,
+  discountKind: p.discountKind,
+  discountValue: p.discountValue,
+  taxRateBp: p.taxRateBp,
+  note: p.note,
+  lines: p.lines.map(({ productId, qty, unitCost, discountAmount, note }) => ({ productId, qty, unitCost, discountAmount, note })),
+  reason: "",
+});
+
+const percentText = (bp: number) => (bp / 100).toLocaleString("id-ID", { maximumFractionDigits: 2 });
+
 /** Display only: the server recomputes every total on save. */
-function previewTotals(v: PurchaseInput): { totals: Totals | null; problem?: string } {
+function previewTotals(v: PurchaseFormInput): { totals: Totals | null; problem?: string } {
   try {
     const lines = v.lines.map((l) => ({ qty: l.qty, unitPrice: rupiah(l.unitCost), discountAmount: rupiah(l.discountAmount) }));
     return { totals: computeTotals(lines, { kind: v.discountKind, value: v.discountValue }, v.taxRateBp) };
@@ -57,18 +81,23 @@ const focusSoon = (id: string) => requestAnimationFrame(() => document.getElemen
 
 /**
  * A supplier invoice laid out like the paper one: header, a line table you fill from the
- * keyboard (type a product, Enter, qty, Enter, next product), and read-only totals.
+ * keyboard (type a product, Enter, qty, Enter, next product), and read-only totals. With `edit`
+ * it opens on a saved invoice and saves an Ubah: a corrected copy that replaces it.
  */
-export function PurchaseForm({ onSaved, onCancel }: { onSaved: (id: string) => void; onCancel: () => void }) {
+export function PurchaseForm({ onSaved, onCancel, edit }: { onSaved: (id: string) => void; onCancel: () => void; edit?: Purchase }) {
   const queryClient = useQueryClient();
   const formId = useId();
-  const form = useForm(purchaseInput, emptyPurchase());
+  const form = useForm(purchaseForm, edit ? purchaseValues(edit) : emptyPurchase());
   const v = form.values;
-  const [supplier, setSupplier] = useState<Contact | null>(null);
-  const [productsById, setProductsById] = useState<Record<string, Product>>({});
-  const [lineDiscounts, setLineDiscounts] = useState(false);
-  const [taxText, setTaxText] = useState("11");
-  const [discountText, setDiscountText] = useState("");
+  const [supplier, setSupplier] = useState<Contact | null>(
+    edit ? { id: edit.supplierId, code: "", name: edit.supplierName, paymentTermsDays: edit.termsDays } : null,
+  );
+  const [productsById, setProductsById] = useState<Record<string, LineProduct>>(() =>
+    Object.fromEntries((edit?.lines ?? []).map((l) => [l.productId, { name: l.productName, variant: l.variant, unit: l.unit }])),
+  );
+  const [lineDiscounts, setLineDiscounts] = useState(() => edit?.lines.some((l) => l.discountAmount > 0) ?? false);
+  const [taxText, setTaxText] = useState(edit ? percentText(edit.taxRateBp) : "11");
+  const [discountText, setDiscountText] = useState(edit?.discountKind === "percent" ? percentText(edit.discountValue) : "");
   const entry = useLookup("product", lookups.product);
   const server = useServerError();
   const { totals, problem } = previewTotals(v);
@@ -88,11 +117,15 @@ export function PurchaseForm({ onSaved, onCancel }: { onSaved: (id: string) => v
 
   const setPayment = (patch: Partial<NonNullable<PurchaseInput["payment"]>>) => form.set("payment", { ...v.payment!, ...patch });
 
-  const submit = form.onSubmit(async (input) => {
-    const payment = input.payment && { ...input.payment, date: input.date };
-    const saved = await server.guard(unwrap(api.purchases.$post({ json: { ...input, payment } })));
+  const submit = form.onSubmit(async ({ reason, payment: entered, ...input }) => {
+    const payment = entered && { ...entered, date: input.date };
+    const saved = await server.guard(
+      edit
+        ? unwrap(api.purchases[":id"].edit.$post({ param: { id: edit.id }, json: { ...input, reason: reason ?? "" } }))
+        : unwrap(api.purchases.$post({ json: { ...input, payment } })),
+    );
     await Promise.all(["purchases", "products", "stock", "lookup"].map((key) => queryClient.invalidateQueries({ queryKey: [key] })));
-    toast(`Faktur ${saved.number} disimpan`, "up");
+    toast(edit ? `${edit.number} diubah menjadi ${saved.number}` : `Faktur ${saved.number} disimpan`, "up");
     onSaved(saved.id);
   });
 
@@ -175,7 +208,7 @@ export function PurchaseForm({ onSaved, onCancel }: { onSaved: (id: string) => v
                     <td className={cx("py-2.5 pl-4 text-muted tabular-nums", lineTable.index)}>{i + 1}</td>
                     <td className={cx("px-2 py-1.5", lineTable.product)}>
                       <div className="pt-1">
-                        {product && lookups.product.label(product)}
+                        {product && [product.name, product.variant].filter(Boolean).join(" ")}
                         {product && <span className="ml-1.5 text-muted">/ {product.unit}</span>}
                       </div>
                       <input
@@ -253,7 +286,12 @@ export function PurchaseForm({ onSaved, onCancel }: { onSaved: (id: string) => v
           <Field label="Catatan" error={e.note}>
             {(p) => <Input {...p} value={v.note ?? ""} onChange={(ev) => form.set("note", ev.target.value)} />}
           </Field>
-          <label className="flex items-center gap-2">
+          {edit && (
+            <Field label="Alasan perubahan" error={e.reason}>
+              {(p) => <Input {...p} value={v.reason ?? ""} onChange={(ev) => form.set("reason", ev.target.value)} />}
+            </Field>
+          )}
+          <label className={cx("flex items-center gap-2", edit && "hidden")}>
             <input
               type="checkbox"
               checked={v.payment !== undefined}
@@ -359,7 +397,7 @@ export function PurchaseForm({ onSaved, onCancel }: { onSaved: (id: string) => v
         {server.message && <p className="mr-auto text-down">{server.message}</p>}
         <Button onClick={onCancel}>Batal</Button>
         <Button type="submit" variant="primary" disabled={form.submitting}>
-          Simpan faktur
+          {edit ? "Simpan perubahan" : "Simpan faktur"}
         </Button>
       </div>
     </form>

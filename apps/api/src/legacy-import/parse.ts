@@ -59,3 +59,37 @@ export function splitTint(name: string): { name: string; note: string } {
   const m = /^(.*?)\s*\(([^()]*)\)\s*$/.exec(name);
   return m ? { name: m[1]!, note: m[2]!.trim() } : { name, note: "" };
 }
+
+export const ADJUSTMENT_NOTE = "Selisih impor (data lama)";
+
+export interface AdjustedReceipt {
+  /** The receipt's goods, priced as the main import prices them; a printed line total under qty × price is a line discount. */
+  lines: (ReceiptLine & { discountAmount: number; appLineTotal: number })[];
+  discount: number;
+  /** What the app's lines and discount add up to. */
+  computedTotal: number;
+  /** The printed "Total Tagihan", kept as the document total. */
+  total: number;
+  /** total − computedTotal: the "Selisih impor" line, which moves no stock. Can be negative. */
+  adjustment: number;
+  /** Sum of every line, adjustment included, so subtotal − discount = total. */
+  subtotal: number;
+}
+
+/**
+ * A receipt whose printed total the app's arithmetic cannot reproduce (most often a printed line
+ * total above qty × price). The legacy total stands; the gap becomes one adjustment line.
+ */
+export function adjustedReceipt(rows: string[][]): AdjustedReceipt {
+  const lines = receiptLines(rows).map((l) => {
+    const gross = l.qty * l.unitPrice;
+    const discountAmount = Math.max(0, gross - l.lineTotal);
+    return { ...l, discountAmount, appLineTotal: gross - discountAmount };
+  });
+  const discount = receiptAmount(rows, "Diskon");
+  const total = receiptAmount(rows, "Total Tagihan");
+  const computedTotal = lines.reduce((sum, l) => sum + l.appLineTotal, 0) - discount;
+  const adjustment = total - computedTotal;
+  if (total < 0) throw new Error("Negative receipt total");
+  return { lines, discount, computedTotal, total, adjustment, subtotal: total + discount };
+}

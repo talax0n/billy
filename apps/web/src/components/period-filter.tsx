@@ -47,7 +47,8 @@ export function periodLabel({ from, to }: Period): string {
 /** `{ from, to }` query params for a list endpoint, leaving out the open ends. */
 export const periodQuery = ({ from, to }: Period) => ({ ...(from && { from }), ...(to && { to }) });
 
-export function PeriodFilter({ value, onChange }: { value: Period; onChange: (period: Period) => void }) {
+/** `bounded` leaves out "Semua tanggal", for a report that always covers a closed period. */
+export function PeriodFilter({ value, onChange, bounded = false }: { value: Period; onChange: (period: Period) => void; bounded?: boolean }) {
   return (
     <>
       <Select
@@ -59,11 +60,13 @@ export function PeriodFilter({ value, onChange }: { value: Period; onChange: (pe
           onChange(preset === "custom" ? { ...value, preset } : presetPeriod(preset));
         }}
       >
-        {Object.entries(periodPresets).map(([preset, label]) => (
-          <option key={preset} value={preset}>
-            {label}
-          </option>
-        ))}
+        {Object.entries(periodPresets)
+          .filter(([preset]) => !(bounded && preset === "all"))
+          .map(([preset, label]) => (
+            <option key={preset} value={preset}>
+              {label}
+            </option>
+          ))}
       </Select>
       {value.preset === "custom" && (
         <div className="flex items-center gap-2">

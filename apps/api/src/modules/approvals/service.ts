@@ -10,7 +10,7 @@ import { audit } from "../../lib/audit.ts";
 import { draftCancelApproval } from "../pos/drafts.ts";
 import { posRevisionApproval, posSaleApproval, posVoidApproval } from "../pos/service.ts";
 import { quotationConvertApproval } from "../quotations/service.ts";
-import { invoiceApproval } from "../sales/service.ts";
+import { invoiceApproval, invoiceEditApproval } from "../sales/service.ts";
 
 type RequestInput = z.output<typeof approvalRequestInput>;
 
@@ -58,6 +58,8 @@ async function requirementOf(db: Db, input: RequestInput, actor: Actor): Promise
       return draftCancelApproval(db, input.draftId, actor);
     case "sales.invoice":
       return invoiceApproval(db, input.invoice, actor);
+    case "sales.invoice.edit":
+      return invoiceEditApproval(db, input.originalId, input.edit, actor);
     case "quotation.convert":
       return quotationConvertApproval(db, input.quotationId, input.convert, actor);
   }

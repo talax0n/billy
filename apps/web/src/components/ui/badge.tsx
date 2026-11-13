@@ -1,4 +1,4 @@
-import type { InvoiceState } from "@billy/core";
+import { type InvoiceState, invoiceStatusLabel } from "@billy/core";
 import type { ReactNode } from "react";
 import { cx } from "../../lib/cx.ts";
 
@@ -16,8 +16,6 @@ export function Badge({ tone = "neutral", children }: { tone?: keyof typeof dotC
 
 /** Invoice status in the fixed glossary: Lunas, Sebagian, Belum bayar, Telat, Void. */
 export function StatusTag({ state }: { state: Pick<InvoiceState, "status" | "overdue"> }) {
-  if (state.status === "void") return <Badge>Void</Badge>;
-  if (state.status === "paid") return <Badge tone="up">Lunas</Badge>;
-  if (state.overdue) return <Badge tone="down">Telat</Badge>;
-  return <Badge tone="warn">{state.status === "partial" ? "Sebagian" : "Belum bayar"}</Badge>;
+  const tone = state.status === "void" ? "neutral" : state.status === "paid" ? "up" : state.overdue ? "down" : "warn";
+  return <Badge tone={tone}>{invoiceStatusLabel(state)}</Badge>;
 }

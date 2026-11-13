@@ -1,11 +1,23 @@
 import { z } from "zod";
-import { businessDateInput, paginationQuery, rupiahInput, text } from "./common.ts";
+import { businessDateInput, editReason, paginationQuery, rupiahInput, text } from "./common.ts";
 
 export const accountKinds = ["cash", "bank", "ewallet"] as const;
 export const accountKindLabels: Record<(typeof accountKinds)[number], string> = {
   cash: "Kas",
   bank: "Bank",
   ewallet: "E-wallet",
+};
+
+/** What wrote a cash entry. The `cash_source_type` enum is built from this list. */
+export const cashSourceTypes = ["sales_payment", "purchase_payment", "pos_sale", "expense", "transfer", "manual"] as const;
+export type CashSourceType = (typeof cashSourceTypes)[number];
+export const cashSourceTypeLabels: Record<CashSourceType, string> = {
+  sales_payment: "Pembayaran piutang",
+  purchase_payment: "Pembayaran hutang",
+  pos_sale: "Kasir",
+  expense: "Biaya",
+  transfer: "Transfer",
+  manual: "Uang masuk/keluar lain",
 };
 
 export const cashCategories = ["sale", "purchase", "expense", "transfer", "other_in", "other_out", "reversal"] as const;
@@ -72,6 +84,9 @@ export const expenseInput = z.object({
 });
 export type ExpenseInput = z.input<typeof expenseInput>;
 
+export const expenseEditInput = expenseInput.extend({ reason: editReason });
+export type ExpenseEditInput = z.input<typeof expenseEditInput>;
+
 export const cashBookQuery = paginationQuery.extend({
   from: businessDateInput.optional(),
   to: businessDateInput.optional(),
@@ -85,3 +100,23 @@ export const expenseQuery = paginationQuery.extend({
     .regex(/^\d{4}-(0[1-9]|1[0-2])$/)
     .optional(),
 });
+
+/**
+ * Laporan Kas: every cash and bank movement in a period, across accounts or for one. A report
+ * always covers a closed period, so its opening balance and the export's file name are defined.
+ */
+const cashReportFields = z.object({
+  from: businessDateInput,
+  to: businessDateInput,
+  accountId: z.uuid().optional(),
+  sourceType: z.enum(cashSourceTypes).optional(),
+  q: z.string().trim().max(100).default(""),
+});
+const periodInOrder = (f: { from: string; to: string }) => f.from <= f.to;
+const periodError = { path: ["to"], message: "Tanggal akhir sebelum tanggal awal" };
+
+export const cashReportFilter = cashReportFields.refine(periodInOrder, periodError);
+export type CashReportFilter = z.output<typeof cashReportFilter>;
+
+export const cashReportQuery = cashReportFields.extend(paginationQuery.pick({ page: true, pageSize: true }).shape).refine(periodInOrder, periodError);
+export type CashReportQuery = z.input<typeof cashReportQuery>;

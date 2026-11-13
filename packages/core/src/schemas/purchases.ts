@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { discountKinds } from "../invoice.ts";
-import { businessDateInput, paginationQuery, paymentMethods, rupiahInput, text } from "./common.ts";
+import { businessDateInput, editReason, paginationQuery, paymentMethods, rupiahInput, text } from "./common.ts";
 
 export const purchasePaymentInput = z.object({
   accountId: z.uuid("Pilih akun pembayaran"),
@@ -35,6 +35,10 @@ export const purchaseInput = z.object({
   payment: purchasePaymentInput.optional(),
 });
 export type PurchaseInput = z.input<typeof purchaseInput>;
+
+/** Ubah: the corrected supplier invoice in full. The original's payments move to it. */
+export const purchaseEditInput = purchaseInput.omit({ payment: true }).extend({ reason: editReason });
+export type PurchaseEditInput = z.input<typeof purchaseEditInput>;
 
 export const purchaseStatusFilters = ["unpaid", "partial", "overdue", "paid", "void"] as const;
 

@@ -1,8 +1,10 @@
 import { formatDate, formatRupiah } from "@billy/core";
 import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import type { InferResponseType } from "hono/client";
-import { Ban, Banknote } from "lucide-react";
+import { Ban, Banknote, Pencil } from "lucide-react";
 import { useState } from "react";
+import { RevisionLinks } from "../../components/revision-links.tsx";
 import { StatusTag } from "../../components/ui/badge.tsx";
 import { Button } from "../../components/ui/button.tsx";
 import { Sheet } from "../../components/ui/dialog.tsx";
@@ -12,6 +14,7 @@ import { cx } from "../../lib/cx.ts";
 import { useRefreshAfterPosting } from "./actions.ts";
 import { formatPercent, paymentMethodLabels, TotalsPanel } from "./bits.tsx";
 import { PaymentDialog } from "./payment-dialog.tsx";
+import { PurchaseForm } from "./purchase-form.tsx";
 import { VoidDialog } from "./void-dialog.tsx";
 
 type Purchase = InferResponseType<(typeof api.purchases)[":id"]["$get"], 200>;
@@ -25,22 +28,37 @@ export function PurchaseSheet({ id, onClose }: { id: string; onClose: () => void
     queryKey: ["purchases", id],
     queryFn: () => unwrap(api.purchases[":id"].$get({ param: { id } })),
   });
+  const navigate = useNavigate();
+  const [editing, setEditing] = useState(false);
   const p = purchase.data;
+  const number = p ? p.number : purchase.isError ? "Faktur tidak ditemukan" : "Memuat…";
   return (
     <Sheet
       open
       onClose={onClose}
-      className="max-w-3xl"
-      title={p ? p.number : purchase.isError ? "Faktur tidak ditemukan" : "Memuat…"}
+      className={editing ? "max-w-5xl" : "max-w-3xl"}
+      title={editing ? `Ubah ${number}` : number}
       description={p && [p.supplierName, p.supplierInvoiceNumber && `No. pemasok ${p.supplierInvoiceNumber}`].filter(Boolean).join(" · ")}
     >
       {purchase.isError && <p className="text-down">{purchase.error.message}</p>}
-      {p && <PurchaseDetail key={p.id} purchase={p} />}
+      {p &&
+        (editing ? (
+          <PurchaseForm
+            edit={p}
+            onCancel={() => setEditing(false)}
+            onSaved={(newId) => {
+              setEditing(false);
+              void navigate({ to: "/pembelian", search: { id: newId } });
+            }}
+          />
+        ) : (
+          <PurchaseDetail key={p.id} purchase={p} onEdit={() => setEditing(true)} />
+        ))}
     </Sheet>
   );
 }
 
-function PurchaseDetail({ purchase: p }: { purchase: Purchase }) {
+function PurchaseDetail({ purchase: p, onEdit }: { purchase: Purchase; onEdit: () => void }) {
   const refresh = useRefreshAfterPosting();
   const [paying, setPaying] = useState(false);
   const [voiding, setVoiding] = useState(false);
@@ -65,6 +83,10 @@ function PurchaseDetail({ purchase: p }: { purchase: Purchase }) {
         </dl>
         {!voided && (
           <div className="flex gap-2">
+            <Button size="sm" onClick={onEdit}>
+              <Pencil className="size-3.5" />
+              Ubah
+            </Button>
             {p.outstanding > 0 && (
               <Button variant="primary" size="sm" onClick={() => setPaying(true)}>
                 <Banknote className="size-3.5" />
@@ -83,6 +105,11 @@ function PurchaseDetail({ purchase: p }: { purchase: Purchase }) {
         <p className="rounded-lg border border-line px-3 py-2.5 text-ink-2">
           Faktur ini sudah di-void. Alasan: {p.voidReason}. Stok barangnya sudah dikurangi kembali.
         </p>
+      )}
+      {(p.revisionOf || p.revisedBy) && (
+        <div className="flex flex-wrap gap-3">
+          <RevisionLinks path="/pembelian" revisionOf={p.revisionOf} revisedBy={p.revisedBy} />
+        </div>
       )}
 
       <div className="overflow-x-auto rounded-xl border border-line">
