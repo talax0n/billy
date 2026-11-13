@@ -28,7 +28,6 @@ export function ContactsPage() {
     <>
       <PageHeader
         title="Kontak"
-        description="Pelanggan, pemasok, karyawan, dan pihak lain."
         actions={
           <Button variant="primary" onClick={() => setOpen("new")}>
             <Plus className="size-4" />

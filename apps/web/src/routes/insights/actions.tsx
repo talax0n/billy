@@ -6,40 +6,20 @@ import {
   formatRupiah,
   type ActionItem,
 } from "@billy/core";
-import { queryOptions, useQuery } from "@tanstack/react-query";
+import { queryOptions } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { BellDot, type LucideIcon } from "lucide-react";
-import { forwardRef } from "react";
 import { Badge, StatusTag } from "../../components/ui/badge.tsx";
 import { DataTable, usePagedQuery } from "../../components/ui/data-table.tsx";
 import { EmptyState, PageBody, PageHeader } from "../../components/ui/page.tsx";
 import { api, unwrap } from "../../lib/api.ts";
 import { cx } from "../../lib/cx.ts";
 
-export const actionsOptions = queryOptions({
-  queryKey: ["insights", "action-count"],
-  queryFn: () =>
-    unwrap(api.insights.actions.$get({ query: { pageSize: "1" } })),
+/** The most urgent actions and the total count, for the notification bell. */
+export const topActionsOptions = queryOptions({
+  queryKey: ["insights", "actions", "top"],
+  queryFn: () => unwrap(api.insights.actions.$get({ query: { pageSize: "5" } })),
   refetchInterval: 60000,
 });
-export const ActionNavIcon: LucideIcon = forwardRef(
-  function ActionNavIcon(props, ref) {
-    const { data } = useQuery(actionsOptions);
-    return (
-      <>
-        <BellDot {...props} ref={ref} />
-        {data && (
-          <span
-            className="order-last ml-auto rounded-full border border-line bg-panel px-1.5 text-[10px] text-ink"
-            aria-label={`${data.count} tindakan`}
-          >
-            {data.count}
-          </span>
-        )}
-      </>
-    );
-  },
-);
 export function ActionStatus({ item }: { item: ActionItem }) {
   if (item.kind === "receivable" || item.kind === "payable")
     return (
@@ -101,7 +81,6 @@ export function ActionsPage() {
     <>
       <PageHeader
         title="Perlu Tindakan"
-        description="Urutan prioritas: stok negatif, piutang telat, hutang, stok rendah, lalu setoran kas."
       />
       <PageBody>
         <DataTable

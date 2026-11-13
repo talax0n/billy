@@ -94,8 +94,8 @@ export function DataTable<Row extends { id: string }>({
           {toolbar}
         </div>
       )}
-      <div className="overflow-hidden rounded-xl border border-line">
-        <table className="w-full border-collapse">
+      <div className="overflow-x-auto rounded-xl border border-line">
+        <table className="w-full min-w-[520px] border-collapse">
           <thead className="sticky top-0 bg-panel">
             <tr className="border-b border-line">
               {columns.map((col) => (

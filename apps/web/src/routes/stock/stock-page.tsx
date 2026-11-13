@@ -46,8 +46,8 @@ export function StockPage() {
 
   return (
     <>
-      <PageHeader title="Mutasi Stok" description="Setiap perubahan stok: pembelian, penjualan, kasir, penyesuaian, dan pembatalan." />
-      <div role="tablist" className="flex gap-1 border-b border-line px-6">
+      <PageHeader title="Mutasi Stok" />
+      <div role="tablist" className="flex gap-1 overflow-x-auto border-b border-line px-6 max-md:px-4">
         {tabs.map((t) => (
           <button
             key={t.key}

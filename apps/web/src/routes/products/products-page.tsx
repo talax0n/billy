@@ -23,7 +23,6 @@ export function ProductsPage() {
     <>
       <PageHeader
         title="Produk"
-        description="Barang, harga, dan stok. Stok dihitung dari mutasi stok."
         actions={
           <Button variant="primary" onClick={() => setOpen("new")}>
             <Plus className="size-4" />

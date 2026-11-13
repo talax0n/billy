@@ -30,7 +30,6 @@ export function BundlesPage() {
     <>
       <PageHeader
         title="Tukar Faktur"
-        description="Kumpulan faktur belum lunas yang diserahkan ke pelanggan untuk ditagih."
         actions={
           <Button variant="primary" onClick={() => setOpen("new")}>
             <Plus className="size-4" />
@@ -201,8 +200,8 @@ function BundleDetail({ bundle, onVoid }: { bundle: Bundle; onVoid: () => void }
           )}
         </div>
       </div>
-      <div className="overflow-hidden rounded-xl border border-line">
-        <table className="w-full border-collapse">
+      <div className="overflow-x-auto rounded-xl border border-line">
+        <table className="w-full min-w-[520px] border-collapse">
           <thead>
             <tr className="border-b border-line text-left text-xs text-muted">
               <th className="px-4 py-2 font-normal">Faktur</th>

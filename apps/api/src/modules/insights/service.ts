@@ -19,6 +19,7 @@ import {
   cashEntries,
   contacts,
   type Db,
+  expenses,
   payments,
   posLines,
   posSales,
@@ -39,6 +40,7 @@ import {
   or,
   sql,
   type AnyColumn,
+  type SQL,
 } from "drizzle-orm";
 import { money, netSales, signedAmount, snapshot } from "./sql.ts";
 
@@ -283,5 +285,54 @@ export async function listActions(
     ),
     total: filtered.length,
     count: actions.length,
+  };
+}
+
+/** First day of the month `months` before the month of `date` (YYYY-MM-01). */
+function monthStart(date: string, months = 0) {
+  const d = new Date(`${date.slice(0, 7)}-01T00:00:00Z`);
+  d.setUTCMonth(d.getUTCMonth() - months);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * The last 12 calendar months up to `today`, per month: invoice sales and cashier sales (net of
+ * document discounts, like the dashboard), purchases (invoice totals incl. PPN) and expenses.
+ * Void documents are left out.
+ */
+export async function yearlyOverview(db: Db, today: string) {
+  const window = { from: monthStart(today, 11), to: today };
+  const month = (date: AnyColumn) => sql<string>`to_char(${date}, 'YYYY-MM')`;
+  const byMonth = async (
+    table: typeof salesInvoices | typeof posSales | typeof purchaseInvoices | typeof expenses,
+    amount: SQL,
+  ) =>
+    new Map(
+      (
+        await db
+          .select({ month: month(table.date), total: money(sql`sum(${amount})`) })
+          .from(table)
+          .where(and(between(table.date, window.from, window.to), isNull(table.voidedAt)))
+          .groupBy(month(table.date))
+      ).map((r) => [r.month, r.total]),
+    );
+  const [sales, pos, purchases, spent] = await Promise.all([
+    byMonth(salesInvoices, netSales(salesInvoices)),
+    byMonth(posSales, netSales(posSales)),
+    byMonth(purchaseInvoices, sql`${purchaseInvoices.total}`),
+    byMonth(expenses, sql`${expenses.amount}`),
+  ]);
+  const months = Array.from({ length: 12 }, (_, i) => monthStart(today, 11 - i).slice(0, 7)).map((m) => ({
+    month: m,
+    sales: sales.get(m) ?? rupiah(0),
+    pos: pos.get(m) ?? rupiah(0),
+    purchases: purchases.get(m) ?? rupiah(0),
+    expenses: spent.get(m) ?? rupiah(0),
+  }));
+  const sum = (key: "sales" | "pos" | "purchases" | "expenses") => rupiah(months.reduce((n, m) => n + m[key], 0));
+  return {
+    ...window,
+    months,
+    totals: { sales: sum("sales"), pos: sum("pos"), purchases: sum("purchases"), expenses: sum("expenses") },
   };
 }

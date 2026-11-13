@@ -19,9 +19,9 @@ export function ReceivablesPage() {
 
   return (
     <>
-      <PageHeader title="Piutang" description="Sisa tagihan pelanggan dari faktur yang belum lunas, dikelompokkan menurut umur." />
+      <PageHeader title="Piutang" />
       <PageBody>
-        <div className="grid grid-cols-3 gap-3.5">
+        <div className="grid grid-cols-3 gap-3.5 max-md:grid-cols-1">
           <StatTile label="Total piutang" value={formatRupiah(rupiah(data?.totals?.total ?? 0))} note={`${asOf} · semua faktur belum lunas`} />
           <StatTile label="Belum jatuh tempo" value={formatRupiah(rupiah(data?.totals?.current ?? 0))} note={asOf} />
           <StatTile
@@ -34,8 +34,8 @@ export function ReceivablesPage() {
             note={`${asOf} · ${data?.rows.filter((r) => r.total > r.current).length ?? 0} pelanggan`}
           />
         </div>
-        <div className="overflow-hidden rounded-xl border border-line">
-          <table className="w-full border-collapse">
+        <div className="overflow-x-auto rounded-xl border border-line">
+          <table className="w-full min-w-[640px] border-collapse">
             <thead className="sticky top-0 bg-panel">
               <tr className="border-b border-line text-xs text-muted">
                 <th className="px-4 py-2.5 text-left font-normal">Pelanggan</th>

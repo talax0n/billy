@@ -87,7 +87,7 @@ function InvoiceDetail({ invoice }: { invoice: Invoice }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-3 gap-3 max-sm:grid-cols-1">
         <StatTile label="Total" value={<small className="text-lg">{money(invoice.total)}</small>} />
         <StatTile label="Terbayar" value={<small className="text-lg">{money(invoice.paid)}</small>} />
         <StatTile
@@ -97,8 +97,8 @@ function InvoiceDetail({ invoice }: { invoice: Invoice }) {
         />
       </div>
 
-      <section className="overflow-hidden rounded-xl border border-line">
-        <table className="w-full border-collapse">
+      <section className="overflow-x-auto rounded-xl border border-line">
+        <table className="w-full min-w-[520px] border-collapse">
           <thead>
             <tr className="border-b border-line text-left text-xs text-muted">
               <th className="px-4 py-2 font-normal">Barang</th>

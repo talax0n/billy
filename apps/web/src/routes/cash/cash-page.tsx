@@ -26,7 +26,6 @@ export function CashPage() {
     <>
       <PageHeader
         title="Kas & Bank"
-        description="Saldo setiap akun dihitung dari mutasi kasnya."
         actions={
           <>
             <Button onClick={() => setAction("in")}>
@@ -49,7 +48,7 @@ export function CashPage() {
         }
       />
       <PageBody>
-        <div className="grid grid-cols-3 gap-3.5">
+        <div className="grid grid-cols-3 gap-3.5 max-md:grid-cols-1">
           <StatTile
             label="Total saldo kas & bank"
             value={balanceTotal === undefined ? "—" : <Balance value={balanceTotal} />}

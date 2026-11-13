@@ -82,7 +82,7 @@ export function SearchBox({
                   >
                     <div>
                       {productLabel(p)}
-                      <small className="block text-[11.5px] text-muted">
+                      <small className="block text-xs text-muted">
                         {[p.unit.toUpperCase(), p.categoryName, p.code].filter(Boolean).join(" · ")}
                       </small>
                     </div>
@@ -93,7 +93,7 @@ export function SearchBox({
               })}
             </ul>
           )}
-          <div className="flex gap-3.5 border-t border-line-2 px-3 py-1.5 text-[11.5px] text-muted">
+          <div className="flex gap-3.5 border-t border-line-2 px-3 py-1.5 text-xs text-muted">
             <span>↑↓ pilih</span>
             <span>Enter tambah</span>
             <span>Shift+Enter tambah + qty</span>

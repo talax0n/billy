@@ -10,9 +10,13 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import type { InferResponseType } from "hono/client";
 import { useState } from "react";
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { Button } from "../../components/ui/button.tsx";
+import { type ChartConfig, ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent } from "../../components/ui/chart.tsx";
 import { DateInput, Select } from "../../components/ui/field.tsx";
 import { FilterRow, PageBody, PageHeader } from "../../components/ui/page.tsx";
+import { Tooltip } from "../../components/ui/tooltip.tsx";
+import { YearlyOverview } from "./yearly-overview.tsx";
 import { api, unwrap } from "../../lib/api.ts";
 import { cx } from "../../lib/cx.ts";
 import { ActionLink, ActionStatus, actionDescription, linkButton } from "./actions.tsx";
@@ -53,90 +57,40 @@ function Delta({
     </span>
   );
 }
-type Point = [x: number, y: number];
-/**
- * Monotone cubic through every point (the d3 `monotoneX` tangents): a curve that never
- * overshoots its neighbours, so weeks with zero cash stay on the axis instead of dipping below.
- */
-function monotonePath(points: Point[]) {
-  const slope = (i: number) =>
-    (points[i + 1]![1] - points[i]![1]) / (points[i + 1]![0] - points[i]![0]);
-  const tangents = points.map((_, i) => {
-    if (i === 0) return slope(0);
-    if (i === points.length - 1) return slope(i - 1);
-    const [s0, s1] = [slope(i - 1), slope(i)];
-    return (
-      (Math.sign(s0) + Math.sign(s1)) *
-      Math.min(Math.abs(s0), Math.abs(s1), Math.abs(s0 + s1) / 4)
-    );
-  });
-  return points
-    .map(([x, y], i) => {
-      if (i === 0) return `M${x},${y}`;
-      const [px, py] = points[i - 1]!;
-      const h = (x - px) / 3;
-      return `C${px + h},${py + tangents[i - 1]! * h} ${x - h},${y - tangents[i]! * h} ${x},${y}`;
-    })
-    .join(" ");
-}
-/** Pushes two end labels at least `gap` apart around their midpoint, inside [top, bottom]. */
-function spreadLabels(a: number, b: number, gap: number, top: number, bottom: number) {
-  if (Math.abs(a - b) >= gap) return [a, b] as const;
-  const mid = Math.min(Math.max((a + b) / 2, top + gap / 2), bottom - gap / 2);
-  return a <= b ? ([mid - gap / 2, mid + gap / 2] as const) : ([mid + gap / 2, mid - gap / 2] as const);
-}
-const plot = { left: 64, right: 520, top: 50, bottom: 290 };
+const cashChartConfig = {
+  incoming: { label: "Masuk", color: "var(--ink)" },
+  outgoing: { label: "Keluar", color: "var(--faint)" },
+} satisfies ChartConfig;
+const weekLabel = (from: unknown) => formatDate(String(from)).replace(/ \d{4}$/, "");
 function CashChart({ rows }: { rows: Dashboard["chart"] }) {
-  const max = Math.max(1, ...rows.flatMap((r) => [r.incoming, r.outgoing]));
-  const x = (i: number) => plot.left + (i * (plot.right - plot.left)) / (rows.length - 1);
-  const y = (value: number) => plot.bottom - (value / max) * (plot.bottom - plot.top);
-  const path = (key: "incoming" | "outgoing") => monotonePath(rows.map((r, i) => [x(i), y(r[key])]));
-  const last = rows.at(-1)!;
-  const [incomingY, outgoingY] = spreadLabels(y(last.incoming), y(last.outgoing), 28, plot.top, plot.bottom);
   return (
-    <svg
-      className="mt-5 min-h-[330px] w-full overflow-visible text-[11px] tabular-nums [&_text]:fill-muted"
-      viewBox="0 0 660 330"
-      role="img"
-      aria-label="Arus kas mingguan: uang masuk dan keluar, tanpa transfer"
-    >
-      {[0, 1, 2, 3, 4].map((i) => (
-        <g key={i}>
-          <line x1={plot.left} x2={plot.right} y1={plot.top + i * 60} y2={plot.top + i * 60} stroke="var(--line-2)" />
-          <text x="0" y={plot.top + 4 + i * 60}>
-            {short(Math.round((max * (4 - i)) / 4))}
-          </text>
-        </g>
-      ))}
-      <path d={path("outgoing")} fill="none" stroke="var(--faint)" strokeWidth="1.8" />
-      <path d={path("incoming")} fill="none" stroke="var(--ink)" strokeWidth="2.2" />
-      {rows.map((r, i) => (
-        <g key={r.from}>
-          <circle cx={x(i)} cy={y(r.outgoing)} r="3" fill="var(--faint)">
-            <title>
-              {formatDate(r.from)} · Keluar {formatRupiah(r.outgoing)}
-            </title>
-          </circle>
-          <circle cx={x(i)} cy={y(r.incoming)} r="3" fill="var(--ink)">
-            <title>
-              {formatDate(r.from)} · Masuk {formatRupiah(r.incoming)}
-            </title>
-          </circle>
-          {(i % Math.ceil(rows.length / 5) === 0 || i === rows.length - 1) && (
-            <text x={x(i)} y="318" textAnchor="middle">
-              {formatDate(r.from).replace(/ \d{4}$/, "")}
-            </text>
-          )}
-        </g>
-      ))}
-      <rect x="531" y={incomingY - 12} width="125" height="24" rx="12" fill="var(--ink)" />
-      <text x="541" y={incomingY + 4} style={{ fill: "var(--panel)" }}>
-        Masuk {short(last.incoming)}
-      </text>
-      <text x="541" y={outgoingY + 4}>
-        Keluar {short(last.outgoing)}
-      </text>
-    </svg>
+    <ChartContainer config={cashChartConfig} className="mt-4 aspect-auto min-h-[260px] w-full flex-1 max-md:min-h-[240px]">
+      <AreaChart data={rows} margin={{ left: 4, right: 8, top: 4 }}>
+        <defs>
+          {(["incoming", "outgoing"] as const).map((key) => (
+            <linearGradient key={key} id={`fill-${key}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor={`var(--color-${key})`} stopOpacity={0.3} />
+              <stop offset="95%" stopColor={`var(--color-${key})`} stopOpacity={0.02} />
+            </linearGradient>
+          ))}
+        </defs>
+        <CartesianGrid vertical={false} />
+        <XAxis dataKey="from" tickLine={false} axisLine={false} tickMargin={8} minTickGap={24} tickFormatter={weekLabel} />
+        <YAxis tickLine={false} axisLine={false} width={88} tickFormatter={short} />
+        <ChartTooltip
+          cursor={false}
+          content={
+            <ChartTooltipContent
+              labelFormatter={(from) => `Minggu ${formatDate(String(from))}`}
+              valueFormatter={(value) => formatRupiah(rupiah(Number(value)))}
+            />
+          }
+        />
+        <Area dataKey="outgoing" type="monotone" fill="url(#fill-outgoing)" stroke="var(--color-outgoing)" strokeWidth={1.8} />
+        <Area dataKey="incoming" type="monotone" fill="url(#fill-incoming)" stroke="var(--color-incoming)" strokeWidth={2} />
+        <ChartLegend itemSorter={null} content={<ChartLegendContent />} />
+      </AreaChart>
+    </ChartContainer>
   );
 }
 export function DashboardPage() {
@@ -163,11 +117,6 @@ export function DashboardPage() {
     refetchInterval: 60000,
   });
   const data = result.data;
-  const range = !invalid
-    ? `${formatDate(window.from)}–${formatDate(window.to)}`
-    : "Rentang tanggal";
-  const selected =
-    data?.balances.find((a) => a.id === account)?.name ?? "semua akun";
   const exportQuery = new URLSearchParams({
     ...window,
     ...(account ? { account } : {}),
@@ -175,8 +124,7 @@ export function DashboardPage() {
   return (
     <>
       <PageHeader
-        title="Ringkasan"
-        description={`Kondisi toko · ${range}`}
+        title="Overview"
         actions={
           data && (
             <div className="flex gap-2.5 rounded-full border border-line px-3.5 py-[7px] whitespace-nowrap text-muted max-[900px]:flex-wrap max-[900px]:whitespace-normal">
@@ -234,7 +182,7 @@ export function DashboardPage() {
         )}
         {data && !invalid && (
           <>
-            <div className="grid grid-cols-5 overflow-hidden rounded-xl border border-line max-[900px]:grid-cols-2">
+            <div className="grid grid-cols-5 gap-px overflow-hidden rounded-xl border border-line bg-line max-[900px]:grid-cols-2">
               {(
                 [
                   {
@@ -278,66 +226,44 @@ export function DashboardPage() {
                   },
                 ] as const
               ).map((kpi) => (
-                <section className="border-l border-line p-4 first:border-l-0 max-[1200px]:p-3" key={kpi.key}>
-                  <h2 className="text-ink-2">{kpi.title}</h2>
-                  <p className="mt-1 text-[10px] text-muted">
-                    {kpi.key === "receivables" || kpi.key === "duePayables"
-                      ? `Per ${formatDate(window.to)}`
-                      : range}
-                  </p>
-                  <div className={bigValue}>
-                    <ShortMoney value={kpi.value} />
-                  </div>
-                  <p className="mb-2 text-[11px]">
-                    <Delta
-                      value={data.deltas[kpi.key]}
-                      inverse={
-                        kpi.key === "receivables" || kpi.key === "duePayables"
-                      }
-                    />{" "}
-                    <span className="text-[10px] text-muted">vs periode sebelumnya</span>
-                  </p>
-                  <p
-                    className={cx("min-h-8 text-[11px]", kpi.key === "receivables" ? "text-down" : "text-muted")}
-                  >
-                    {kpi.note}
-                  </p>
-                  {kpi.share !== null && (
-                    <div
-                      className={cx(
-                        "mt-2.5 h-[3px] overflow-hidden rounded-[3px]",
-                        kpi.key === "sales" ? "bg-faint" : "bg-line-2",
-                      )}
-                    >
-                      <div
-                        className="h-full"
-                        style={{
-                          width: `${Math.min(100, Math.max(0, kpi.share * 100))}%`,
-                          background:
-                            kpi.key === "receivables"
-                              ? "var(--down)"
-                              : "var(--ink)",
-                        }}
-                      />
+                <Tooltip
+                  key={kpi.key}
+                  className="bg-panel p-4 max-[1200px]:p-3 max-[900px]:last:col-span-2"
+                  content={
+                    <div className="flex flex-col gap-1">
+                      <span>
+                        <Delta value={data.deltas[kpi.key]} inverse={kpi.key === "receivables" || kpi.key === "duePayables"} />{" "}
+                        <span className="text-muted">vs periode sebelumnya</span>
+                      </span>
+                      <span className={kpi.key === "receivables" ? "text-down" : "text-ink-2"}>{kpi.note}</span>
                     </div>
-                  )}
-                </section>
+                  }
+                >
+                  <section aria-label={kpi.title}>
+                    <h2 className="text-ink-2">{kpi.title}</h2>
+                    <div className={bigValue}>
+                      <ShortMoney value={kpi.value} />
+                    </div>
+                    <p className="sr-only">{kpi.note}</p>
+                    {kpi.share !== null && (
+                      <div className={cx("mt-3 h-[3px] overflow-hidden rounded-[3px]", kpi.key === "sales" ? "bg-faint" : "bg-line-2")}>
+                        <div
+                          className="h-full"
+                          style={{
+                            width: `${Math.min(100, Math.max(0, kpi.share * 100))}%`,
+                            background: kpi.key === "receivables" ? "var(--down)" : "var(--ink)",
+                          }}
+                        />
+                      </div>
+                    )}
+                  </section>
+                </Tooltip>
               ))}
             </div>
-            <p className="text-xs text-muted">
-              Pembanding: {formatDate(data.previousWindow.from)}–
-              {formatDate(data.previousWindow.to)}. Penjualan & faktur: seluruh
-              toko. Arus kas: {selected}, tanpa transfer.
-            </p>
             <div className="grid grid-cols-[minmax(0,1fr)_370px] gap-3.5 max-[1200px]:grid-cols-1">
-              <section className={card}>
+              <section className={cx(card, "flex flex-col")}>
                 <div className="flex items-start justify-between gap-2.5">
-                  <div>
-                    <h2>Arus kas</h2>
-                    <p className="text-xs text-muted">
-                      Uang masuk vs keluar · {selected} · mingguan
-                    </p>
-                  </div>
+                  <h2>Arus kas</h2>
                   <div className="flex rounded-lg bg-bg p-0.5 whitespace-nowrap">
                     {(["12", "26"] as const).map((w) => (
                       <button
@@ -356,15 +282,12 @@ export function DashboardPage() {
               <div className="flex flex-col gap-3.5 min-[901px]:max-[1200px]:grid min-[901px]:max-[1200px]:grid-cols-2">
                 <section className={card}>
                   <h2>Saldo per akun</h2>
-                  <p className="text-xs text-muted">
-                    Per {formatDate(data.today)} · seluruh akun
-                  </p>
                   <div className={bigValue}>
                     <ShortMoney
                       value={data.balances.reduce((n, a) => n + a.balance, 0)}
                     />
                   </div>
-                  <table className="mt-2.5 w-full text-[11px] tabular-nums [&_:is(th,td):nth-child(n+3)]:text-right [&_:is(th,td):nth-child(n+3)]:whitespace-nowrap [&_td]:border-t [&_td]:border-line-2 [&_td]:px-[3px] [&_td]:py-[9px] [&_th]:px-[3px] [&_th]:py-1.5 [&_th]:text-left [&_th]:font-normal [&_th]:text-muted">
+                  <table className="mt-2.5 w-full text-xs tabular-nums [&_:is(th,td):nth-child(n+3)]:text-right [&_:is(th,td):nth-child(n+3)]:whitespace-nowrap [&_td]:border-t [&_td]:border-line-2 [&_td]:px-[3px] [&_td]:py-[9px] [&_th]:px-[3px] [&_th]:py-1.5 [&_th]:text-left [&_th]:font-normal [&_th]:text-muted">
                     <thead>
                       <tr>
                         <th>#</th>
@@ -430,7 +353,8 @@ export function DashboardPage() {
                 </section>
               </div>
             </div>
-            <div className="flex justify-end gap-2">
+            <YearlyOverview />
+            <div className="flex flex-wrap justify-end gap-2">
               <a
                 className={linkButton.secondary}
                 href={`/api/reports/cash-book.xlsx?${exportQuery}`}

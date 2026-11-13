@@ -1,22 +1,23 @@
 import type { ReactNode } from "react";
 import { cx } from "../../lib/cx.ts";
+import { NotificationBell } from "../shell/notification-bell.tsx";
 
-/** Top of a page inside the main panel: title, one-line description, actions on the right. */
-export function PageHeader({ title, description, actions }: { title: string; description?: ReactNode; actions?: ReactNode }) {
+/** Top of a page inside the main panel: the title, then actions and the notification bell on the right. */
+export function PageHeader({ title, actions }: { title: string; actions?: ReactNode }) {
   return (
-    <header className="flex items-start justify-between gap-4 border-b border-line px-6 pt-5 pb-4">
-      <div>
-        <h1 className="text-[23px] font-semibold tracking-tight">{title}</h1>
-        {description && <p className="mt-0.5 text-muted">{description}</p>}
+    <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-line px-6 pt-5 pb-4 max-md:px-4 max-md:pt-4 max-md:pb-3">
+      <h1 className="text-[23px] font-semibold tracking-tight max-md:text-xl">{title}</h1>
+      <div className="flex flex-wrap items-center gap-2">
+        {actions}
+        <NotificationBell />
       </div>
-      {actions && <div className="flex items-center gap-2">{actions}</div>}
     </header>
   );
 }
 
 /** Padded content area under a PageHeader. */
 export function PageBody({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cx("flex flex-col gap-4 px-6 pt-4 pb-6", className)}>{children}</div>;
+  return <div className={cx("flex flex-col gap-4 px-6 pt-4 pb-6 max-md:px-4", className)}>{children}</div>;
 }
 
 /** Filters on the left, an "as of" note or count on the right. */
@@ -50,7 +51,7 @@ export function StatTile({
       <div className="text-ink-2">{label}</div>
       <div className="mt-2 mb-1 flex items-baseline gap-2 text-[27px] font-medium tracking-tight whitespace-nowrap tabular-nums">
         <span>{value}</span>
-        {delta && <small className={cx("text-[13px] font-medium tracking-normal", toneClass[tone])}>{delta}</small>}
+        {delta && <small className={cx("text-sm font-medium tracking-normal", toneClass[tone])}>{delta}</small>}
       </div>
       {note && <div className="text-xs text-muted">{note}</div>}
     </div>

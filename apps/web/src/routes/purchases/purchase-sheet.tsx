@@ -51,7 +51,7 @@ function PurchaseDetail({ purchase: p }: { purchase: Purchase }) {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-start justify-between gap-4">
-        <dl className="grid grid-cols-3 gap-x-6 gap-y-1">
+        <dl className="grid grid-cols-3 gap-x-6 gap-y-1 max-sm:grid-cols-2">
           <dt className="text-muted">Tanggal</dt>
           <dt className="text-muted">Jatuh tempo</dt>
           <dt className="text-muted">Status</dt>
@@ -85,8 +85,8 @@ function PurchaseDetail({ purchase: p }: { purchase: Purchase }) {
         </p>
       )}
 
-      <div className="overflow-hidden rounded-xl border border-line">
-        <table className="w-full border-collapse">
+      <div className="overflow-x-auto rounded-xl border border-line">
+        <table className="w-full min-w-[520px] border-collapse">
           <thead>
             <tr className="border-b border-line text-xs text-muted">
               <th className="px-4 py-2 text-left font-normal">Barang</th>
@@ -115,7 +115,7 @@ function PurchaseDetail({ purchase: p }: { purchase: Purchase }) {
         </table>
       </div>
 
-      <div className="grid grid-cols-[minmax(0,1fr)_280px] gap-6">
+      <div className="grid grid-cols-[minmax(0,1fr)_280px] gap-6 max-md:grid-cols-1">
         <div className="text-ink-2">{p.note}</div>
         <TotalsPanel
           rows={[

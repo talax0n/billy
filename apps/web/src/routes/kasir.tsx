@@ -253,7 +253,7 @@ function Register({ catalog }: { catalog: Catalog }) {
   }
 
   return (
-    <div className="flex h-dvh min-h-[600px] flex-col">
+    <div className="flex h-dvh min-h-[600px] flex-col max-md:h-auto max-md:min-h-dvh">
       <TopBar
         catalog={catalog}
         nextNumber={nextNumber}
@@ -265,8 +265,8 @@ function Register({ catalog }: { catalog: Catalog }) {
         onProblems={() => setDialog("problems")}
         onPrefs={() => setDialog("prefs")}
       />
-      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_380px] gap-2.5 px-2.5 pb-2.5">
-        <section className="flex min-h-0 flex-col rounded-[14px] border border-line bg-panel">
+      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_380px] gap-2.5 px-2.5 pb-2.5 max-md:grid-cols-1">
+        <section className="flex min-h-0 flex-col rounded-[14px] border border-line bg-panel max-md:min-h-[45dvh]">
           <SearchBox
             inputRef={searchRef}
             query={query}
@@ -283,8 +283,9 @@ function Register({ catalog }: { catalog: Catalog }) {
             }}
             onBlur={() =>
               // Always focused: give focus back unless it moved to another control on purpose.
+              // Not on touch screens, where refocusing would keep reopening the on-screen keyboard.
               setTimeout(() => {
-                if (document.activeElement === document.body) searchRef.current?.focus();
+                if (document.activeElement === document.body && !matchMedia("(pointer: coarse)").matches) searchRef.current?.focus();
               })
             }
           />
@@ -299,7 +300,7 @@ function Register({ catalog }: { catalog: Catalog }) {
             }}
           />
         </section>
-        <aside className="flex min-h-0 flex-col overflow-y-auto rounded-[14px] border border-line bg-panel">
+        <aside className="flex min-h-0 flex-col overflow-y-auto rounded-[14px] border border-line bg-panel max-md:overflow-visible">
           <PayPanel
             totals={totals}
             error={computed.ok ? null : computed.error}
@@ -318,7 +319,7 @@ function Register({ catalog }: { catalog: Catalog }) {
           />
         </aside>
       </div>
-      <div className="flex gap-4 px-4 pb-2.5 text-xs text-muted">
+      <div className="flex gap-4 px-4 pb-2.5 text-xs text-muted max-md:hidden">
         {(
           [
             ["F2", "cari"],
@@ -435,7 +436,7 @@ function TopBar({
   };
 
   return (
-    <header className="flex items-center gap-3.5 px-4 py-2.5">
+    <header className="flex flex-wrap items-center gap-3.5 px-4 py-2.5 max-md:gap-2 max-md:px-2.5">
       <div className="grid size-[26px] place-items-center rounded-[7px] bg-ink text-xs font-semibold text-panel">{initials || "B"}</div>
       <b className="text-[15px] font-semibold">Kasir</b>
       <Chip>
@@ -452,7 +453,7 @@ function TopBar({
           <strong className="font-medium">{outbox.problems.length} masalah sinkron</strong>
         </Chip>
       )}
-      <Chip>
+      <Chip className="max-md:hidden">
         Kasir <strong className="font-medium text-ink">{cashierName}</strong> · {catalog.shop.deviceCode}
       </Chip>
       <Chip onClick={onPrefs} title="Pengaturan kasir" className="px-2">

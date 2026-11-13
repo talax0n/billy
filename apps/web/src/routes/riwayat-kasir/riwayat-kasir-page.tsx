@@ -31,7 +31,7 @@ export function RiwayatKasirPage() {
 
   return (
     <>
-      <PageHeader title="Riwayat Kasir" description="Struk penjualan kasir. Transaksi offline muncul setelah tersinkron." />
+      <PageHeader title="Riwayat Kasir" />
       <PageBody>
         <DataTable
           paged={paged}

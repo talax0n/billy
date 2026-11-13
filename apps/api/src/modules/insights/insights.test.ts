@@ -23,7 +23,7 @@ import ExcelJS from "exceljs";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { createTestApp } from "../../testing.ts";
 import { seedInsightDemo } from "./fixture.ts";
-import { dashboard, listActions, stockAlerts } from "./service.ts";
+import { dashboard, listActions, stockAlerts, yearlyOverview } from "./service.ts";
 
 vi.useFakeTimers({ toFake: ["Date"] });
 vi.setSystemTime(new Date("2026-11-13T07:00:00Z"));
@@ -377,4 +377,26 @@ it("rejects kasir and unauthenticated reads of every endpoint", async () => {
     expect((await call(path, { cookie: kasir.cookie })).status).toBe(403);
     expect((await call(path)).status).toBe(401);
   }
+});
+
+it("sums the last 12 months per month, matching the dashboard totals for the same window", async () => {
+  const res = await call("/api/insights/yearly", { cookie });
+  expect(res.status).toBe(200);
+  const body = (await res.json()) as Awaited<ReturnType<typeof yearlyOverview>>;
+  expect(body.from).toBe("2025-12-01");
+  expect(body.months.map((m) => m.month)).toEqual([
+    "2025-12", "2026-01", "2026-02", "2026-03", "2026-04", "2026-05",
+    "2026-06", "2026-07", "2026-08", "2026-09", "2026-10", "2026-11",
+  ]);
+  const kpi = (await (await call(`/api/insights/dashboard?from=${body.from}&to=${body.to}`, { cookie })).json()) as Awaited<
+    ReturnType<typeof dashboard>
+  >;
+  expect(body.totals.sales).toBe(kpi.current.invoiceSales);
+  expect(body.totals.pos).toBe(kpi.current.posSales);
+  expect(body.totals.sales).toBeGreaterThan(0);
+  const purchases = await db.select().from(purchaseInvoices);
+  const expected = purchases
+    .filter((p) => !p.voidedAt && p.date >= body.from && p.date <= body.to)
+    .reduce((n, p) => n + p.total, 0);
+  expect(body.totals.purchases).toBe(expected);
 });

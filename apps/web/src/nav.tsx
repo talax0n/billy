@@ -1,6 +1,7 @@
 import type { Role } from "@billy/core";
 import {
   ArrowLeftRight,
+  BellDot,
   Boxes,
   FileStack,
   HandCoins,
@@ -20,7 +21,7 @@ import { BundlesPage } from "./routes/invoice-bundles/bundles-page.tsx";
 import { CashPage } from "./routes/cash/cash-page.tsx";
 import { ContactsPage } from "./routes/contacts/contacts-page.tsx";
 import { ExpensesPage } from "./routes/expenses/expenses-page.tsx";
-import { ActionsPage, ActionNavIcon } from "./routes/insights/actions.tsx";
+import { ActionsPage } from "./routes/insights/actions.tsx";
 import { DashboardPage } from "./routes/insights/dashboard.tsx";
 import { ProductsPage } from "./routes/products/products-page.tsx";
 import { ReceivablesPage } from "./routes/receivables/receivables-page.tsx";
@@ -37,8 +38,8 @@ export interface NavItem {
   path: string;
   label: string;
   icon: LucideIcon;
-  /** Sidebar group; `null` sits at the bottom of the sidebar. */
-  group: (typeof navGroups)[number] | null;
+  /** Sidebar group; `null` sits at the bottom of the sidebar, `"hidden"` is a route with no sidebar link. */
+  group: (typeof navGroups)[number] | null | "hidden";
   /** The page. Without one the route shows "Segera hadir". */
   page?: () => ReactNode;
   /** Roles that may open it. Default: admin and staff (kasir never sees the shell). */
@@ -50,8 +51,9 @@ export interface NavItem {
  * Adding a module's page is one entry here.
  */
 export const navItems: NavItem[] = [
-  { group: "Umum", path: "/", label: "Ringkasan", icon: LayoutDashboard, page: DashboardPage },
-  { group: "Umum", path: "/tindakan", label: "Perlu Tindakan", icon: ActionNavIcon, page: ActionsPage },
+  { group: "Umum", path: "/", label: "Overview", icon: LayoutDashboard, page: DashboardPage },
+  // Reached from the notification bell in every page header.
+  { group: "hidden", path: "/tindakan", label: "Perlu Tindakan", icon: BellDot, page: ActionsPage },
   { group: "Transaksi", path: "/penjualan", label: "Penjualan", icon: Receipt, page: SalesPage },
   { group: "Transaksi", path: "/pembelian", label: "Pembelian", icon: ShoppingCart, page: PurchasesPage },
   { group: "Transaksi", path: "/biaya", label: "Biaya", icon: WalletCards, page: ExpensesPage },

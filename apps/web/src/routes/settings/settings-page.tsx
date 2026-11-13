@@ -22,8 +22,8 @@ export function SettingsPage() {
 
   return (
     <>
-      <PageHeader title="Pengaturan" description="Toko, pengguna, dan kategori produk" />
-      <div role="tablist" className="flex gap-1 border-b border-line px-6">
+      <PageHeader title="Pengaturan" />
+      <div role="tablist" className="flex gap-1 overflow-x-auto border-b border-line px-6 max-md:px-4">
         {visible.map((tab) => (
           <button
             key={tab.label}

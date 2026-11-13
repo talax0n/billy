@@ -63,7 +63,7 @@ function ProductDetail({ product }: { product: ProductRow }) {
   const [adjusting, setAdjusting] = useState(false);
   return (
     <div className="flex flex-col gap-6">
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-3 gap-3 max-sm:grid-cols-1">
         <StatTile label="Stok" value={<StockQty product={product} />} note={`Minimum ${product.minStock} ${product.unit}`} />
         <StatTile label="Harga jual" value={<small className="text-lg">{formatRupiah(product.sellPrice)}</small>} />
         <StatTile label="Harga pokok" value={<small className="text-lg">{formatRupiah(product.costPrice)}</small>} />

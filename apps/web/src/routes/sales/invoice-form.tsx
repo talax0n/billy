@@ -143,7 +143,7 @@ export function InvoiceForm({ onSaved }: { onSaved: (id: string) => void }) {
 
   return (
     <form onSubmit={submit} noValidate className="flex flex-col gap-6">
-      <section className="grid grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))] gap-3">
+      <section className="grid grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))] gap-3 max-md:grid-cols-2 max-md:[&>:first-child]:col-span-2">
         <Field label="Pelanggan" error={errors.customerId}>
           {(p) => (
             <LookupPicker
@@ -181,8 +181,8 @@ export function InvoiceForm({ onSaved }: { onSaved: (id: string) => void }) {
       </section>
 
       <section className="flex flex-col gap-2">
-        <div className="overflow-hidden rounded-xl border border-line">
-          <table className="w-full border-collapse">
+        <div className="overflow-x-auto rounded-xl border border-line">
+          <table className="w-full min-w-[640px] border-collapse">
             <thead>
               <tr className="border-b border-line text-left text-xs text-muted">
                 <th className="w-8 px-3 py-2 font-normal">#</th>
@@ -227,7 +227,7 @@ export function InvoiceForm({ onSaved }: { onSaved: (id: string) => void }) {
         {errors.lines && <p className="text-xs text-down">{errors.lines}</p>}
       </section>
 
-      <section className="grid grid-cols-[minmax(0,1fr)_320px] gap-6">
+      <section className="grid grid-cols-[minmax(0,1fr)_320px] gap-6 max-lg:grid-cols-1">
         <div className="flex flex-col gap-4">
           <Field label="Catatan faktur" error={errors.note}>
             {(p) => <Input {...p} value={note} onChange={(e) => setNote(e.target.value)} />}

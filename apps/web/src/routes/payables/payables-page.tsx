@@ -38,7 +38,7 @@ export function PayablesPage() {
 
   return (
     <>
-      <PageHeader title="Hutang" description="Tagihan pemasok yang belum lunas, dikelompokkan menurut jatuh tempo." />
+      <PageHeader title="Hutang" />
       <PageBody>
         <div className="grid grid-cols-5 gap-3.5">
           {(Object.keys(bucketLabels) as DueBucket[]).map((bucket) => (

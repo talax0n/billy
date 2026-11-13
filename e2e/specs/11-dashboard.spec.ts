@@ -3,9 +3,9 @@ import { ADMIN, login, rp } from "../helpers.ts";
 
 const card = (page: Page, title: string) => page.getByRole("heading", { name: title, level: 2 }).locator("..");
 
-test("Ringkasan and Perlu Tindakan count the sales made earlier in the run", async ({ page }) => {
+test("Overview and Perlu Tindakan count the sales made earlier in the run", async ({ page }) => {
   await login(page, ADMIN);
-  await expect(page.getByRole("heading", { name: "Ringkasan", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Overview", level: 1 })).toBeVisible();
 
   // Invoices 466.000 + 156.000; cashier 110.000 + 32.000.
   await expect(card(page, "Penjualan")).toContainText(rp(764_000));
@@ -17,8 +17,9 @@ test("Ringkasan and Perlu Tindakan count the sales made earlier in the run", asy
   await expect(page.getByRole("row", { name: `2 BCA Operasional ${rp(700_000)} +${rp(700_000)}` })).toBeVisible();
 
   // The second invoice took Kilau Enamel Merah from 7 to 5, below its minimum of 6.
-  await expect(page.getByRole("link", { name: "3 tindakan Perlu Tindakan" })).toBeVisible();
-  await page.getByRole("link", { name: "3 tindakan ›" }).click();
+  await page.getByRole("button", { name: "Perlu tindakan: 3" }).click();
+  await expect(page.getByRole("link", { name: /Stok rendah Kilau Enamel/ })).toBeVisible();
+  await page.getByRole("link", { name: "Lihat semua" }).click();
   await expect(page).toHaveURL(/\/tindakan$/);
   await expect(page.getByRole("row", { name: /Stok rendah Kilau Enamel Stok 5 · Minimum 6/ })).toBeVisible();
   await expect(page.getByText("1–3 dari 3")).toBeVisible();

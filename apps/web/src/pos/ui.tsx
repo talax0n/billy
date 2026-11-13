@@ -8,7 +8,7 @@ export const money = (value: number) => idr.format(value);
 
 export function Kbd({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <kbd className={cx("rounded-[5px] border border-line bg-panel px-1.5 py-px font-sans text-[11px] text-muted", className)}>
+    <kbd className={cx("rounded-[5px] border border-line bg-panel px-1.5 py-px font-sans text-xs text-muted", className)}>
       {children}
     </kbd>
   );

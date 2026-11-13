@@ -105,7 +105,7 @@ export function PurchaseForm({ onSaved, onCancel }: { onSaved: (id: string) => v
         if (event.key === "Enter" && event.target instanceof HTMLInputElement) event.preventDefault();
       }}
     >
-      <section className="grid grid-cols-4 gap-x-3 gap-y-4">
+      <section className="grid grid-cols-4 gap-x-3 gap-y-4 max-md:grid-cols-2">
         <Field label="Pemasok" error={e.supplierId} className="col-span-2">
           {(p) => (
             <LookupPicker
@@ -246,7 +246,7 @@ export function PurchaseForm({ onSaved, onCancel }: { onSaved: (id: string) => v
         {e.lines && <p className="text-xs text-down">{e.lines}</p>}
       </section>
 
-      <section className="grid grid-cols-[minmax(0,1fr)_340px] gap-8">
+      <section className="grid grid-cols-[minmax(0,1fr)_340px] gap-8 max-lg:grid-cols-1">
         <div className="flex flex-col gap-4">
           <Field label="Catatan" error={e.note}>
             {(p) => <Input {...p} value={v.note ?? ""} onChange={(ev) => form.set("note", ev.target.value)} />}

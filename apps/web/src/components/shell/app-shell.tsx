@@ -1,11 +1,12 @@
 import { roleLabels } from "@billy/core";
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
-import { Link, Outlet, useNavigate } from "@tanstack/react-router";
-import { LogOut, MonitorSmartphone } from "lucide-react";
-import { useEffect, useSyncExternalStore } from "react";
+import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
+import { LogOut, Menu, MonitorSmartphone, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { meQuery, useLogout } from "../../lib/auth.ts";
 import { settingsQuery } from "../../lib/settings.ts";
 import { type NavItem, navGroups, navItems } from "../../nav.tsx";
+import { cx } from "../../lib/cx.ts";
 import { Button } from "../ui/button.tsx";
 import { ThemeToggle } from "./theme-toggle.tsx";
 
@@ -23,17 +24,57 @@ export function AppShell() {
     return () => window.removeEventListener("keydown", onKey);
   }, [navigate]);
 
+  const [collapsed, setCollapsed] = useState(readCollapsed);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  useEffect(() => setDrawerOpen(false), [pathname]);
+
+  const toggleCollapsed = () => {
+    setCollapsed(!collapsed);
+    try {
+      localStorage.setItem(COLLAPSED_KEY, collapsed ? "0" : "1");
+    } catch {
+      // Storage blocked: the choice lasts for this page view.
+    }
+  };
+
   return (
-    <div className="grid min-h-dvh grid-cols-[220px_minmax(0,1fr)] gap-2.5 p-2.5">
-      <Sidebar />
-      <main className="min-w-0 overflow-hidden rounded-[14px] border border-line bg-panel">
+    <div
+      className={cx(
+        "grid min-h-dvh gap-2.5 p-2.5 max-md:block max-md:p-0",
+        collapsed ? "grid-cols-[56px_minmax(0,1fr)]" : "grid-cols-[220px_minmax(0,1fr)]",
+      )}
+    >
+      {drawerOpen && <div className="fixed inset-0 z-30 bg-scrim md:hidden" onClick={() => setDrawerOpen(false)} />}
+      <Sidebar
+        collapsed={collapsed && !drawerOpen}
+        drawerOpen={drawerOpen}
+        onToggle={toggleCollapsed}
+        onCloseDrawer={() => setDrawerOpen(false)}
+      />
+      <main className="min-w-0 overflow-hidden rounded-[14px] border border-line bg-panel max-md:min-h-dvh max-md:rounded-none max-md:border-0">
+        <div className="flex items-center gap-2 border-b border-line px-3 py-2 md:hidden">
+          <Button variant="ghost" size="icon" aria-label="Buka menu" onClick={() => setDrawerOpen(true)}>
+            <Menu className="size-4" />
+          </Button>
+          <ShopName />
+        </div>
         <Outlet />
       </main>
     </div>
   );
 }
 
-function Sidebar() {
+const COLLAPSED_KEY = "sidebar-collapsed";
+function readCollapsed() {
+  try {
+    return localStorage.getItem(COLLAPSED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function ShopName() {
   const { data: settings } = useQuery(settingsQuery);
   const shopName = settings?.shopName ?? "";
   const initials = shopName
@@ -43,25 +84,71 @@ function Sidebar() {
     .map((w) => w[0])
     .join("")
     .toUpperCase();
+  return (
+    <div className="flex min-w-0 items-center gap-2.5 text-[15px] font-semibold">
+      <div className="grid size-[26px] shrink-0 place-items-center rounded-[7px] bg-ink text-xs text-panel">{initials || "B"}</div>
+      <span className="truncate group-data-[collapsed=true]/sb:hidden">{shopName || "Billy"}</span>
+    </div>
+  );
+}
+
+/**
+ * Desktop: a sticky column that collapses to an icon rail (labels stay as screen-reader text).
+ * Below `md`: an off-canvas drawer opened from the top bar.
+ */
+function Sidebar({
+  collapsed,
+  drawerOpen,
+  onToggle,
+  onCloseDrawer,
+}: {
+  collapsed: boolean;
+  drawerOpen: boolean;
+  onToggle: () => void;
+  onCloseDrawer: () => void;
+}) {
+  const { data: settings } = useQuery(settingsQuery);
+  const ToggleIcon = collapsed ? PanelLeftOpen : PanelLeftClose;
 
   return (
-    <aside className="sticky top-2.5 flex h-[calc(100dvh-20px)] flex-col gap-2.5 px-1 py-2">
-      <div className="flex items-center gap-2.5 px-2 py-1.5 text-[15px] font-semibold">
-        <div className="grid size-[26px] place-items-center rounded-[7px] bg-ink text-xs text-panel">{initials || "B"}</div>
-        <span className="truncate">{shopName || "Billy"}</span>
+    <aside
+      data-collapsed={collapsed}
+      className={cx(
+        "group/sb sticky top-2.5 flex h-[calc(100dvh-20px)] flex-col gap-2.5 px-1 py-2",
+        "max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:h-dvh max-md:w-[260px] max-md:bg-bg max-md:px-2.5 max-md:shadow-xl max-md:transition-transform",
+        !drawerOpen && "max-md:-translate-x-full",
+      )}
+    >
+      <div className="flex items-center gap-1 px-2 py-1.5 group-data-[collapsed=true]/sb:flex-col group-data-[collapsed=true]/sb:px-0">
+        <ShopName />
+        <Button
+          variant="ghost"
+          size="icon"
+          className="ml-auto max-md:hidden group-data-[collapsed=true]/sb:ml-0"
+          aria-label={collapsed ? "Lebarkan menu" : "Ciutkan menu"}
+          title={collapsed ? "Lebarkan menu" : "Ciutkan menu"}
+          onClick={onToggle}
+        >
+          <ToggleIcon className="size-4" />
+        </Button>
+        <Button variant="ghost" size="icon" className="ml-auto md:hidden" aria-label="Tutup menu" onClick={onCloseDrawer}>
+          <PanelLeftClose className="size-4" />
+        </Button>
       </div>
       <Link
         to="/kasir"
-        className="flex items-center gap-2 rounded-[9px] bg-ink px-2.5 py-2 font-medium text-panel hover:opacity-90"
+        title="Buka Kasir (F2)"
+        className="flex items-center gap-2 rounded-[9px] bg-ink px-2.5 py-2 font-medium text-panel hover:opacity-90 group-data-[collapsed=true]/sb:justify-center"
       >
-        <MonitorSmartphone className="size-4" />
-        Buka Kasir
-        <span className="ml-auto text-[11px] opacity-60">F2</span>
+        <MonitorSmartphone className="size-4 shrink-0" />
+        <span className="group-data-[collapsed=true]/sb:sr-only">Buka Kasir</span>
+        <span className="ml-auto text-xs opacity-60 max-md:hidden group-data-[collapsed=true]/sb:hidden">F2</span>
       </Link>
       <nav className="flex min-h-0 flex-col overflow-y-auto">
         {navGroups.map((group) => (
           <div key={group} className="flex flex-col">
-            <div className="px-2 pt-2.5 pb-1 text-[11.5px] text-muted">{group}</div>
+            <div className="px-2 pt-2.5 pb-1 text-xs text-muted group-data-[collapsed=true]/sb:hidden">{group}</div>
+            <div className="mx-2 my-1.5 hidden border-t border-line group-data-[collapsed=true]/sb:block" />
             {navItems
               .filter((item) => item.group === group)
               .map((item) => (
@@ -90,12 +177,13 @@ function NavLink({ item }: { item: NavItem }) {
   return (
     <Link
       to={item.path}
+      title={item.label}
       activeOptions={{ exact: item.path === "/" }}
-      className="flex items-center gap-2.5 rounded-lg border border-transparent px-2 py-1.5 text-ink-2 hover:text-ink"
+      className="flex items-center gap-2.5 rounded-lg border border-transparent px-2 py-1.5 text-ink-2 hover:text-ink max-md:py-2 group-data-[collapsed=true]/sb:justify-center"
       activeProps={{ className: "border-line! bg-panel font-medium text-ink!" }}
     >
-      <Icon className="size-4 opacity-60" />
-      {item.label}
+      <Icon className="size-4 shrink-0 opacity-60" />
+      <span className="group-data-[collapsed=true]/sb:sr-only">{item.label}</span>
     </Link>
   );
 }
@@ -113,13 +201,18 @@ const subscribeOnline = (listener: () => void) => {
 function SyncCard({ deviceCode }: { deviceCode: string | undefined }) {
   const online = useSyncExternalStore(subscribeOnline, () => navigator.onLine);
   return (
-    <div className="rounded-xl border border-line bg-panel px-3 py-2.5">
+    <div
+      title={online ? "Online" : "Offline"}
+      className="rounded-xl border border-line bg-panel px-3 py-2.5 group-data-[collapsed=true]/sb:flex group-data-[collapsed=true]/sb:justify-center group-data-[collapsed=true]/sb:px-0"
+    >
       <div className="flex items-center gap-1.5">
         <span className={`size-[7px] rounded-full ${online ? "bg-up" : "bg-warn"}`} />
-        <b className="font-medium">{online ? "Online" : "Offline"}</b>
-        <span className="text-muted">· {online ? "tersambung" : "tidak tersambung"}</span>
+        <span className="group-data-[collapsed=true]/sb:sr-only">
+          <b className="font-medium">{online ? "Online" : "Offline"}</b>
+          <span className="text-muted"> · {online ? "tersambung" : "tidak tersambung"}</span>
+        </span>
       </div>
-      <div className="mt-0.5 text-xs text-muted">
+      <div className="mt-0.5 text-xs text-muted group-data-[collapsed=true]/sb:hidden">
         {online ? "Perubahan langsung tersimpan" : "Simpan ditunda sampai online"}
         {deviceCode && ` · Kasir ${deviceCode}`}
       </div>
@@ -132,11 +225,11 @@ function UserCard() {
   const logout = useLogout();
   if (!me) return null;
   return (
-    <div className="flex items-center gap-2.5 px-2 py-1">
-      <div className="grid size-[30px] place-items-center rounded-full bg-line text-xs font-medium text-ink-2">
+    <div className="flex items-center gap-2.5 px-2 py-1 group-data-[collapsed=true]/sb:flex-col group-data-[collapsed=true]/sb:px-0">
+      <div title={me.name} className="grid size-[30px] shrink-0 place-items-center rounded-full bg-line text-xs font-medium text-ink-2">
         {me.name.slice(0, 1).toUpperCase()}
       </div>
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 group-data-[collapsed=true]/sb:hidden">
         <div className="truncate font-medium">{me.name}</div>
         <div className="text-xs text-muted">{roleLabels[me.role]}</div>
       </div>

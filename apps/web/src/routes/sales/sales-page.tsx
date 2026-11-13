@@ -54,7 +54,6 @@ export function SalesPage() {
     <>
       <PageHeader
         title="Penjualan"
-        description="Faktur penjualan tunai dan tempo, pembayaran, dan pengiriman."
         actions={
           <Button variant="primary" onClick={() => setCreating(true)}>
             <Plus className="size-4" />
@@ -86,7 +85,7 @@ export function SalesPage() {
             </Button>
           )}
         </FilterRow>
-        <div className="grid grid-cols-4 gap-3.5">
+        <div className="grid grid-cols-4 gap-3.5 max-lg:grid-cols-2 max-sm:grid-cols-1">
           <StatTile label="Total penjualan" value={money(summary?.total)} note={windowNote} />
           <StatTile label="Sudah dibayar" value={money(summary?.paid)} note={windowNote} />
           <StatTile label="Sisa piutang" value={money(summary?.outstanding)} note={`${windowNote} · sisa per hari ini`} />

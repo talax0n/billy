@@ -20,7 +20,7 @@ export function CartTable({
   onQtyEditDone: () => void;
 }) {
   const items = cart.lines.reduce((sum, l) => sum + l.qty, 0);
-  const th = "px-2 py-2.5 text-[11.5px] font-normal text-muted";
+  const th = "px-2 py-2.5 text-xs font-normal text-muted";
   return (
     <>
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -46,11 +46,11 @@ export function CartTable({
                 <td className="py-3 pr-2 pl-4">{i + 1}</td>
                 <td className="px-2 py-3">
                   {productLabel(line)}
-                  <small className="block text-[11.5px] text-muted">
+                  <small className="block text-xs text-muted">
                     {[line.unit.toUpperCase(), line.categoryName].filter(Boolean).join(" · ")}
                   </small>
                   {line.note && (
-                    <span className="mt-1 inline-block rounded-md border border-dashed border-line px-1.5 text-[11.5px] text-ink-2">
+                    <span className="mt-1 inline-block rounded-md border border-dashed border-line px-1.5 text-xs text-ink-2">
                       {line.note} · tidak bisa retur
                     </span>
                   )}
@@ -107,7 +107,7 @@ export function CartTable({
           {cart.lines.length} produk · {items} item
         </span>
         <span className="flex-1" />
-        <span className="flex items-center gap-1">
+        <span className="flex items-center gap-1 max-md:hidden">
           Baris terpilih (↑↓): <Kbd>+</Kbd> <Kbd>−</Kbd> qty · <Kbd>D</Kbd> diskon · <Kbd>N</Kbd> catatan · <Kbd>Del</Kbd> hapus
         </span>
       </div>

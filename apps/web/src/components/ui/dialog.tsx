@@ -53,14 +53,14 @@ export function Dialog({
       className={cx(
         "border border-line bg-panel p-0 text-ink backdrop:bg-scrim",
         side === "right"
-          ? "my-0 mr-0 ml-auto h-dvh max-h-dvh w-full max-w-xl rounded-l-xl"
-          : "m-auto w-full max-w-md rounded-xl",
+          ? "my-0 mr-0 ml-auto h-dvh max-h-dvh w-full max-w-xl rounded-l-xl max-md:max-w-full max-md:rounded-none"
+          : "m-auto w-[calc(100%-1.5rem)] max-w-md rounded-xl",
         className,
       )}
     >
       {open && (
         <div className="flex h-full flex-col">
-          <header className="flex items-start justify-between gap-4 border-b border-line px-6 py-4">
+          <header className="flex items-start justify-between gap-4 border-b border-line px-6 py-4 max-md:px-4">
             <div>
               <h2 id={titleId} className="text-base font-semibold tracking-tight">
                 {title}
@@ -75,7 +75,7 @@ export function Dialog({
               <X className="size-4" />
             </Button>
           </header>
-          <div className="flex-1 overflow-y-auto px-6 py-5">{children}</div>
+          <div className="flex-1 overflow-y-auto px-6 py-5 max-md:px-4">{children}</div>
         </div>
       )}
     </dialog>

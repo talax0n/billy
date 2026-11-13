@@ -46,7 +46,7 @@ export function InvoicePrintPage() {
               <td className={cx(t.td, "tabular-nums")}>{i + 1}</td>
               <td className={t.td}>
                 {line.productName} {line.variant}
-                {line.note && <div className="text-[11px] text-ink-2">{line.note}</div>}
+                {line.note && <div className="text-xs text-ink-2">{line.note}</div>}
               </td>
               <td className={cx(t.td, "text-right whitespace-nowrap tabular-nums")}>
                 {line.qty} {line.unit}
@@ -123,7 +123,7 @@ export function DeliveryNotePrintPage() {
               <td className={cx(t.td, "tabular-nums")}>{i + 1}</td>
               <td className={t.td}>
                 {line.productName} {line.variant}
-                {line.note && <div className="text-[11px] text-ink-2">{line.note}</div>}
+                {line.note && <div className="text-xs text-ink-2">{line.note}</div>}
               </td>
               <td className={cx(t.td, "text-right tabular-nums")}>{line.qty}</td>
               <td className={t.td}>{line.unit}</td>

@@ -33,7 +33,6 @@ export function ExpensesPage() {
     <>
       <PageHeader
         title="Biaya"
-        description="Pengeluaran operasional toko. Setiap biaya mengurangi saldo akun pembayarnya."
         actions={
           <Button variant="primary" onClick={() => setOpen("new")}>
             <Plus className="size-4" />
@@ -42,7 +41,7 @@ export function ExpensesPage() {
         }
       />
       <PageBody>
-        <div className="grid grid-cols-3 gap-3.5">
+        <div className="grid grid-cols-3 gap-3.5 max-md:grid-cols-1">
           <StatTile
             label={month ? `Total biaya ${monthLabel.format(new Date(`${month}-01T00:00:00Z`))}` : "Total biaya semua periode"}
             value={amountTotal === undefined ? "—" : formatRupiah(rupiah(amountTotal))}

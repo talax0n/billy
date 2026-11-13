@@ -161,7 +161,7 @@ export function PayPanel({
         className="mt-auto flex items-center justify-between rounded-[11px] bg-ink px-4 py-3.5 text-[15px] font-semibold text-panel disabled:opacity-40"
       >
         Bayar &amp; cetak struk
-        <kbd className="rounded-[5px] border border-panel/35 px-1.5 py-px font-sans text-[11px] font-normal">Enter</kbd>
+        <kbd className="rounded-[5px] border border-panel/35 px-1.5 py-px font-sans text-xs font-normal">Enter</kbd>
       </button>
     </div>
   );

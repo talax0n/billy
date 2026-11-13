@@ -3,7 +3,7 @@ import { ADMIN, KASIR, login } from "../helpers.ts";
 
 test("admin creates a kasir, who only ever reaches the cashier", async ({ page }) => {
   await login(page, ADMIN);
-  await expect(page.getByRole("heading", { name: "Ringkasan", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Overview", level: 1 })).toBeVisible();
 
   await page.goto("/pengaturan");
   await page.getByRole("tab", { name: "Pengguna" }).click();

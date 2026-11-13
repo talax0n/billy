@@ -57,7 +57,6 @@ export function PurchasesPage() {
     <>
       <PageHeader
         title="Pembelian"
-        description="Faktur dari pemasok. Menyimpan faktur menambah stok dan memperbarui harga pokok."
         actions={
           <Button variant="primary" onClick={() => setCreating(true)}>
             <Plus className="size-4" />
@@ -81,7 +80,7 @@ export function PurchasesPage() {
           </div>
         </FilterRow>
 
-        <div className="grid grid-cols-3 gap-3.5">
+        <div className="grid grid-cols-3 gap-3.5 max-md:grid-cols-1">
           <StatTile
             label="Nilai pembelian"
             value={<Amount value={rupiah(summary?.purchased ?? 0)} />}
