@@ -17,6 +17,7 @@ import { DateInput, Select } from "../../components/ui/field.tsx";
 import { FilterRow, PageBody, PageHeader } from "../../components/ui/page.tsx";
 import { Tooltip } from "../../components/ui/tooltip.tsx";
 import { YearlyOverview } from "./yearly-overview.tsx";
+import { WatchdogCard } from "../watchdog/flags.tsx";
 import { api, unwrap } from "../../lib/api.ts";
 import { cx } from "../../lib/cx.ts";
 import { ActionLink, ActionStatus, actionDescription, linkButton } from "./actions.tsx";
@@ -260,6 +261,7 @@ export function DashboardPage() {
                 </Tooltip>
               ))}
             </div>
+            <WatchdogCard className={card} />
             <div className="grid grid-cols-[minmax(0,1fr)_370px] gap-3.5 max-[1200px]:grid-cols-1">
               <section className={cx(card, "flex flex-col")}>
                 <div className="flex items-start justify-between gap-2.5">

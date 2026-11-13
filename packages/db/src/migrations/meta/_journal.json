@@ -15,6 +15,27 @@
       "when": 1794546729034,
       "tag": "0001_audit_approvals",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794552574592,
+      "tag": "0002_shifts",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794554010556,
+      "tag": "0003_phase3_documents",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794555612786,
+      "tag": "0004_watchdog_opname",
+      "breakpoints": true
     }
   ]
 }

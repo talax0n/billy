@@ -1,7 +1,9 @@
 import {
   createFlush,
+  entryKey,
   initialSyncState,
   mayUpload,
+  type PosRevisionInput,
   type PosSaleInput,
   requeueProblem,
   type Role,
@@ -12,13 +14,14 @@ import {
 } from "@billy/core";
 import { useSyncExternalStore } from "react";
 import { api } from "../lib/api.ts";
-import { change, changeQueue, type QueuedSale, read, type SyncProblem } from "./local.ts";
+import { change, changeQueue, type OutboxItem, type QueuedShift, read, type SyncProblem } from "./local.ts";
 
 /**
  * The offline outbox. Online, the Kasir sends a sale straight to the server with `sendSale`, so
  * a limit that needs an admin's approval is caught at the counter. Offline, or when that send
- * fails to reach the server, the sale is queued here; this loop uploads queued sales
- * to `POST /api/pos/sales` in order, one at a time, skipping another cashier's sales when a
+ * fails to reach the server, the sale is queued here. A shift's open and close are always
+ * queued here, so the server sees open, then sales, then close. This loop uploads the queue
+ * in order, one at a time, skipping another cashier's entries when a
  * kasir is signed in. A sale leaves the outbox only when the
  * server answers 2xx; a 4xx moves it to the visible problem list; anything else backs off
  * and retries. The loop and its phase are pure logic in @billy/core (`createFlush`, `syncTransition`).
@@ -26,15 +29,15 @@ import { change, changeQueue, type QueuedSale, read, type SyncProblem } from "./
 
 export interface OutboxSnapshot {
   sync: SyncState;
-  pending: QueuedSale[];
-  /** Pending sales of another cashier: they upload when that cashier signs in again. */
+  pending: OutboxItem[];
+  /** Pending entries of another cashier: they upload when that cashier signs in again. */
   othersPending: number;
   problems: SyncProblem[];
 }
 
 /** The signed-in user; set by `startOutbox`. Nothing uploads before. */
 let user: { id: string; role: Role } | undefined;
-const mine = (entry: QueuedSale) => user !== undefined && mayUpload(entry, user);
+const mine = (entry: OutboxItem) => user !== undefined && mayUpload(entry, user);
 
 const POLL_MS = 15_000;
 
@@ -63,12 +66,12 @@ export interface UploadResult {
   needsApproval: boolean;
 }
 
-/** One `POST /api/pos/sales`, given up after `timeoutMs` so a dead connection never holds the cashier. */
-export async function sendSale(sale: PosSaleInput, timeoutMs = 15_000): Promise<UploadResult> {
+/** One request, given up after `timeoutMs` so a dead connection never holds the cashier. */
+async function send(request: (init: { init: RequestInit }) => Promise<Response>, timeoutMs: number): Promise<UploadResult> {
   const abort = new AbortController();
   const timer = setTimeout(() => abort.abort(), timeoutMs);
   try {
-    const res = await api.pos.sales.$post({ json: sale }, { init: { signal: abort.signal } });
+    const res = await request({ init: { signal: abort.signal } });
     if (res.ok) return { status: res.status, error: "", needsApproval: false };
     const body = (await res.json().catch(() => ({}))) as { error?: string; fields?: Record<string, string>; approval?: object };
     const fields = Object.entries(body.fields ?? {}).map(([field, message]) => `${field}: ${message}`);
@@ -80,10 +83,29 @@ export async function sendSale(sale: PosSaleInput, timeoutMs = 15_000): Promise<
   }
 }
 
-const upload = (item: QueuedSale) => sendSale(item.sale);
+export const sendSale = (sale: PosSaleInput, timeoutMs = 15_000) => send((init) => api.pos.sales.$post({ json: sale }, init), timeoutMs);
+
+/** Paying a nota sementara: online only, never queued. */
+export const sendDraftPayment = (draftId: string, sale: PosSaleInput) =>
+  send((init) => api.pos.drafts[":id"].pay.$post({ param: { id: draftId }, json: sale }, init), 15_000);
+
+/** A revisi of a paid nota: online only, never queued. */
+export const sendRevision = (originalId: string, revision: PosRevisionInput) =>
+  send((init) => api.pos.sales[":id"].revise.$post({ param: { id: originalId }, json: revision }, init), 15_000);
+
+function sendShift({ shift }: QueuedShift) {
+  if (shift.event === "open") {
+    const { event: _, ...open } = shift;
+    return send((init) => api.pos.shifts.$post({ json: open }, init), 15_000);
+  }
+  const { event: _, id, cashierId: _cashier, ...close } = shift;
+  return send((init) => api.pos.shifts[":id"].close.$post({ param: { id }, json: close }, init), 15_000);
+}
+
+const upload = (item: OutboxItem) => ("sale" in item ? sendSale(item.sale) : sendShift(item));
 
 /** Uploads the queue head-first until it is empty or the server cannot be reached. One loop at a time. */
-export const flush = createFlush<QueuedSale>({
+export const flush = createFlush<OutboxItem>({
   next: async () => (await read("outbox"))?.find(mine),
   upload,
   settle: async (entry, problem) => {
@@ -101,23 +123,23 @@ export const flush = createFlush<QueuedSale>({
   },
 });
 
-/** Queues a sale for upload. Resolves once it is stored on the device, never waits for the network. */
-export async function queueSale(item: QueuedSale) {
+/** Queues a sale or a shift event for upload. Resolves once it is stored on the device, never waits for the network. */
+export async function queue(item: OutboxItem) {
   await change("outbox", (list = []) => [...list, item]);
   await reload();
   void flush();
 }
 
-/** Moves a refused sale back into the outbox, for after the cause was fixed on the server. */
-export async function retryProblem(id: string) {
-  await changeQueue((lists) => requeueProblem(lists, id));
+/** Moves a refused entry (by `entryKey`) back into the outbox, for after the cause was fixed on the server. */
+export async function retryProblem(key: string) {
+  await changeQueue((lists) => requeueProblem(lists, key));
   await reload();
   void flush();
 }
 
-/** Removes a refused sale for good, after the user confirmed it is handled elsewhere. */
-export async function dismissProblem(id: string) {
-  await change("problems", (list = []) => list.filter((p) => p.sale.id !== id));
+/** Removes a refused entry for good, after the user confirmed it is handled elsewhere. */
+export async function dismissProblem(key: string) {
+  await change("problems", (list = []) => list.filter((p) => entryKey(p) !== key));
   await reload();
 }
 

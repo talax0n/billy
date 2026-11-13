@@ -11,4 +11,5 @@ export const sourceDocuments: Record<SourceType, { label: string; path: string }
   purchase_invoice: { label: "Pembelian", path: "/pembelian" },
   sales_invoice: { label: "Penjualan", path: "/penjualan" },
   pos_sale: { label: "Kasir", path: "/riwayat-kasir" },
+  stock_opname: { label: "Opname", path: "/stok-opname" },
 };

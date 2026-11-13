@@ -16,6 +16,7 @@ describe.skipIf(!server)("POS under concurrent requests (real Postgres)", () => 
   let admin: string;
   let kasir: string;
   let account: string;
+  let shiftId: string;
   let product: string;
 
   beforeAll(async () => {
@@ -25,6 +26,7 @@ describe.skipIf(!server)("POS under concurrent requests (real Postgres)", () => 
     ({ cookie: kasir } = await t.signIn("kasir"));
     await t.db.insert(settings).values({ shopName: "Toko Uji", receiptFooter: "", posDeviceCode: "K1" });
     [{ id: account }] = (await t.db.insert(accounts).values({ code: "KAS", name: "Kas", kind: "cash" }).returning({ id: accounts.id })) as [{ id: string }];
+    shiftId = await t.shiftFor(kasir);
     const res = await t.call("/api/products", {
       method: "POST",
       cookie: staff,
@@ -38,6 +40,7 @@ describe.skipIf(!server)("POS under concurrent requests (real Postgres)", () => 
   const sale = () => ({
     id: uuidv7(),
     number: `K1-261113-${String(++n).padStart(4, "0")}`,
+    shiftId,
     soldAt: "2026-11-13T02:15:00.000Z",
     lines: [{ productId: product, qty: 1, unitPrice: 50_000 }],
     discount: { kind: "none", value: 0 },

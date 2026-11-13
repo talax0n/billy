@@ -15,6 +15,11 @@ async function signedIn(browser: Browser, user: typeof ADMIN) {
   return page;
 }
 
+/** The kasir's shift opened in 10-pos is still open on the server; a new device picks it up. */
+async function shiftPickedUp(kasir: Page) {
+  await expect(kasir.getByRole("button", { name: /Shift sejak/ })).toBeVisible();
+}
+
 /** One Kilau Enamel Hitam (Rp 78.000) with a transaction discount, then Bayar. */
 async function sellWithDiscount(kasir: Page, percent: string) {
   await search(kasir).fill("kilau enamel hitam");
@@ -39,6 +44,7 @@ test("a kasir discount over 5% needs the admin: by PIN at the counter, or approv
 
   const kasir = await signedIn(browser, KASIR);
   await expect(kasir).toHaveURL(/\/kasir$/);
+  await shiftPickedUp(kasir);
   await expect(kasir.getByTestId("sync-state")).toHaveText("Online");
 
   // PIN typed at the counter.
@@ -87,6 +93,7 @@ test("a kasir discount over 5% needs the admin: by PIN at the counter, or approv
 
 test("offline, a discount over the cap is blocked because approval needs internet", async ({ browser }) => {
   const kasir = await signedIn(browser, KASIR);
+  await shiftPickedUp(kasir);
   await expect(kasir.getByTestId("sync-state")).toHaveText("Online");
   await kasir.context().setOffline(true);
   await expect(kasir.getByTestId("sync-state")).toHaveText("Offline");

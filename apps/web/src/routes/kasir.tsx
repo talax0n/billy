@@ -1,4 +1,5 @@
 import {
+  type ApprovalRequestInput,
   breachMessage,
   cartTotals,
   emptyCartTotals,
@@ -13,36 +14,72 @@ import {
 import { useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Contrast, LayoutDashboard, LogOut, Settings2 } from "lucide-react";
-import { type KeyboardEvent, useEffect, useEffectEvent, useReducer, useRef, useState } from "react";
+import { type KeyboardEvent, type ReactNode, useEffect, useEffectEvent, useReducer, useRef, useState } from "react";
 import { ApprovalDialog } from "../components/approval-dialog.tsx";
 import { EmptyState } from "../components/ui/page.tsx";
 import { toast } from "../components/ui/toast.tsx";
-import { ApiError } from "../lib/api.ts";
+import { api, ApiError, unwrap } from "../lib/api.ts";
 import { meQuery, useLogout } from "../lib/auth.ts";
 import { cx } from "../lib/cx.ts";
 import { setTheme } from "../lib/theme.ts";
 import { cartReducer, emptyCart } from "../pos/cart.ts";
 import { CartTable } from "../pos/cart-table.tsx";
 import {
+  CloseShiftDialog,
   CustomerDialog,
   HistoryDialog,
   LineDiscountDialog,
   NoteDialog,
+  OpenShiftDialog,
   ParkedDialog,
   PreferencesDialog,
   ProblemsDialog,
   TxDiscountDialog,
 } from "../pos/dialogs.tsx";
-import { type Catalog, catalogQuery, change, commitNumber, deductSold, type ParkedCart, peekNumber, type QueuedSale, read, write } from "../pos/local.ts";
-import { onFlushed, type OutboxSnapshot, queueSale, sendSale, startOutbox, useOutbox } from "../pos/outbox.ts";
+import {
+  type Catalog,
+  catalogQuery,
+  change,
+  commitNumber,
+  deductSold,
+  type LocalShift,
+  type ParkedCart,
+  peekNumber,
+  type QueuedSale,
+  read,
+  saveShift,
+  write,
+} from "../pos/local.ts";
+import { cartFromDraft, cartFromSale, type DraftDetail, DraftsDialog, openDraftsQuery, RevisiDialog } from "../pos/drafts.tsx";
+import {
+  flush,
+  onFlushed,
+  type OutboxSnapshot,
+  queue,
+  sendDraftPayment,
+  sendRevision,
+  sendSale,
+  startOutbox,
+  type UploadResult,
+  useOutbox,
+} from "../pos/outbox.ts";
 import { PayPanel } from "../pos/pay-panel.tsx";
 import { accountFor, usePosPreferences } from "../pos/preferences.ts";
-import { printReceipt, type ReceiptData, ReceiptPrinter } from "../pos/receipt.tsx";
+import { countedReprint, printReceipt, type ReceiptData, ReceiptPrinter } from "../pos/receipt.tsx";
 import { exactMatch, SearchBox, searchProducts } from "../pos/search.tsx";
 import { cacheAppShell } from "../pos/shell.ts";
 import { Chip, Kbd } from "../pos/ui.tsx";
 
-type DialogName = "customer" | "lineDiscount" | "note" | "txDiscount" | "parked" | "history" | "problems" | "prefs";
+type DialogName = "customer" | "lineDiscount" | "note" | "txDiscount" | "parked" | "history" | "problems" | "prefs" | "closeShift" | "drafts" | "revisi";
+
+type SaleDetail = Awaited<ReturnType<typeof fetchSale>>;
+const fetchSale = (id: string) => unwrap(api.pos.sales[":id"].$get({ param: { id } }));
+
+/** Where a sale goes and how it is retried with an approval. */
+interface SaleTarget {
+  request: ApprovalRequestInput;
+  send: (approval?: NonNullable<PosSaleInput["approval"]>) => Promise<UploadResult>;
+}
 
 /** Full-screen cashier. Works from the device cache, so it keeps selling while offline. */
 export function KasirPage() {
@@ -97,7 +134,16 @@ function Register({ catalog }: { catalog: Catalog }) {
   const [parked, setParked] = useState<ParkedCart[]>([]);
   const [nextNumber, setNextNumber] = useState("");
   /** A sale the server refused until an admin approves it; `offline` when approval cannot be reached. */
-  const [blocked, setBlocked] = useState<{ item: QueuedSale; message: string; offline: boolean } | null>(null);
+  const [blocked, setBlocked] = useState<({ item: QueuedSale; message: string; offline: boolean } & SaleTarget) | null>(null);
+  /** The nota sementara loaded in the cart: paying it pays that draft. */
+  const [activeDraft, setActiveDraft] = useState<{ id: string; number: string } | null>(null);
+  /** A revisi in progress: the cart holds the new lines of `original`. */
+  const [revising, setRevising] = useState<{ original: { id: string; number: string; total: Rupiah }; reason: string } | null>(null);
+  const [revisiOf, setRevisiOf] = useState<SaleDetail | null>(null);
+  const drafts = useQuery(openDraftsQuery);
+  /** This cashier's open shift on the device; `undefined` while it loads, `null` when none is open. */
+  const [shift, setShift] = useState<LocalShift | null | undefined>(undefined);
+  const logout = useLogout();
   const paying = useRef(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const tenderRef = useRef<HTMLInputElement>(null);
@@ -107,13 +153,57 @@ function Register({ catalog }: { catalog: Catalog }) {
   const computed = cartTotals(cart.lines, cart.discount);
   const totals = computed.ok ? computed.totals : emptyCartTotals;
   const account = accountFor(method, prefs, catalog.accounts);
-  const short = method === "cash" && tendered > 0 && tendered < totals.total;
-  const canPay = cart.lines.length > 0 && computed.ok && !short && account !== undefined;
+  const due = rupiah(Math.max(totals.total - (revising?.original.total ?? 0), 0));
+  const short = method === "cash" && tendered > 0 && tendered < due;
+  const drawer = accountFor("cash", prefs, catalog.accounts);
+  const canPay = cart.lines.length > 0 && computed.ok && !short && account !== undefined && Boolean(shift);
   const line = cart.lines[cart.selected];
 
   useEffect(() => {
     void read("parked").then((list) => setParked(list ?? []));
   }, []);
+  // The device's own record first. Without one, the server's open shift for this cashier here,
+  // e.g. after the browser storage was cleared, unless its close is still waiting in the outbox.
+  const meId = me?.id;
+  useEffect(() => {
+    if (!meId) return;
+    let live = true;
+    void (async () => {
+      let mine: LocalShift | null = (await read("shifts"))?.[meId] ?? null;
+      if (!mine) {
+        const query = { query: { deviceCode: shop.deviceCode } };
+        const server = await unwrap(api.pos.shifts.current.$get(query, { init: { signal: AbortSignal.timeout(5_000) } })).catch(() => null);
+        const closing = (await read("outbox"))?.some((e) => "shift" in e && e.shift.event === "close" && e.shift.id === server?.shift?.id);
+        if (server?.shift && !closing) {
+          mine = server.shift;
+          await saveShift(meId, mine);
+        }
+      }
+      if (live) setShift(mine);
+    })();
+    return () => {
+      live = false;
+    };
+  }, [meId, shop.deviceCode]);
+
+  async function openShift(openingFloat: Rupiah) {
+    if (!me || !drawer) return;
+    const opened: LocalShift = { id: uuidv7(), deviceCode: shop.deviceCode, accountId: drawer.id, openedAt: new Date().toISOString(), openingFloat };
+    await saveShift(me.id, opened);
+    setShift(opened);
+    await queue({ shift: { event: "open", cashierId: me.id, ...opened } });
+    focusSearch();
+  }
+
+  async function closeShift(countedCash: Rupiah, note: string) {
+    if (!me || !shift) return;
+    await queue({ shift: { event: "close", id: shift.id, cashierId: me.id, closedAt: new Date().toISOString(), countedCash, note } });
+    await saveShift(me.id, null);
+    setShift(null);
+    setDialog(null);
+    toast("Shift ditutup", "up");
+  }
+
   useEffect(() => {
     void peekNumber(shop.deviceCode, catalog.lastNumber).then(setNextNumber);
   }, [shop.deviceCode, catalog.lastNumber, outbox.pending.length]);
@@ -125,6 +215,8 @@ function Register({ catalog }: { catalog: Catalog }) {
 
   const reset = () => {
     dispatch({ type: "load", cart: emptyCart });
+    setActiveDraft(null);
+    setRevising(null);
     setTendered(rupiah(0));
     setMethod("cash");
     setQuery("");
@@ -148,13 +240,16 @@ function Register({ catalog }: { catalog: Catalog }) {
    * is over the discount cap is blocked instead, since approval needs the server.
    */
   async function pay() {
-    if (!canPay || !account || paying.current) return;
+    if (!canPay || !account || !shift || paying.current) return;
     paying.current = true;
     try {
-      const item = buildSale(account, await peekNumber(shop.deviceCode, catalog.lastNumber));
+      // The shift's open must reach the server before a sale sent straight to it.
+      if (outbox.pending.some((e) => "shift" in e && e.shift.id === shift.id)) await flush();
+      const item = buildSale(account, shift.id, await peekNumber(shop.deviceCode, catalog.lastNumber));
+      if (activeDraft || revising) return await payOnline(item);
       const limits = catalog.limits ?? { kasirMaxDiscountBp: 500, allowBelowCost: false };
       const breaches = me?.role === "admin" ? [] : saleLimitBreaches(cart.lines, cart.discount, limits);
-      const offlineBlock = () => setBlocked({ item, message: breachMessage(breaches), offline: true });
+      const offlineBlock = () => setBlocked({ item, message: breachMessage(breaches), offline: true, ...saleTarget(item) });
       // Backoff: the server was just unreachable; queue at once rather than wait for another timeout.
       if (outbox.sync.phase === "offline" || outbox.sync.phase === "backoff") {
         if (breaches.length) offlineBlock();
@@ -163,7 +258,7 @@ function Register({ catalog }: { catalog: Catalog }) {
       }
       const result = await sendSale(item.sale, 6_000);
       if (result.status >= 200 && result.status < 300) await complete(item, true);
-      else if (result.needsApproval) setBlocked({ item, message: result.error, offline: false });
+      else if (result.needsApproval) setBlocked({ item, message: result.error, offline: false, ...saleTarget(item) });
       else if (uploadOutcome(result.status) !== "retry") toast(result.error, "down");
       else if (breaches.length) offlineBlock();
       else await complete(item, false);
@@ -172,8 +267,37 @@ function Register({ catalog }: { catalog: Catalog }) {
     }
   }
 
-  function buildSale(account: { id: string; name: string }, number: string): QueuedSale {
-    const paid = method === "cash" && tendered > 0 ? tendered : totals.total;
+  const saleTarget = (item: QueuedSale): SaleTarget => ({
+    request: { action: "pos.sale", sale: item.sale },
+    send: (approval) => sendSale({ ...item.sale, ...(approval && { approval }) }),
+  });
+
+  /** Paying a nota sementara or saving a revisi needs the server; neither is ever queued. */
+  async function payOnline(item: QueuedSale) {
+    let target: SaleTarget;
+    if (revising) {
+      const { soldAt: _, cashierId: _c, ...sale } = item.sale;
+      const revision = { ...sale, reason: revising.reason };
+      const originalId = revising.original.id;
+      target = {
+        request: { action: "pos.revise", originalId, revision },
+        send: (approval) => sendRevision(originalId, { ...revision, ...(approval && { approval }) }),
+      };
+    } else {
+      const draftId = activeDraft!.id;
+      target = { ...saleTarget(item), send: (approval) => sendDraftPayment(draftId, { ...item.sale, ...(approval && { approval }) }) };
+    }
+    const result = await target.send();
+    if (result.status >= 200 && result.status < 300) await complete(item, true);
+    else if (result.needsApproval) setBlocked({ item, message: result.error, offline: false, ...target });
+    else toast(result.status === 0 ? `${revising ? "Revisi" : "Nota sementara"} hanya bisa disimpan saat online` : result.error, "down");
+  }
+
+  function buildSale(account: { id: string; name: string }, shiftId: string, number: string): QueuedSale {
+    // A revisi collects or refunds only the difference; a refund is always cash from the drawer.
+    const difference = totals.total - (revising?.original.total ?? 0);
+    const saleMethod = difference < 0 ? "cash" : method;
+    const paid = saleMethod === "cash" && tendered > 0 ? tendered : due;
     const soldAt = new Date().toISOString();
     const sale: PosSaleInput = {
       id: uuidv7(),
@@ -182,25 +306,28 @@ function Register({ catalog }: { catalog: Catalog }) {
       customerId: cart.customer?.id ?? null,
       lines: cart.lines.map(({ productId, qty, unitPrice, discountAmount, note }) => ({ productId, qty, unitPrice, discountAmount, note })),
       discount: cart.discount,
-      method,
-      accountId: account.id,
+      method: saleMethod,
+      accountId: saleMethod === method ? account.id : (drawer?.id ?? account.id),
       tendered: paid,
       total: totals.total,
       cashierId: me?.id,
+      shiftId,
     };
     const receipt: ReceiptData = {
       number,
       soldAt,
       cashierName: me?.name ?? "",
-      method,
-      accountName: account.name,
+      method: saleMethod,
+      accountName: saleMethod === method ? account.name : (drawer?.name ?? account.name),
       lines: cart.lines.map((l, i) => ({ ...l, name: `${l.name} ${l.variant}`.trim(), lineTotal: totals.lineTotals[i]! })),
       gross: totals.gross,
       lineDiscount: totals.lineDiscount,
       discountAmount: totals.discountAmount,
       total: totals.total,
       tendered: paid,
-      change: rupiah(paid - totals.total),
+      change: rupiah(paid - difference),
+      saleId: sale.id,
+      revisionOf: revising?.original,
     };
     return { sale, receipt };
   }
@@ -208,9 +335,11 @@ function Register({ catalog }: { catalog: Catalog }) {
   /** The sale happened: keep its number, queue it unless the server already holds it, print. */
   async function complete(item: QueuedSale, uploaded: boolean) {
     await commitNumber(item.sale.number);
-    if (!uploaded) await queueSale(item);
+    if (!uploaded) await queue(item);
     else setNextNumber(await peekNumber(shop.deviceCode, catalog.lastNumber));
     await deductSold(item.sale.lines, (fn) => queryClient.setQueryData(catalogQuery.queryKey, (c) => c && fn(c)));
+    if (revising) void queryClient.invalidateQueries({ queryKey: catalogQuery.queryKey });
+    if (activeDraft) void queryClient.invalidateQueries({ queryKey: openDraftsQuery.queryKey });
     await write("lastReceipt", item.receipt);
     printReceipt(item.receipt, shop, prefs.paper);
     setBlocked(null);
@@ -221,7 +350,7 @@ function Register({ catalog }: { catalog: Catalog }) {
   /** Retries the blocked sale with the admin's approval. The PIN rides only on this request, never in the outbox. */
   async function payApproved(approval: NonNullable<PosSaleInput["approval"]>) {
     if (!blocked) return;
-    const result = await sendSale({ ...blocked.item.sale, approval });
+    const result = await blocked.send(approval);
     if (result.status >= 200 && result.status < 300) return complete(blocked.item, true);
     throw new ApiError(result.error, result.status);
   }
@@ -245,16 +374,55 @@ function Register({ catalog }: { catalog: Catalog }) {
     void change("parked", (list = []) => list.filter((p) => p.id !== entry.id));
   }
 
+  async function saveDraft() {
+    const json = {
+      customerId: cart.customer?.id ?? null,
+      lines: cart.lines.map(({ productId, qty, unitPrice, discountAmount, note }) => ({ productId, qty, unitPrice, discountAmount, note })),
+      discount: cart.discount,
+    };
+    const saved = activeDraft
+      ? await unwrap(api.pos.drafts[":id"].$put({ param: { id: activeDraft.id }, json }))
+      : await unwrap(api.pos.drafts.$post({ json }));
+    await queryClient.invalidateQueries({ queryKey: openDraftsQuery.queryKey });
+    toast(`Disimpan sebagai nota sementara ${saved.number}`, "up");
+    reset();
+    focusSearch();
+  }
+
+  function openDraft(draft: DraftDetail) {
+    dispatch({ type: "load", cart: cartFromDraft(draft, catalog) });
+    setActiveDraft({ id: draft.id, number: draft.number });
+    focusSearch();
+  }
+
+  async function askRevisi(saleId: string) {
+    if (cart.lines.length) return toast("Selesaikan atau tahan transaksi ini dulu", "down");
+    try {
+      setRevisiOf(await fetchSale(saleId));
+      setDialog("revisi");
+    } catch (err) {
+      toast((err as Error).message, "down");
+    }
+  }
+
+  function startRevisi(sale: SaleDetail, reason: string) {
+    dispatch({ type: "load", cart: cartFromSale(sale, catalog) });
+    setRevising({ original: { id: sale.id, number: sale.number, total: sale.total }, reason });
+    setMethod(sale.method);
+    focusSearch();
+  }
+
   const reprint = (receipt: ReceiptData) => printReceipt(receipt, shop, prefs.paper);
 
   async function reprintLast() {
     const last = await read("lastReceipt");
-    if (last) reprint(last);
-    else toast("Belum ada struk untuk dicetak ulang");
+    if (!last) return toast("Belum ada struk untuk dicetak ulang");
+    // Counted on the server when it holds the sale; offline or still queued, printed as a copy uncounted.
+    reprint(last.saleId ? await countedReprint(last.saleId).catch(() => ({ ...last, copy: true })) : { ...last, copy: true });
   }
 
   const onGlobalKey = useEffectEvent((e: globalThis.KeyboardEvent) => {
-    if (dialog || blocked) return;
+    if (dialog || blocked || !shift) return;
     if (e.key === "F2") focusSearch();
     else if (e.key === "F3") setDialog("customer");
     else if (e.key === "F4") setDialog("txDiscount");
@@ -324,6 +492,26 @@ function Register({ catalog }: { catalog: Catalog }) {
         backOffice={me?.role !== "kasir"}
         onProblems={() => setDialog("problems")}
         onPrefs={() => setDialog("prefs")}
+        shift={shift ?? null}
+        draftCount={drafts.data?.total ?? null}
+        onDrafts={() => setDialog("drafts")}
+        mode={
+          revising ? (
+            <Chip onClick={() => window.confirm(`Batalkan revisi ${revising.original.number}?`) && reset()} title="Batalkan revisi" className="border-transparent bg-warn-bg text-warn">
+              Revisi <strong className="font-medium">{revising.original.number}</strong> · batal
+            </Chip>
+          ) : (
+            activeDraft && (
+              <Chip>
+                Nota sementara <strong className="font-medium text-ink">{activeDraft.number}</strong>
+              </Chip>
+            )
+          )
+        }
+        onCloseShift={() => {
+          if (cart.lines.length) toast("Selesaikan atau tahan transaksi ini dulu", "down");
+          else setDialog("closeShift");
+        }}
       />
       <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_380px] gap-2.5 px-2.5 pb-2.5 max-md:grid-cols-1">
         <section className="flex min-h-0 flex-col rounded-[14px] border border-line bg-panel max-md:min-h-[45dvh]">
@@ -376,6 +564,7 @@ function Register({ catalog }: { catalog: Catalog }) {
             onTxDiscount={() => setDialog("txDiscount")}
             onChooseAccount={() => setDialog("prefs")}
             onPay={() => void pay()}
+            paidBefore={revising?.original.total}
           />
         </aside>
       </div>
@@ -445,7 +634,7 @@ function Register({ catalog }: { catalog: Catalog }) {
         <ApprovalDialog
           message={blocked.message}
           offline={blocked.offline}
-          request={{ action: "pos.sale", sale: blocked.item.sale }}
+          request={blocked.request}
           submit={payApproved}
           onClose={() => {
             setBlocked(null);
@@ -453,8 +642,29 @@ function Register({ catalog }: { catalog: Catalog }) {
           }}
         />
       )}
+      {shift === null && <OpenShiftDialog drawer={drawer} deviceCode={shop.deviceCode} onOpen={(f) => void openShift(f)} onLogout={logout} />}
+      {dialog === "closeShift" && (
+        <CloseShiftDialog
+          openDrafts={drafts.isError ? null : (drafts.data?.rows.filter((d) => d.createdBy === me?.id) ?? null)}
+          onClose={focusSearch}
+          onSave={(counted, note) => void closeShift(counted, note)}
+        />
+      )}
+      {dialog === "drafts" && (
+        <DraftsDialog
+          cartHasLines={cart.lines.length > 0 && !revising}
+          active={activeDraft}
+          onSave={saveDraft}
+          onOpen={openDraft}
+          onPrint={reprint}
+          onClose={focusSearch}
+        />
+      )}
+      {dialog === "revisi" && revisiOf && (
+        <RevisiDialog number={revisiOf.number} onStart={(reason) => startRevisi(revisiOf, reason)} onClose={focusSearch} />
+      )}
       {dialog === "parked" && <ParkedDialog parked={parked} onRestore={restore} onClose={focusSearch} />}
-      {dialog === "history" && <HistoryDialog pending={outbox.pending} onReprint={reprint} onClose={focusSearch} />}
+      {dialog === "history" && <HistoryDialog pending={outbox.pending} onReprint={reprint} onRevise={(id) => void askRevisi(id)} onClose={focusSearch} />}
       {dialog === "problems" && <ProblemsDialog problems={outbox.problems} onClose={focusSearch} />}
       {dialog === "prefs" && (
         <PreferencesDialog
@@ -481,6 +691,11 @@ function TopBar({
   backOffice,
   onProblems,
   onPrefs,
+  shift,
+  draftCount,
+  onDrafts,
+  mode,
+  onCloseShift,
 }: {
   catalog: Catalog;
   nextNumber: string;
@@ -491,6 +706,13 @@ function TopBar({
   backOffice: boolean;
   onProblems: () => void;
   onPrefs: () => void;
+  shift: LocalShift | null;
+  /** Open nota sementara on the server; null offline. */
+  draftCount: number | null;
+  onDrafts: () => void;
+  /** What the cart holds besides a new sale: a loaded nota sementara or a revisi. */
+  mode: ReactNode;
+  onCloseShift: () => void;
 }) {
   const logout = useLogout();
   const initials = catalog.shop.shopName
@@ -517,6 +739,10 @@ function TopBar({
       <Chip onClick={onCustomer} title="Ganti pelanggan (F3)">
         Pelanggan <strong className="font-medium text-ink">{customerName}</strong>
       </Chip>
+      <Chip onClick={onDrafts} title="Nota sementara">
+        Nota sementara{draftCount !== null && <strong className="font-medium text-ink">{draftCount} terbuka</strong>}
+      </Chip>
+      {mode}
       <span className="flex-1" />
       <SyncChip outbox={outbox} />
       {outbox.problems.length > 0 && (
@@ -528,6 +754,11 @@ function TopBar({
       <Chip className="max-md:hidden">
         Kasir <strong className="font-medium text-ink">{cashierName}</strong> · {catalog.shop.deviceCode}
       </Chip>
+      {shift && (
+        <Chip onClick={onCloseShift} title="Tutup shift">
+          Shift sejak <strong className="font-medium text-ink tabular-nums">{shiftTime.format(new Date(shift.openedAt))}</strong>
+        </Chip>
+      )}
       <Chip onClick={onPrefs} title="Pengaturan kasir" className="px-2">
         <Settings2 className="size-3.5" />
       </Chip>
@@ -546,6 +777,8 @@ function TopBar({
     </header>
   );
 }
+
+const shiftTime = new Intl.DateTimeFormat("id-ID", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Jakarta" });
 
 /** Online, offline with the queue size, or uploading. Server unreachable counts as offline for the cashier. */
 function SyncChip({ outbox }: { outbox: OutboxSnapshot }) {

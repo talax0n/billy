@@ -7,6 +7,7 @@ import {
   roleLabels,
 } from "@billy/core";
 import { useQuery } from "@tanstack/react-query";
+import { useSearch } from "@tanstack/react-router";
 import type { InferResponseType } from "hono/client";
 import { useState } from "react";
 import { type Period, PeriodFilter, periodQuery, presetPeriod } from "../../components/period-filter.tsx";
@@ -23,14 +24,29 @@ const stamp = new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeStyle:
 const time = new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Jakarta" });
 const actionLabel = (action: string) => auditActions[action as AuditAction]?.label ?? action;
 
+/** Filters a link can open the log with, e.g. a watchdog flag: `?actorId=…&action=…&from=…&to=…`. */
+interface AuditSearch {
+  actorId?: string;
+  action?: AuditAction;
+  from?: string;
+  to?: string;
+}
+
 /**
  * Log Aktivitas: every change anyone made, newest first. Admin only. Rows cannot be edited or
  * deleted, here or in the database.
  */
 export function AuditPage() {
-  const [period, setPeriod] = useState<Period>(() => presetPeriod("last30"));
-  const [actorId, setActorId] = useState("");
-  const [action, setAction] = useState<AuditAction | "">("");
+  const search: AuditSearch = useSearch({ strict: false });
+  return <AuditLog key={JSON.stringify(search)} search={search} />;
+}
+
+function AuditLog({ search }: { search: AuditSearch }) {
+  const [period, setPeriod] = useState<Period>(() =>
+    search.from ? { preset: "custom", from: search.from, to: search.to ?? "" } : presetPeriod("last30"),
+  );
+  const [actorId, setActorId] = useState(search.actorId ?? "");
+  const [action, setAction] = useState<AuditAction | "">(search.action ?? "");
   const [open, setOpen] = useState<AuditRow | null>(null);
   const people = useQuery({ queryKey: ["users", "all"], queryFn: () => unwrap(api.users.$get({ query: { pageSize: "100" } })) });
   const paged = usePagedQuery(["audit", period, actorId, action], (params) =>

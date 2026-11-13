@@ -38,6 +38,8 @@ export const posSaleInput = z.object({
    * admin and staff may upload any cashier's queued sales, recorded under that cashier.
    */
   cashierId: z.uuid().optional(),
+  /** The cashier's open shift on this device; a sale needs one. */
+  shiftId: z.uuid({ error: "Buka shift dulu sebelum berjualan" }),
   /** Only when the sale breaks a limit; never stored on the device, since it may hold the admin's PIN. */
   approval: approvalInput.optional(),
 });
@@ -47,3 +49,29 @@ export const posVoidInput = z.object({
   reason: z.string().trim().min(1, "Alasan void wajib diisi").max(500),
   approval: approvalInput.optional(),
 });
+
+const reasonInput = (label: string) => z.string().trim().min(1, `Alasan ${label} wajib diisi`).max(500);
+
+/** A nota sementara: the cart kept on the server so any Kasir device can reopen and pay it. */
+export const posDraftInput = z.object({
+  customerId: posSaleInput.shape.customerId,
+  lines: posSaleInput.shape.lines,
+  discount: posSaleInput.shape.discount,
+});
+export type PosDraftInput = z.input<typeof posDraftInput>;
+
+export const posDraftCancelInput = z.object({
+  reason: reasonInput("batal"),
+  /** Only once it has been printed. */
+  approval: approvalInput.optional(),
+});
+export type PosDraftCancelInput = z.input<typeof posDraftCancelInput>;
+
+/**
+ * Revisi after payment, online only: the new nota (numbered on the device like any sale) that
+ * replaces the original. The server stamps the time. `method` and `accountId` settle the
+ * difference: a higher total collects it there, a lower total is refunded in cash from the
+ * reviser's drawer whatever they say. `tendered` is what the customer hands over for the difference.
+ */
+export const posRevisionInput = posSaleInput.omit({ soldAt: true, cashierId: true }).extend({ reason: reasonInput("revisi") });
+export type PosRevisionInput = z.input<typeof posRevisionInput>;

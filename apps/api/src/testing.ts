@@ -1,6 +1,6 @@
-import type { Role } from "@billy/core";
-import { createDb, users } from "@billy/db";
-import { sql } from "drizzle-orm";
+import { type Role, uuidv7 } from "@billy/core";
+import { accounts, createDb, users } from "@billy/db";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { createApp } from "./app.ts";
 import { hashPassword } from "./auth/password.ts";
 
@@ -45,5 +45,30 @@ export async function createTestApp({ postgres }: { postgres?: string | undefine
     return { user: user!, cookie };
   };
 
-  return { app, db, call, signIn, close };
+  /**
+   * The id of an open K1 shift for the session, opened on the first active cash account at the
+   * first call. Every Kasir sale needs one: tests spread `shiftId` into their sale bodies.
+   */
+  const shifts = new Map<string, Promise<string>>();
+  const shiftFor = (cookie: string) => {
+    if (!shifts.has(cookie)) {
+      shifts.set(
+        cookie,
+        (async () => {
+          const [drawer] = await db
+            .select({ id: accounts.id })
+            .from(accounts)
+            .where(and(eq(accounts.kind, "cash"), eq(accounts.active, true)))
+            .orderBy(asc(accounts.code));
+          const body = { id: uuidv7(), deviceCode: "K1", accountId: drawer!.id, openedAt: new Date().toISOString(), openingFloat: 0 };
+          const res = await call("/api/pos/shifts", { method: "POST", cookie, body });
+          if (res.status !== 201) throw new Error(`opening a test shift failed: ${res.status} ${await res.text()}`);
+          return body.id;
+        })(),
+      );
+    }
+    return shifts.get(cookie)!;
+  };
+
+  return { app, db, call, signIn, shiftFor, close };
 }

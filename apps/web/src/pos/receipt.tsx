@@ -2,7 +2,7 @@ import type { PosMethod, Rupiah } from "@billy/core";
 import type { InferResponseType } from "hono/client";
 import { useEffect, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
-import type { api } from "../lib/api.ts";
+import { api, unwrap } from "../lib/api.ts";
 import { desktop } from "../lib/desktop.ts";
 
 /** Everything a receipt shows. Built from the cart at sale time, or from a stored sale for reprints. */
@@ -20,6 +20,14 @@ export interface ReceiptData {
   tendered: Rupiah;
   change: Rupiah;
   voided?: boolean;
+  /** Set on the server's sale id once known, so a reprint can be counted. */
+  saleId?: string;
+  /** A reprint: says SALINAN. */
+  copy?: boolean;
+  /** A revisi: the nota it replaced, whose total was already paid. */
+  revisionOf?: { number: string; total: Rupiah } | undefined;
+  /** A nota sementara: not a proof of payment, printed without payment rows. */
+  draft?: boolean;
 }
 
 export interface ReceiptShop {
@@ -51,7 +59,14 @@ export function receiptFromSale(sale: StoredSale): ReceiptData {
     tendered: sale.tendered,
     change: sale.change,
     voided: sale.voidedAt !== null,
+    saleId: sale.id,
+    revisionOf: sale.revisionOfNumber && sale.revisionOfTotal !== null ? { number: sale.revisionOfNumber, total: sale.revisionOfTotal } : undefined,
   };
+}
+
+/** A reprint of a sale the server holds: counted there, and printed as SALINAN. */
+export async function countedReprint(id: string): Promise<ReceiptData> {
+  return { ...receiptFromSale(await unwrap(api.pos.sales[":id"].print.$post({ param: { id } }))), copy: true };
 }
 
 const idr = new Intl.NumberFormat("id-ID");
@@ -81,7 +96,16 @@ export function Receipt({ receipt: r, shop, width = 80 }: { receipt: ReceiptData
         <span>{stamp.format(new Date(r.soldAt))}</span>
       </div>
       <div>Kasir: {r.cashierName}</div>
+      {r.draft && (
+        <div className="text-center font-bold">
+          NOTA SEMENTARA
+          <br />
+          BUKAN BUKTI PEMBAYARAN
+        </div>
+      )}
+      {r.copy && <div className="text-center font-bold">SALINAN</div>}
       {r.voided && <div className="text-center font-bold">*** VOID ***</div>}
+      {r.revisionOf && <div>Revisi dari {r.revisionOf.number}</div>}
       <div className="my-1.5 border-t border-dashed border-black" />
       {r.lines.map((line, i) => (
         <div key={i} className="mb-1">
@@ -128,16 +152,26 @@ export function Receipt({ receipt: r, shop, width = 80 }: { receipt: ReceiptData
         <span>TOTAL</span>
         <span>{n(r.total)}</span>
       </div>
-      <div className={row}>
-        <span>
-          {methodLabels[r.method]} ({r.accountName})
-        </span>
-        <span>{n(r.tendered)}</span>
-      </div>
-      <div className={row}>
-        <span>Kembali</span>
-        <span>{n(r.change)}</span>
-      </div>
+      {r.revisionOf && (
+        <div className={row}>
+          <span>Dibayar di {r.revisionOf.number}</span>
+          <span>{n(r.revisionOf.total)}</span>
+        </div>
+      )}
+      {!r.draft && (
+        <>
+          <div className={row}>
+            <span>
+              {methodLabels[r.method]} ({r.accountName})
+            </span>
+            <span>{n(r.tendered)}</span>
+          </div>
+          <div className={row}>
+            <span>Kembali</span>
+            <span>{n(r.change)}</span>
+          </div>
+        </>
+      )}
       {shop.receiptFooter && (
         <>
           <div className="my-1.5 border-t border-dashed border-black" />

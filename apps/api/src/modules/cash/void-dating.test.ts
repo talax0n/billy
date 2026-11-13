@@ -13,7 +13,7 @@ vi.useFakeTimers({ toFake: ["Date"] });
 vi.setSystemTime(new Date("2026-11-13T07:00:00Z"));
 afterAll(() => vi.useRealTimers());
 
-const { call, db, signIn } = await createTestApp();
+const { call, db, signIn, shiftFor } = await createTestApp();
 let cookie: string;
 let kas: string;
 let bca: string;
@@ -111,6 +111,7 @@ it("dates POS sale reversals on the void date", async () => {
   await post("/api/pos/sales", {
     id,
     number: "K1-261101-0001",
+    shiftId: await shiftFor(cookie),
     soldAt: "2026-11-01T02:00:00.000Z",
     lines: [{ productId: product, qty: 1, unitPrice: 100_000 }],
     discount: { kind: "none", value: 0 },

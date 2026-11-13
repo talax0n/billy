@@ -21,6 +21,9 @@ export function addDays(date: BusinessDate, days: number): BusinessDate {
   return d.toISOString().slice(0, 10);
 }
 
+/** The instant a business date starts. Asia/Jakarta keeps UTC+7 all year, without daylight saving. */
+export const dayStart = (date: BusinessDate): Date => new Date(`${date}T00:00:00+07:00`);
+
 const longDay = new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 
 /** `2026-11-13` → `13 Nov 2026`. */

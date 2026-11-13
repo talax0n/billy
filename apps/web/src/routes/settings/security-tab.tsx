@@ -1,19 +1,21 @@
-import { approvalPinInput, BASIS_POINTS, formatBp, type Limits } from "@billy/core";
+import { approvalPinInput, BASIS_POINTS, formatBp, type Limits, watchdogSettingsInput, type WatchdogSettings } from "@billy/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
 import { Button } from "../../components/ui/button.tsx";
-import { Field, Input } from "../../components/ui/field.tsx";
+import { Field, Input, MoneyInput } from "../../components/ui/field.tsx";
 import { PageBody } from "../../components/ui/page.tsx";
 import { toast } from "../../components/ui/toast.tsx";
 import { api, ApiError, unwrap } from "../../lib/api.ts";
 import { useForm } from "../../lib/form.ts";
 
 const limitsQuery = { queryKey: ["settings", "limits"], queryFn: () => unwrap(api.settings.limits.$get()) };
+const watchdogQuery = { queryKey: ["settings", "watchdog"], queryFn: () => unwrap(api.settings.watchdog.$get()) };
 const pinQuery = { queryKey: ["approvals", "pin"], queryFn: () => unwrap(api.approvals.pin.$get()) };
 
 /** Admin only: the limits every non-admin works under, and the admin's own approval PIN. */
 export function SecurityTab() {
   const limits = useQuery(limitsQuery);
+  const watchdog = useQuery(watchdogQuery);
   return (
     <PageBody className="max-w-2xl gap-8">
       <section className="flex flex-col gap-3">
@@ -22,6 +24,13 @@ export function SecurityTab() {
           <p className="text-muted">Berlaku untuk semua pengguna selain admin. Di atas batas, transaksi butuh persetujuan admin.</p>
         </div>
         {limits.data && <LimitsForm initial={limits.data} />}
+      </section>
+      <section className="flex flex-col gap-3 border-t border-line pt-6">
+        <div>
+          <h2 className="font-semibold">Pengawasan</h2>
+          <p className="text-muted">Kapan Peringatan di Overview dan Ringkasan harian menandai selisih kas dan aktivitas di luar jam buka.</p>
+        </div>
+        {watchdog.data && <WatchdogForm initial={watchdog.data} />}
       </section>
       <section className="flex flex-col gap-3 border-t border-line pt-6">
         <div>
@@ -77,6 +86,35 @@ function LimitsForm({ initial }: { initial: Limits }) {
       <div className="flex justify-end">
         <Button type="submit" variant="primary" disabled={saving}>
           Simpan batas
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+function WatchdogForm({ initial }: { initial: WatchdogSettings }) {
+  const queryClient = useQueryClient();
+  const form = useForm(watchdogSettingsInput, initial);
+  const submit = form.onSubmit(async (input) => {
+    queryClient.setQueryData(watchdogQuery.queryKey, await unwrap(api.settings.watchdog.$put({ json: input })));
+    await queryClient.invalidateQueries({ queryKey: ["watchdog"] });
+    toast("Pengaturan pengawasan disimpan", "up");
+  });
+
+  return (
+    <form onSubmit={submit} noValidate className="grid grid-cols-3 gap-x-3 gap-y-4 max-md:grid-cols-2">
+      <Field label="Selisih kas shift" hint="Lebih atau kurang, mulai jumlah ini." error={form.errors.cashDifferenceThreshold} className="col-span-3 max-w-56 max-md:col-span-2">
+        {(p) => <MoneyInput {...p} value={form.values.cashDifferenceThreshold} onChange={(v) => form.set("cashDifferenceThreshold", v)} />}
+      </Field>
+      <Field label="Jam buka" error={form.errors.openTime}>
+        {(p) => <Input {...p} type="time" value={form.values.openTime} onChange={(e) => form.set("openTime", e.target.value)} />}
+      </Field>
+      <Field label="Jam tutup" hint="Waktu Indonesia Barat" error={form.errors.closeTime}>
+        {(p) => <Input {...p} type="time" value={form.values.closeTime} onChange={(e) => form.set("closeTime", e.target.value)} />}
+      </Field>
+      <div className="col-span-3 flex justify-end max-md:col-span-2">
+        <Button type="submit" variant="primary" disabled={form.submitting}>
+          Simpan pengawasan
         </Button>
       </div>
     </form>

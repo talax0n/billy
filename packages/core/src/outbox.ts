@@ -1,19 +1,28 @@
 import { retryDelay, type SyncEvent, type SyncState, uploadOutcome } from "./pos.ts";
 import type { Role } from "./schemas/users.ts";
 
-/** A sale waiting in the POS outbox. Extra fields (the printed receipt) ride along untouched. */
-export interface OutboxEntry {
+/**
+ * A sale, or a shift opening or closing, waiting in the POS outbox. They share one queue so the
+ * server sees a shift's open, then its sales, then its close. Extra fields (the printed
+ * receipt, the counted cash) ride along untouched.
+ */
+export type OutboxEntry =
   /** `cashierId`: who made the sale; absent on sales queued before it was recorded. */
-  sale: { id: string; cashierId?: string | undefined };
-}
+  | { sale: { id: string; cashierId?: string | undefined } }
+  | { shift: { event: "open" | "close"; id: string; cashierId: string } };
+
+/** An entry's identity in the queue: a shift's open and close share the shift id. */
+export const entryKey = (entry: OutboxEntry) => ("sale" in entry ? entry.sale.id : `${entry.shift.event}:${entry.shift.id}`);
 
 /**
- * Whether `user`, signed in on this device, uploads this queued sale. A kasir uploads only
- * their own; another cashier's sale waits until that cashier signs in again. Admin and staff
- * upload every sale, and the server records it under the cashier who made it.
+ * Whether `user`, signed in on this device, uploads this queued entry. A kasir uploads only
+ * their own; another cashier's entry waits until that cashier signs in again. Admin and staff
+ * upload every entry, and the server records it under the cashier who made it.
  */
-export const mayUpload = (entry: OutboxEntry, user: { id: string; role: Role }) =>
-  user.role !== "kasir" || entry.sale.cashierId === undefined || entry.sale.cashierId === user.id;
+export function mayUpload(entry: OutboxEntry, user: { id: string; role: Role }) {
+  const cashierId = "sale" in entry ? entry.sale.cashierId : entry.shift.cashierId;
+  return user.role !== "kasir" || cashierId === undefined || cashierId === user.id;
+}
 
 /** What the flush loop needs from the device and the network. */
 export interface FlushDeps<T extends OutboxEntry> {
@@ -91,18 +100,18 @@ export function settleEntry<T extends OutboxEntry>(
   problem: { status: number; error: string } | null,
 ): OutboxLists<T> {
   return {
-    outbox: lists.outbox.filter((q) => q.sale.id !== entry.sale.id),
+    outbox: lists.outbox.filter((q) => entryKey(q) !== entryKey(entry)),
     problems: problem ? [...lists.problems, { ...entry, ...problem }] : lists.problems,
   };
 }
 
-/** Moves a refused sale back to the end of the outbox, for after its cause was fixed. */
-export function requeueProblem<T extends OutboxEntry>(lists: OutboxLists<T>, id: string): OutboxLists<T> {
-  const problem = lists.problems.find((p) => p.sale.id === id);
+/** Moves a refused entry (by `entryKey`) back to the end of the outbox, for after its cause was fixed. */
+export function requeueProblem<T extends OutboxEntry>(lists: OutboxLists<T>, key: string): OutboxLists<T> {
+  const problem = lists.problems.find((p) => entryKey(p) === key);
   if (!problem) return lists;
   const { status: _status, error: _error, ...entry } = problem;
   return {
     outbox: [...lists.outbox, entry as unknown as T],
-    problems: lists.problems.filter((p) => p.sale.id !== id),
+    problems: lists.problems.filter((p) => entryKey(p) !== key),
   };
 }

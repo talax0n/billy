@@ -1,5 +1,5 @@
 import { formatRupiah } from "@billy/core";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Printer } from "lucide-react";
 import { useState } from "react";
@@ -8,9 +8,10 @@ import { Button } from "../../components/ui/button.tsx";
 import { DataTable, usePagedQuery } from "../../components/ui/data-table.tsx";
 import { Sheet } from "../../components/ui/dialog.tsx";
 import { EmptyState, PageBody, PageHeader } from "../../components/ui/page.tsx";
+import { toast } from "../../components/ui/toast.tsx";
 import { api, unwrap } from "../../lib/api.ts";
 import { settingsQuery } from "../../lib/settings.ts";
-import { methodLabels, printReceipt, ReceiptPrinter, receiptFromSale } from "../../pos/receipt.tsx";
+import { countedReprint, methodLabels, printReceipt, ReceiptPrinter } from "../../pos/receipt.tsx";
 import { VoidSaleDialog } from "../../pos/void-sale.tsx";
 
 const stamp = new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Jakarta" });
@@ -41,34 +42,54 @@ export function RiwayatKasirPage() {
             { header: "Waktu", cell: (s) => <span className="text-ink-2">{stamp.format(new Date(s.soldAt))}</span> },
             { header: "Kasir", cell: (s) => s.cashierName },
             { header: "Bayar", cell: (s) => <span className="text-ink-2">{`${methodLabels[s.method]} · ${s.accountName}`}</span> },
-            { header: "Status", cell: (s) => (s.voidedAt ? <Badge>Void</Badge> : <Badge tone="up">Lunas</Badge>) },
+            { header: "Status", cell: (s) => <SaleStatus sale={s} /> },
             { header: "Total", align: "right", cell: (s) => formatRupiah(s.total) },
           ]}
         />
       </PageBody>
-      {search.id && <SaleSheet id={search.id} onClose={() => openSale(null)} />}
+      {search.id && <SaleSheet id={search.id} onOpen={openSale} onClose={() => openSale(null)} />}
       <ReceiptPrinter />
     </>
   );
 }
 
-function SaleSheet({ id, onClose }: { id: string; onClose: () => void }) {
+/** Lunas, Void or Direvisi, with the other end of a revisi. */
+function SaleStatus({ sale }: { sale: { voidedAt: string | null; revisedByNumber: string | null; revisionOfNumber: string | null } }) {
+  return (
+    <span className="flex flex-col items-start gap-0.5">
+      {sale.revisedByNumber ? <Badge>Direvisi</Badge> : sale.voidedAt ? <Badge>Void</Badge> : <Badge tone="up">Lunas</Badge>}
+      {sale.revisionOfNumber && <small className="text-muted">revisi dari {sale.revisionOfNumber}</small>}
+    </span>
+  );
+}
+
+function SaleSheet({ id, onOpen, onClose }: { id: string; onOpen: (id: string) => void; onClose: () => void }) {
   const sale = useQuery({ queryKey: ["pos", "sales", id], queryFn: () => unwrap(api.pos.sales[":id"].$get({ param: { id } })) });
   const { data: shop } = useQuery(settingsQuery);
   const [voiding, setVoiding] = useState(false);
+  const queryClient = useQueryClient();
   const s = sale.data;
+  const reprint = async () => {
+    if (!s || !shop) return;
+    try {
+      printReceipt(await countedReprint(s.id), shop);
+      await queryClient.invalidateQueries({ queryKey: ["pos", "sales", id] });
+    } catch (err) {
+      toast((err as Error).message, "down");
+    }
+  };
 
   return (
     <Sheet open onClose={onClose} title={s?.number ?? "Memuat…"} description={s && `${stamp.format(new Date(s.soldAt))} · ${s.cashierName}`}>
       {s && (
         <div className="flex flex-col gap-5">
           <div className="flex items-center gap-2">
-            {s.voidedAt ? <Badge>Void</Badge> : <Badge tone="up">Lunas</Badge>}
+            <SaleStatus sale={s} />
             <span className="text-ink-2">
               {methodLabels[s.method]} · masuk ke {s.accountName}
             </span>
             <span className="flex-1" />
-            <Button size="sm" disabled={!shop} onClick={() => shop && printReceipt(receiptFromSale(s), shop)}>
+            <Button size="sm" disabled={!shop} onClick={() => void reprint()}>
               <Printer className="size-3.5" />
               Cetak ulang
             </Button>
@@ -78,7 +99,28 @@ function SaleSheet({ id, onClose }: { id: string; onClose: () => void }) {
               </Button>
             )}
           </div>
-          {s.voidedAt && <p className="rounded-lg bg-line-2 px-3 py-2 text-ink-2">Di-void: {s.voidReason}</p>}
+          {s.revisedByNumber ? (
+            <p className="rounded-lg bg-line-2 px-3 py-2 text-ink-2">
+              Direvisi menjadi{" "}
+              <button type="button" className="font-medium text-ink underline" onClick={() => onOpen(s.revisedById!)}>
+                {s.revisedByNumber}
+              </button>
+              . {s.voidReason}
+            </p>
+          ) : (
+            s.voidedAt && <p className="rounded-lg bg-line-2 px-3 py-2 text-ink-2">Di-void: {s.voidReason}</p>
+          )}
+          {s.revisionOf && (
+            <p className="text-ink-2">
+              Revisi dari{" "}
+              <button type="button" className="font-medium text-ink underline" onClick={() => onOpen(s.revisionOf!)}>
+                {s.revisionOfNumber}
+              </button>{" "}
+              · total lama {formatRupiah(s.revisionOfTotal!)}
+            </p>
+          )}
+          {s.draftNumber && <p className="text-ink-2">Dari nota sementara {s.draftNumber}</p>}
+          <p className="text-xs text-muted">Dicetak {s.printCount}×</p>
 
           <table className="w-full border-collapse">
             <thead>

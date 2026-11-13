@@ -25,6 +25,7 @@ import {
   type Db,
   payments,
   products,
+  quotations,
   salesInvoices,
   salesLines,
   stockMovements,
@@ -162,7 +163,7 @@ export async function getInvoice(db: Db, id: string) {
     .where(eq(salesInvoices.id, id));
   if (!invoice) throw new DomainError("not_found", "Faktur tidak ditemukan");
 
-  const [lines, paymentRows] = await Promise.all([
+  const [lines, paymentRows, [quotation]] = await Promise.all([
     db
       .select({
         id: salesLines.id,
@@ -201,6 +202,7 @@ export async function getInvoice(db: Db, id: string) {
       .innerJoin(users, eq(users.id, payments.createdBy))
       .where(eq(payments.salesInvoiceId, id))
       .orderBy(asc(payments.date), asc(payments.createdAt)),
+    db.select({ id: quotations.id, number: quotations.number }).from(quotations).where(eq(quotations.invoiceId, id)),
   ]);
 
   const paid = rupiah(paymentRows.reduce((sum, p) => (p.voidedAt ? sum : sum + p.amount), 0));
@@ -211,7 +213,7 @@ export async function getInvoice(db: Db, id: string) {
     voided: invoice.voidedAt !== null,
     today: businessDate(),
   });
-  return { ...invoice, paid, state, lines, payments: paymentRows };
+  return { ...invoice, paid, state, lines, payments: paymentRows, quotation: quotation ?? null };
 }
 
 /** Locks the invoice row so concurrent payments and voids on it run one after another. */
@@ -258,7 +260,7 @@ async function insertPayment(
 }
 
 /** A non-admin's invoice whose line and document discounts together pass the kasir cap needs approval. */
-async function invoiceRequirement(tx: Db, input: InvoiceInput, actor: Pick<Actor, "role">): Promise<Requirement | null> {
+export async function invoiceRequirement(tx: Db, input: InvoiceInput, actor: Pick<Actor, "role">): Promise<Requirement | null> {
   if (actor.role === "admin") return null;
   const discount = { kind: input.discountKind, value: input.discountValue };
   const breaches = saleLimitBreaches(input.lines, discount, await getLimits(tx)).filter((b) => b.kind === "discount");
@@ -281,78 +283,84 @@ async function invoiceRequirement(tx: Db, input: InvoiceInput, actor: Pick<Actor
 export const invoiceApproval = (db: Db, input: InvoiceInput, actor: Pick<Actor, "role">) => invoiceRequirement(db, input, actor);
 
 export async function createInvoice(db: Db, input: InvoiceInput, actor: Actor) {
-  const userId = actor.id;
   const pinAdmin = await pinApprover(db, actor, input.approval);
   return db.transaction(async (tx) => {
     const approvalId = await authorize(tx, actor, await invoiceRequirement(tx, input, actor), input.approval, pinAdmin);
-    const [customer] = await tx
-      .select({ id: contacts.id })
-      .from(contacts)
-      .where(and(eq(contacts.id, input.customerId), eq(contacts.kind, "customer")));
-    if (!customer) throw new DomainError("invalid", "Pelanggan tidak ditemukan");
-
-    const productIds = [...new Set(input.lines.map((l) => l.productId))];
-    const costs = new Map(
-      (
-        await tx.select({ id: products.id, costPrice: costAsOf(input.date) }).from(products).where(inArray(products.id, productIds))
-      ).map((p) => [p.id, p.costPrice]),
-    );
-    if (costs.size !== productIds.length) throw new DomainError("invalid", "Ada produk yang tidak ditemukan");
-
-    const totals = computeTotals(input.lines, { kind: input.discountKind, value: input.discountValue });
-    const number = await allocateDocNumber(tx, "SO", input.date);
-    const [invoice] = await tx
-      .insert(salesInvoices)
-      .values({
-        number,
-        customerId: input.customerId,
-        date: input.date,
-        dueDate: addDays(input.date, input.termsDays),
-        termsDays: input.termsDays,
-        subtotal: totals.subtotal,
-        discountKind: input.discountKind,
-        discountValue: input.discountKind === "none" ? 0 : input.discountValue,
-        discountAmount: totals.discountAmount,
-        total: totals.total,
-        note: input.note,
-        createdBy: userId,
-      })
-      .returning({ id: salesInvoices.id, number: salesInvoices.number });
-
-    const lines = input.lines.map((line, i) => ({ ...line, unitCost: costs.get(line.productId)!, lineTotal: totals.lineTotals[i]! }));
-    await tx.insert(salesLines).values(lines.map((line, position) => ({ ...line, invoiceId: invoice!.id, position })));
-    await tx.insert(stockMovements).values(
-      lines.map((line) => ({
-        productId: line.productId,
-        date: input.date,
-        qty: -line.qty,
-        reason: "sale" as const,
-        unitCost: line.unitCost,
-        sourceType: "sales_invoice" as const,
-        sourceId: invoice!.id,
-        note: number,
-        createdBy: userId,
-      })),
-    );
-
-    await audit(tx, actor, {
-      action: "sales.invoice.create",
-      entityId: invoice!.id,
-      summary: `Faktur ${number} ${formatRupiah(totals.total)}`,
-      after: {
-        number,
-        customerId: input.customerId,
-        date: input.date,
-        subtotal: totals.subtotal,
-        discountAmount: totals.discountAmount,
-        total: totals.total,
-        lines: lines.map(({ productId, qty, unitPrice, discountAmount }) => ({ productId, qty, unitPrice, discountAmount })),
-      },
-      approvalId,
-    });
-    if (input.payment) await insertPayment(tx, invoice!, { ...input.payment, date: input.date }, actor);
-    return getInvoice(tx, invoice!.id);
+    const invoice = await insertInvoice(tx, input, actor, approvalId);
+    return getInvoice(tx, invoice.id);
   });
+}
+
+/** The invoice, its lines and stock movements, its audit event and an optional payment. Runs inside the caller's transaction. */
+export async function insertInvoice(tx: Db, input: InvoiceInput, actor: Actor, approvalId: string | null) {
+  const userId = actor.id;
+  const [customer] = await tx
+    .select({ id: contacts.id })
+    .from(contacts)
+    .where(and(eq(contacts.id, input.customerId), eq(contacts.kind, "customer")));
+  if (!customer) throw new DomainError("invalid", "Pelanggan tidak ditemukan");
+
+  const productIds = [...new Set(input.lines.map((l) => l.productId))];
+  const costs = new Map(
+    (
+      await tx.select({ id: products.id, costPrice: costAsOf(input.date) }).from(products).where(inArray(products.id, productIds))
+    ).map((p) => [p.id, p.costPrice]),
+  );
+  if (costs.size !== productIds.length) throw new DomainError("invalid", "Ada produk yang tidak ditemukan");
+
+  const totals = computeTotals(input.lines, { kind: input.discountKind, value: input.discountValue });
+  const number = await allocateDocNumber(tx, "SO", input.date);
+  const [invoice] = await tx
+    .insert(salesInvoices)
+    .values({
+      number,
+      customerId: input.customerId,
+      date: input.date,
+      dueDate: addDays(input.date, input.termsDays),
+      termsDays: input.termsDays,
+      subtotal: totals.subtotal,
+      discountKind: input.discountKind,
+      discountValue: input.discountKind === "none" ? 0 : input.discountValue,
+      discountAmount: totals.discountAmount,
+      total: totals.total,
+      note: input.note,
+      createdBy: userId,
+    })
+    .returning({ id: salesInvoices.id, number: salesInvoices.number });
+
+  const lines = input.lines.map((line, i) => ({ ...line, unitCost: costs.get(line.productId)!, lineTotal: totals.lineTotals[i]! }));
+  await tx.insert(salesLines).values(lines.map((line, position) => ({ ...line, invoiceId: invoice!.id, position })));
+  await tx.insert(stockMovements).values(
+    lines.map((line) => ({
+      productId: line.productId,
+      date: input.date,
+      qty: -line.qty,
+      reason: "sale" as const,
+      unitCost: line.unitCost,
+      sourceType: "sales_invoice" as const,
+      sourceId: invoice!.id,
+      note: number,
+      createdBy: userId,
+    })),
+  );
+
+  await audit(tx, actor, {
+    action: "sales.invoice.create",
+    entityId: invoice!.id,
+    summary: `Faktur ${number} ${formatRupiah(totals.total)}`,
+    after: {
+      number,
+      customerId: input.customerId,
+      date: input.date,
+      subtotal: totals.subtotal,
+      discountAmount: totals.discountAmount,
+      total: totals.total,
+      lines: lines.map(({ productId, qty, unitPrice, discountAmount }) => ({ productId, qty, unitPrice, discountAmount })),
+    },
+    approvalId,
+  });
+  if (input.payment) await insertPayment(tx, invoice!, { ...input.payment, date: input.date }, actor);
+  return invoice!;
 }
 
 export async function recordPayment(db: Db, invoiceId: string, input: z.output<typeof salesPaymentInput>, actor: Actor) {

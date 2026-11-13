@@ -1,5 +1,6 @@
 import { formatDate, formatRupiah, paymentMethodLabels, rupiah } from "@billy/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { Ban, FileText, HandCoins, Truck } from "lucide-react";
 import { useState } from "react";
 import { StatusTag } from "../../components/ui/badge.tsx";
@@ -57,6 +58,11 @@ function InvoiceDetail({ invoice }: { invoice: Invoice }) {
       <div className="flex flex-wrap items-center gap-2">
         <StatusTag state={invoice.state} />
         {voided && <span className="text-muted">Alasan void: {invoice.voidReason}</span>}
+        {invoice.quotation && (
+          <Link to="/penawaran" search={{ id: invoice.quotation.id }} className="text-ink-2 underline hover:text-ink">
+            Dari penawaran {invoice.quotation.number}
+          </Link>
+        )}
         <div className="ml-auto flex flex-wrap gap-2">
           {!voided && invoice.state.outstanding > 0 && (
             <Button size="sm" variant="primary" onClick={() => setDialog("pay")}>

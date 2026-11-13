@@ -1,7 +1,7 @@
 import type { BusinessDate } from "./dates.ts";
 
-/** Server-numbered documents: sales, purchase, tukar faktur, biaya. */
-export type DocPrefix = "SO" | "PO" | "TF" | "BY";
+/** Server-numbered documents: sales, purchase, tukar faktur, biaya, nota sementara, penawaran, stok opname. */
+export type DocPrefix = "SO" | "PO" | "TF" | "BY" | "S" | "Q" | "OP";
 
 /** `2026-11-13` → `261113`, the counter period of a document number. */
 export function docPeriod(date: BusinessDate): string {

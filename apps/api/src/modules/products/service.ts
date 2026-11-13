@@ -23,7 +23,7 @@ export const stockByProduct = (db: Db) =>
     .as("stock_by_product");
 
 /** Every whitespace-separated term must appear in the name, variant, code or barcode. */
-function searchWhere(q: string): SQL | undefined {
+export function productSearchWhere(q: string): SQL | undefined {
   const haystack = sql`${products.name} || ' ' || ${products.variant} || ' ' || coalesce(${products.code}, '') || ' ' || coalesce(${products.barcode}, '')`;
   return matchAllTerms(haystack, q);
 }
@@ -60,7 +60,7 @@ export async function listProducts(db: Db, { q, page, pageSize }: PaginationQuer
   const order = [desc(products.active), asc(products.name), asc(products.variant)];
   if (q) {
     // ponytail: every match is loaded to rank it; fine while a search matches a few hundred products.
-    const matches = rankProducts(await selectProducts(db).where(searchWhere(q)).orderBy(...order), q);
+    const matches = rankProducts(await selectProducts(db).where(productSearchWhere(q)).orderBy(...order), q);
     return { rows: matches.slice(offset, offset + pageSize), total: matches.length };
   }
   const [rows, [counted]] = await Promise.all([

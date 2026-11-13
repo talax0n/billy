@@ -11,13 +11,17 @@ import { accountRoutes, cashRoutes } from "./modules/cash/routes.ts";
 import { contactRoutes } from "./modules/contacts/routes.ts";
 import { expenseRoutes } from "./modules/expenses/routes.ts";
 import { insightRoutes } from "./modules/insights/routes.ts";
+import { opnameRoutes } from "./modules/opname/routes.ts";
 import { posRoutes } from "./modules/pos/routes.ts";
 import { productRoutes } from "./modules/products/routes.ts";
 import { salesRoutes } from "./modules/sales/routes.ts";
 import { purchaseRoutes } from "./modules/purchases/routes.ts";
+import { quotationRoutes } from "./modules/quotations/routes.ts";
 import { settingsRoutes } from "./modules/settings/routes.ts";
+import { shiftRoutes } from "./modules/shifts/routes.ts";
 import { stockRoutes } from "./modules/stock/routes.ts";
 import { userRoutes } from "./modules/users/routes.ts";
+import { watchdogRoutes } from "./modules/watchdog/routes.ts";
 
 /**
  * The module list. Add a module with one `.route()` line; the chain (not a loop) keeps
@@ -39,6 +43,7 @@ export function createApp(db: Db) {
     .route("/categories", categoryRoutes)
     .route("/products", productRoutes)
     .route("/sales", salesRoutes)
+    .route("/quotations", quotationRoutes)
     .route("/invoice-bundles", invoiceBundleRoutes)
     .route("/accounts", accountRoutes)
     .route("/cash", cashRoutes)
@@ -46,9 +51,12 @@ export function createApp(db: Db) {
     .route("/contacts", contactRoutes)
     .route("/purchases", purchaseRoutes)
     .route("/stock", stockRoutes)
+    .route("/opnames", opnameRoutes)
     .route("/pos", posRoutes)
     .route("/approvals", approvalRoutes)
     .route("/audit", auditRoutes)
+    .route("/shifts", shiftRoutes)
+    .route("/watchdog", watchdogRoutes)
     .route("/", insightRoutes);
 }
 

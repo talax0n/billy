@@ -1,4 +1,4 @@
-import { actionRegistry } from "@billy/core";
+import { actionRegistry, businessDate } from "@billy/core";
 import { queryOptions, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import type { InferResponseType } from "hono/client";
@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, ApiError, unwrap } from "../../lib/api.ts";
 import { meQuery } from "../../lib/auth.ts";
 import { ActionStatus, actionDescription, topActionsOptions } from "../../routes/insights/actions.tsx";
+import { FlagItem, recentFlagsOptions } from "../../routes/watchdog/flags.tsx";
 import { Button } from "../ui/button.tsx";
 import { toast } from "../ui/toast.tsx";
 
@@ -21,16 +22,20 @@ const pendingApprovalsOptions = queryOptions({
 
 /**
  * "Perlu Tindakan" as a notification bell: the count on the icon, the top five in a panel.
- * For admin, remote approval requests sit above them and are decided right here.
+ * For admin, remote approval requests sit above them and are decided right here, then today's
+ * red flags from the watchdog.
  */
 export function NotificationBell() {
   const { data } = useQuery(topActionsOptions);
   const { data: me } = useSuspenseQuery(meQuery);
   const approvals = useQuery({ ...pendingApprovalsOptions, enabled: me?.role === "admin" });
   const pending = approvals.data?.rows ?? [];
+  const today = businessDate();
+  const watchdog = useQuery({ ...recentFlagsOptions(today), enabled: me?.role === "admin" });
+  const flags = watchdog.data?.rows.filter((f) => f.date === today) ?? [];
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const count = (data?.total ?? 0) + pending.length;
+  const count = (data?.total ?? 0) + pending.length + flags.length;
 
   useEffect(() => {
     if (!open) return;
@@ -74,6 +79,20 @@ export function NotificationBell() {
               ))}
             </ul>
           )}
+          {flags.length > 0 && (
+            <div className="border-b border-line">
+              <ul aria-label="Peringatan hari ini" className="max-h-[30vh] overflow-y-auto">
+                {flags.slice(0, 5).map((flag) => (
+                  <li key={flag.id} className="border-b border-line-2 last:border-b-0">
+                    <FlagItem flag={flag} onNavigate={() => setOpen(false)} />
+                  </li>
+                ))}
+              </ul>
+              <Link to="/ringkasan-harian" onClick={() => setOpen(false)} className="block px-4 py-2 text-xs text-muted hover:bg-line-2">
+                {flags.length > 5 ? `${flags.length - 5} peringatan lain · ` : ""}Ringkasan harian ›
+              </Link>
+            </div>
+          )}
           {data?.rows.length ? (
             <ul className="max-h-[60vh] overflow-y-auto">
               {data.rows.map((item, i) => (
@@ -91,7 +110,8 @@ export function NotificationBell() {
               ))}
             </ul>
           ) : (
-            pending.length === 0 && <p className="px-4 py-8 text-center text-muted">Semua sudah beres.</p>
+            pending.length === 0 &&
+            flags.length === 0 && <p className="px-4 py-8 text-center text-muted">Semua sudah beres.</p>
           )}
           <Link to="/tindakan" onClick={() => setOpen(false)} className="block border-t border-line px-4 py-2.5 text-center font-medium hover:bg-line-2">
             Lihat semua

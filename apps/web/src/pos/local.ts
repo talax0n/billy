@@ -1,4 +1,13 @@
-import { businessDate, nextPosNumber, type OutboxLists, type OutboxProblem, parsePosNumber, type PosSaleInput } from "@billy/core";
+import {
+  businessDate,
+  nextPosNumber,
+  type OutboxLists,
+  type OutboxProblem,
+  parsePosNumber,
+  type PosSaleInput,
+  type ShiftCloseInput,
+  type ShiftOpenInput,
+} from "@billy/core";
 import { queryOptions } from "@tanstack/react-query";
 import type { InferResponseType } from "hono/client";
 import { createStore, get, promisifyRequest, set, update } from "idb-keyval";
@@ -16,8 +25,26 @@ export interface QueuedSale {
   receipt: ReceiptData;
 }
 
-/** A sale the server refused (4xx). Kept until someone retries or removes it. */
-export type SyncProblem = OutboxProblem<QueuedSale>;
+/** The open shift of one cashier on this device: what the Kasir needs to sell and to close it. */
+export interface LocalShift {
+  id: string;
+  deviceCode: string;
+  accountId: string;
+  openedAt: string;
+  openingFloat: number;
+}
+
+/** A shift opening or closing waiting for upload, in the same queue as the shift's sales. */
+export interface QueuedShift {
+  shift:
+    | (ShiftOpenInput & { event: "open"; cashierId: string })
+    | (ShiftCloseInput & { event: "close"; id: string; cashierId: string });
+}
+
+export type OutboxItem = QueuedSale | QueuedShift;
+
+/** An entry the server refused (4xx). Kept until someone retries or removes it. */
+export type SyncProblem = OutboxProblem<OutboxItem>;
 
 export interface ParkedCart {
   id: string;
@@ -37,8 +64,10 @@ interface Counter {
  */
 interface Schema {
   catalog: Catalog;
-  outbox: QueuedSale[];
+  outbox: OutboxItem[];
   problems: SyncProblem[];
+  /** By cashier id: each cashier signed in on this device has their own shift. */
+  shifts: Record<string, LocalShift>;
   counter: Counter;
   parked: ParkedCart[];
   lastReceipt: ReceiptData;
@@ -55,12 +84,12 @@ export const change = <K extends keyof Schema>(key: K, fn: (value: Schema[K] | u
  * Changes the outbox and the problem list together in one IndexedDB transaction, so a sale
  * moving between them is never in neither (or both) after a crash.
  */
-export const changeQueue = (fn: (lists: OutboxLists<QueuedSale>) => OutboxLists<QueuedSale>) =>
+export const changeQueue = (fn: (lists: OutboxLists<OutboxItem>) => OutboxLists<OutboxItem>) =>
   store(
     "readwrite",
     (kv) =>
       new Promise<void>((resolve, reject) => {
-        const outbox = kv.get("outbox") as IDBRequest<QueuedSale[] | undefined>;
+        const outbox = kv.get("outbox") as IDBRequest<OutboxItem[] | undefined>;
         const problems = kv.get("problems") as IDBRequest<SyncProblem[] | undefined>;
         // Requests run in order, so both reads are done here; writing in the callback keeps the transaction open.
         problems.onsuccess = () => {
@@ -142,3 +171,10 @@ export const catalogQuery = queryOptions({
     }
   },
 });
+
+/** Stores the cashier's open shift on this device, or forgets it with `null`. */
+export const saveShift = (cashierId: string, shift: LocalShift | null) =>
+  change("shifts", (all = {}) => {
+    const { [cashierId]: _closed, ...others } = all;
+    return shift ? { ...others, [cashierId]: shift } : others;
+  });

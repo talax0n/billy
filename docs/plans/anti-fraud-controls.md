@@ -75,6 +75,8 @@ users.approval_pin_hash    text?   admins only, set in Pengaturan, 6 digits, has
 
 ## Phase 2. Shifts and blind cash count
 
+Status: built (2026-11-13), except the nota sementara rule, which waits for Phase 3. How expected cash is computed is in [the data model](../architecture/data-model.md#shifts).
+
 ```
 cash_shifts
   id, cashier_id, device_code, account_id (the cash drawer account)
@@ -85,15 +87,26 @@ pos_sales.shift_id -> cash_shifts
 
 - A Kasir must open a shift with the starting float before the first sale. One open shift per cashier per device.
 - Closing asks for the counted cash *without showing the expected amount*. The server computes expected cash from the float, cash sales, cash refunds and cash moved in or out during the shift, then stores the difference.
-- The Kasir sees only "Shift ditutup". Admin sees the expected, counted and difference in Log Aktivitas and in a Shift report. A shift can't close while it still has an open nota sementara (Phase 3).
+- The Kasir sees only "Shift ditutup". Admin sees the expected, counted and difference in Log Aktivitas and in a Shift report. Closing warns about the cashier's open nota sementara instead of refusing (Phase 3).
 
 ## Phase 3. Client features with controls
+
+Status: built (2026-11-13). The rules, numbers and cash math are in [the data model](../architecture/data-model.md#nota-sementara-revisi-and-penawaran).
+
+Open assumptions, to confirm with the owner:
+
+- **Nota sementara holds no stock.** The owner has not answered the stock question, so stock moves only at payment, like any sale. Two open notas can promise the same last can of paint.
+- **A shift closes even with open nota sementara.** The close is queued offline like every shift event, so the server cannot block it. Instead the close dialog lists the open notas the cashier made. They stay open for any cashier to pay or cancel.
+- **A lower revisi is refunded in cash from the reviser's drawer**, whatever the original was paid with. A higher revisi collects the difference with the method the cashier picks.
+- **Parkir keranjang stays.** It is the offline, device-only hold. Nota sementara is the online, shared one.
 
 - **Nota sementara.** A server-side, numbered `S-` document, shared across devices and printable as "NOTA SEMENTARA, BUKAN BUKTI PEMBAYARAN". It can't be deleted. Cancelling needs a reason, and approval once it has been printed. Paying converts it to a normal `C-` nota.
 - **Revisi nota kasir.** It voids the original and issues a new nota linked to it. A higher total collects the difference. A lower total refunds from the shift's cash drawer and needs approval. Revising another cashier's nota, or a past day's nota, also needs approval. Every print is counted, and reprints say "SALINAN".
 - **Penawaran harga.** A `Q-` document with lines, prices and a valid-until date. It moves no stock and is excluded from totals. Converting it to a faktur copies the lines. A quote below cost or below the normal selling price needs approval at conversion.
 
 ## Phase 4. Watchdog
+
+Status: built (2026-11-13). The rules and thresholds are in [the data model](../architecture/data-model.md#watchdog), stok opname [there too](../architecture/data-model.md#stok-opname). Flags are computed on read, since the serverless deploy has no cron. The Overview card and the bell show today's flags, and Ringkasan harian is the daily summary, without email.
 
 Red flags show on the Overview and in the bell, plus a daily summary for admin:
 

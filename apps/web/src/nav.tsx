@@ -3,7 +3,10 @@ import {
   ArrowLeftRight,
   BellDot,
   Boxes,
+  ClipboardCheck,
+  ClipboardList,
   FileStack,
+  FileText,
   HandCoins,
   History,
   LayoutDashboard,
@@ -11,6 +14,7 @@ import {
   Package,
   Receipt,
   ScrollText,
+  ShieldAlert,
   Settings,
   ShoppingCart,
   Users,
@@ -30,9 +34,13 @@ import { ReceivablesPage } from "./routes/receivables/receivables-page.tsx";
 import { SalesPage } from "./routes/sales/sales-page.tsx";
 import { PayablesPage } from "./routes/payables/payables-page.tsx";
 import { PurchasesPage } from "./routes/purchases/purchases-page.tsx";
+import { QuotationsPage } from "./routes/quotations/quotations-page.tsx";
 import { RiwayatKasirPage } from "./routes/riwayat-kasir/riwayat-kasir-page.tsx";
 import { SettingsPage } from "./routes/settings/settings-page.tsx";
+import { OpnamePage } from "./routes/opname/opname-page.tsx";
+import { ShiftsPage } from "./routes/shifts/shifts-page.tsx";
 import { StockPage } from "./routes/stock/stock-page.tsx";
+import { DailySummaryPage } from "./routes/watchdog/daily-page.tsx";
 
 export const navGroups = ["Umum", "Transaksi", "Keuangan", "Persediaan"] as const;
 
@@ -54,18 +62,22 @@ export interface NavItem {
  */
 export const navItems: NavItem[] = [
   { group: "Umum", path: "/", label: "Overview", icon: LayoutDashboard, page: DashboardPage },
+  { group: "Umum", path: "/ringkasan-harian", label: "Ringkasan harian", icon: ShieldAlert, page: DailySummaryPage, roles: ["admin"] },
   // Reached from the notification bell in every page header.
   { group: "hidden", path: "/tindakan", label: "Perlu Tindakan", icon: BellDot, page: ActionsPage },
   { group: "Transaksi", path: "/penjualan", label: "Penjualan", icon: Receipt, page: SalesPage },
+  { group: "Transaksi", path: "/penawaran", label: "Penawaran", icon: FileText, page: QuotationsPage },
   { group: "Transaksi", path: "/pembelian", label: "Pembelian", icon: ShoppingCart, page: PurchasesPage },
   { group: "Transaksi", path: "/biaya", label: "Biaya", icon: WalletCards, page: ExpensesPage },
   { group: "Transaksi", path: "/tukar-faktur", label: "Tukar Faktur", icon: FileStack, page: BundlesPage },
   { group: "Transaksi", path: "/riwayat-kasir", label: "Riwayat Kasir", icon: History, page: RiwayatKasirPage },
   { group: "Keuangan", path: "/kas-bank", label: "Kas & Bank", icon: Wallet, page: CashPage },
+  { group: "Keuangan", path: "/laporan-shift", label: "Laporan Shift", icon: ClipboardCheck, page: ShiftsPage, roles: ["admin"] },
   { group: "Keuangan", path: "/piutang", label: "Piutang", icon: HandCoins, page: ReceivablesPage },
   { group: "Keuangan", path: "/hutang", label: "Hutang", icon: ArrowLeftRight, page: PayablesPage },
   { group: "Persediaan", path: "/produk", label: "Produk", icon: Package, page: ProductsPage },
   { group: "Persediaan", path: "/mutasi-stok", label: "Mutasi Stok", icon: Boxes, page: StockPage },
+  { group: "Persediaan", path: "/stok-opname", label: "Stok Opname", icon: ClipboardList, page: OpnamePage },
   { group: "Persediaan", path: "/kontak", label: "Kontak", icon: Users, page: ContactsPage },
   { group: null, path: "/log-aktivitas", label: "Log Aktivitas", icon: ScrollText, page: AuditPage, roles: ["admin"] },
   { group: null, path: "/pengaturan", label: "Pengaturan", icon: Settings, page: SettingsPage },

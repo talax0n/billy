@@ -7,7 +7,9 @@ import { hashPassword, verifyPassword } from "../../auth/password.ts";
 import type { Actor } from "../../env.ts";
 import { createRequest, type Requirement } from "../../lib/approval.ts";
 import { audit } from "../../lib/audit.ts";
-import { posSaleApproval, posVoidApproval } from "../pos/service.ts";
+import { draftCancelApproval } from "../pos/drafts.ts";
+import { posRevisionApproval, posSaleApproval, posVoidApproval } from "../pos/service.ts";
+import { quotationConvertApproval } from "../quotations/service.ts";
 import { invoiceApproval } from "../sales/service.ts";
 
 type RequestInput = z.output<typeof approvalRequestInput>;
@@ -50,8 +52,14 @@ async function requirementOf(db: Db, input: RequestInput, actor: Actor): Promise
       return posSaleApproval(db, input.sale, actor);
     case "pos.void":
       return posVoidApproval(db, input.saleId, actor);
+    case "pos.revise":
+      return posRevisionApproval(db, input.originalId, input.revision, actor);
+    case "pos.draft.cancel":
+      return draftCancelApproval(db, input.draftId, actor);
     case "sales.invoice":
       return invoiceApproval(db, input.invoice, actor);
+    case "quotation.convert":
+      return quotationConvertApproval(db, input.quotationId, input.convert, actor);
   }
 }
 

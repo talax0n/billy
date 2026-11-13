@@ -43,3 +43,22 @@ it("keeps audit_events append-only, even for direct SQL", async () => {
   expect(await db.select({ summary: auditEvents.summary }).from(auditEvents)).toEqual([{ summary: "Uji" }]);
   await close();
 });
+
+it("allows one open shift per cashier per device", async () => {
+  const { db, migrate, close } = await createDb();
+  await migrate();
+  await seed(db, { adminPasswordHash: "x" });
+  const shift = (id: string, deviceCode: string, closed = false) =>
+    db.execute(sql`insert into cash_shifts (id, cashier_id, device_code, account_id, opened_at, opening_float, closed_at)
+      select ${id}::uuid, u.id, ${deviceCode}, a.id, now(), 0, ${closed ? sql`now()` : sql`null`}
+      from users u, accounts a where a.kind = 'cash' limit 1`);
+  await shift("01a1d234-3800-7000-8000-000000000001", "K1", true);
+  await shift("01a1d234-3800-7000-8000-000000000002", "K1");
+  await shift("01a1d234-3800-7000-8000-000000000003", "K2");
+  const second = await shift("01a1d234-3800-7000-8000-000000000004", "K1").then(
+    () => "allowed",
+    (err: Error) => (err.cause as { constraint?: string } | undefined)?.constraint ?? err.message,
+  );
+  expect(second).toBe("cash_shifts_one_open");
+  await close();
+});

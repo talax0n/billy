@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { createFlush, type FlushDeps, mayUpload, type OutboxEntry, requeueProblem, settleEntry } from "./outbox.ts";
 import { initialSyncState, type SyncState, syncTransition } from "./pos.ts";
 
-const entry = (id: string): OutboxEntry => ({ sale: { id } });
+type SaleEntry = Extract<OutboxEntry, { sale: unknown }>;
+const entry = (id: string): SaleEntry => ({ sale: { id } });
 
 /** An in-memory outbox whose uploads wait for `release()`. */
 function fakeOutbox(ids: string[], status = 201) {
@@ -11,7 +12,7 @@ function fakeOutbox(ids: string[], status = 201) {
   let state: SyncState = initialSyncState(true);
   let release!: () => void;
   const gate = new Promise<void>((resolve) => (release = resolve));
-  const deps: FlushDeps<OutboxEntry> = {
+  const deps: FlushDeps<SaleEntry> = {
     next: async () => queue[0],
     upload: async (e) => {
       uploads.push(e.sale.id);
@@ -69,6 +70,12 @@ describe("moves between the outbox and the problem list", () => {
     expect(requeueProblem(lists, "a")).toEqual({ outbox: [b, a], problems: [] });
     expect(requeueProblem(lists, "x")).toBe(lists);
   });
+
+  it("keeps a shift's open and close apart though they share the shift id", () => {
+    const open = { shift: { event: "open" as const, id: "s", cashierId: "k" } };
+    const close = { shift: { event: "close" as const, id: "s", cashierId: "k" } };
+    expect(settleEntry({ outbox: [open, close], problems: [] }, open, null)).toEqual({ outbox: [close], problems: [] });
+  });
 });
 
 describe("who uploads a queued sale", () => {
@@ -81,6 +88,7 @@ describe("who uploads a queued sale", () => {
       mayUpload(byA, { id: "staff-1", role: "staff" }),
       mayUpload(byA, { id: "admin-1", role: "admin" }),
       mayUpload(legacy, { id: "kasir-b", role: "kasir" }),
-    ]).toEqual([true, false, true, true, true]);
+      mayUpload({ shift: { event: "close", id: "s", cashierId: "kasir-a" } }, { id: "kasir-b", role: "kasir" }),
+    ]).toEqual([true, false, true, true, true, false]);
   });
 });

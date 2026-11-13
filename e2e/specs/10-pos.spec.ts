@@ -1,5 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
-import { ADMIN, docNumber, KASIR, login, rp } from "../helpers.ts";
+import { ADMIN, docNumber, KASIR, login, openShift, rp } from "../helpers.ts";
 
 const search = (page: Page) => page.getByLabel("Cari produk atau scan barcode");
 const results = (page: Page) => page.getByRole("listbox", { name: "Hasil pencarian" });
@@ -20,6 +20,7 @@ test("sells online and offline; the offline sale syncs and reaches Riwayat Kasir
   });
   await login(page, KASIR);
   await expect(page).toHaveURL(/\/kasir$/);
+  await openShift(page, 100_000);
   await expect(page.getByTestId("sync-state")).toHaveText("Online");
 
   await page.keyboard.press("F3");

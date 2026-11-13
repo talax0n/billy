@@ -27,6 +27,7 @@ export function PayPanel({
   onTxDiscount,
   onChooseAccount,
   onPay,
+  paidBefore,
 }: {
   totals: CartTotals;
   error: string | null;
@@ -43,10 +44,14 @@ export function PayPanel({
   onTxDiscount: () => void;
   onChooseAccount: () => void;
   onPay: () => void;
+  /** A revisi: what the replaced nota already collected. Only the difference is paid or refunded. */
+  paidBefore?: Rupiah | undefined;
 }) {
   const cash = method === "cash";
-  const received = cash && tendered > 0 ? tendered : totals.total;
-  const change = received - totals.total;
+  const due = totals.total - (paidBefore ?? 0);
+  const collect = Math.max(due, 0);
+  const received = cash && tendered > 0 ? tendered : collect;
+  const change = received - due;
   return (
     <div className="flex flex-1 flex-col gap-3.5 px-[18px] py-4">
       <div className="flex justify-between text-ink-2">
@@ -74,6 +79,14 @@ export function PayPanel({
           {money(totals.total)}
         </div>
         {error && <p className="mt-1 text-down">{error}</p>}
+        {paidBefore !== undefined && (
+          <div className="mt-1 flex justify-between text-ink-2" data-testid="pos-difference">
+            <span>{due < 0 ? "Dikembalikan tunai dari laci" : "Selisih dibayar"}</span>
+            <span className="tabular-nums">
+              Rp {money(Math.abs(due))} <span className="text-muted">(nota lama {money(paidBefore)})</span>
+            </span>
+          </div>
+        )}
       </div>
 
       <div>
@@ -116,8 +129,8 @@ export function PayPanel({
             inputMode="numeric"
             aria-label="Uang diterima"
             disabled={!cash}
-            value={cash ? (tendered ? money(tendered) : "") : money(totals.total)}
-            placeholder={money(totals.total)}
+            value={cash ? (tendered ? money(tendered) : "") : money(collect)}
+            placeholder={money(collect)}
             onChange={(e) => onTendered(rupiah(Number(e.target.value.replace(/\D/g, "").slice(0, 13) || 0)))}
             onKeyDown={(e) => {
               if (e.key === "Enter" || e.key === "Escape") {
@@ -130,12 +143,12 @@ export function PayPanel({
         </label>
         {cash && (
           <div className="mt-1.5 grid grid-cols-4 gap-1.5">
-            {[{ label: "Uang pas", value: totals.total }, ...quickTenderAmounts(totals.total).map((v) => ({ label: money(v), value: v }))].map(
+            {[{ label: "Uang pas", value: rupiah(collect) }, ...quickTenderAmounts(rupiah(collect)).map((v) => ({ label: money(v), value: v }))].map(
               (chip) => (
                 <button
                   key={chip.label}
                   type="button"
-                  disabled={totals.total === 0}
+                  disabled={collect === 0}
                   onClick={() => onTendered(chip.value)}
                   className="rounded-lg border border-line py-1.5 text-xs text-ink-2 tabular-nums hover:bg-line-2 disabled:opacity-50"
                 >
@@ -160,7 +173,7 @@ export function PayPanel({
         onClick={onPay}
         className="mt-auto flex items-center justify-between rounded-[11px] bg-ink px-4 py-3.5 text-[15px] font-semibold text-panel disabled:opacity-40"
       >
-        Bayar &amp; cetak struk
+        {paidBefore === undefined ? "Bayar & cetak struk" : "Simpan revisi & cetak struk"}
         <kbd className="rounded-[5px] border border-panel/35 px-1.5 py-px font-sans text-xs font-normal">Enter</kbd>
       </button>
     </div>

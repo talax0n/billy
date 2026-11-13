@@ -7,6 +7,9 @@ import {
   fieldErrors,
   formatDate,
   formatRupiah,
+  QUOTATION_VALID_DAYS,
+  quotationInput,
+  type QuotationInput,
   rupiah,
   salesInvoiceInput,
   type SalesInvoiceInput,
@@ -75,11 +78,13 @@ function tryTotals(lines: Line[], kind: DiscountKind, value: number): { totals: 
  * The invoice as a document: header (customer, date, terms), a keyboard-first line table and a
  * read-only totals panel. The server recomputes every number on save.
  */
-export function InvoiceForm({ onSaved }: { onSaved: (id: string) => void }) {
+export function InvoiceForm({ onSaved, kind = "invoice" }: { onSaved: (id: string) => void; kind?: "invoice" | "quote" }) {
+  const quote = kind === "quote";
   const queryClient = useQueryClient();
   const [customer, setCustomer] = useState<Contact | null>(null);
   const [date, setDate] = useState(businessDate());
   const [termsDays, setTermsDays] = useState(0);
+  const [validUntil, setValidUntil] = useState(() => addDays(businessDate(), QUOTATION_VALID_DAYS));
   const [lines, setLines] = useState<Line[]>(() => [blankLine()]);
   const [showLineDiscount, setShowLineDiscount] = useState(false);
   const [discountKind, setDiscountKind] = useState<DiscountKind>("none");
@@ -109,10 +114,9 @@ export function InvoiceForm({ onSaved }: { onSaved: (id: string) => void }) {
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    const parsed = salesInvoiceInput.safeParse({
+    const base = {
       customerId: customer?.id ?? "",
       date,
-      termsDays,
       discountKind,
       discountValue,
       note,
@@ -123,8 +127,10 @@ export function InvoiceForm({ onSaved }: { onSaved: (id: string) => void }) {
         discountAmount: l.discountAmount,
         note: l.note,
       })),
-      payment,
-    });
+    };
+    const invoice = salesInvoiceInput.safeParse({ ...base, termsDays, payment });
+    const quotation = quotationInput.safeParse({ ...base, validUntil });
+    const parsed = quote ? quotation : invoice;
     if (!parsed.success) {
       setErrors(fieldErrors(parsed.error));
       return;
@@ -132,10 +138,11 @@ export function InvoiceForm({ onSaved }: { onSaved: (id: string) => void }) {
     setErrors({});
     setSubmitting(true);
     try {
-      await save(parsed.data);
+      if (quotation.success && quote) await saveQuote(quotation.data);
+      else if (invoice.success) await save(invoice.data);
     } catch (err) {
       if (!(err instanceof ApiError)) throw err;
-      if (err.approval) setBlocked({ invoice: parsed.data, message: err.message });
+      if (err.approval && invoice.success) setBlocked({ invoice: invoice.data, message: err.message });
       else {
         setErrors(err.fields);
         toast(err.message, "down");
@@ -149,6 +156,13 @@ export function InvoiceForm({ onSaved }: { onSaved: (id: string) => void }) {
     const saved = await unwrap(api.sales.$post({ json: invoice }));
     await queryClient.invalidateQueries({ queryKey: ["sales"] });
     await queryClient.invalidateQueries({ queryKey: ["products"] });
+    toast(`${saved.number} disimpan`, "up");
+    onSaved(saved.id);
+  }
+
+  async function saveQuote(input: QuotationInput) {
+    const saved = await unwrap(api.quotations.$post({ json: input }));
+    await queryClient.invalidateQueries({ queryKey: ["quotations"] });
     toast(`${saved.number} disimpan`, "up");
     onSaved(saved.id);
   }
@@ -172,24 +186,41 @@ export function InvoiceForm({ onSaved }: { onSaved: (id: string) => void }) {
           )}
         </Field>
         <Field label="Tanggal" error={errors.date}>
-          {(p) => <DateInput {...p} value={date} onChange={(e) => setDate(e.target.value)} />}
-        </Field>
-        <Field label="Tempo (hari)" error={errors.termsDays}>
           {(p) => (
-            <Input
+            <DateInput
               {...p}
-              type="number"
-              min={0}
-              max={365}
-              value={termsDays}
-              onChange={(e) => setTermsDays(Math.max(0, Math.trunc(Number(e.target.value))))}
+              value={date}
+              onChange={(e) => {
+                setDate(e.target.value);
+                if (e.target.value) setValidUntil(addDays(e.target.value, QUOTATION_VALID_DAYS));
+              }}
             />
           )}
         </Field>
-        <div className="flex flex-col gap-1.5">
-          <span className="text-ink-2">Jatuh tempo</span>
-          <output className="flex h-9 items-center text-ink tabular-nums">{date ? formatDate(addDays(date, termsDays)) : "—"}</output>
-        </div>
+        {quote ? (
+          <Field label="Berlaku sampai" error={errors.validUntil}>
+            {(p) => <DateInput {...p} value={validUntil} onChange={(e) => setValidUntil(e.target.value)} />}
+          </Field>
+        ) : (
+          <>
+            <Field label="Tempo (hari)" error={errors.termsDays}>
+              {(p) => (
+                <Input
+                  {...p}
+                  type="number"
+                  min={0}
+                  max={365}
+                  value={termsDays}
+                  onChange={(e) => setTermsDays(Math.max(0, Math.trunc(Number(e.target.value))))}
+                />
+              )}
+            </Field>
+            <div className="flex flex-col gap-1.5">
+              <span className="text-ink-2">Jatuh tempo</span>
+              <output className="flex h-9 items-center text-ink tabular-nums">{date ? formatDate(addDays(date, termsDays)) : "—"}</output>
+            </div>
+          </>
+        )}
       </section>
 
       <section className="flex flex-col gap-2">
@@ -241,21 +272,23 @@ export function InvoiceForm({ onSaved }: { onSaved: (id: string) => void }) {
 
       <section className="grid grid-cols-[minmax(0,1fr)_320px] gap-6 max-lg:grid-cols-1">
         <div className="flex flex-col gap-4">
-          <Field label="Catatan faktur" error={errors.note}>
+          <Field label={quote ? "Catatan penawaran" : "Catatan faktur"} error={errors.note}>
             {(p) => <Input {...p} value={note} onChange={(e) => setNote(e.target.value)} />}
           </Field>
-          <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={payment !== null}
-              onChange={(e) =>
-                setPayment(
-                  e.target.checked ? { accountId: "", amount: totals?.total ?? 0, method: "cash", proofUrl: "", note: "" } : null,
-                )
-              }
-            />
-            Bayar sekarang
-          </label>
+          {!quote && (
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={payment !== null}
+                onChange={(e) =>
+                  setPayment(
+                    e.target.checked ? { accountId: "", amount: totals?.total ?? 0, method: "cash", proofUrl: "", note: "" } : null,
+                  )
+                }
+              />
+              Bayar sekarang
+            </label>
+          )}
           {payment && (
             <PaymentFields
               values={payment}
@@ -306,7 +339,7 @@ export function InvoiceForm({ onSaved }: { onSaved: (id: string) => void }) {
 
       <div className="flex justify-end">
         <Button type="submit" variant="primary" disabled={submitting}>
-          Simpan faktur
+          {quote ? "Simpan penawaran" : "Simpan faktur"}
         </Button>
       </div>
       {blocked && (

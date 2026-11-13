@@ -1,4 +1,4 @@
-import { changedFields, DomainError, formatBp, limitsInput, settingsInput } from "@billy/core";
+import { changedFields, DomainError, formatBp, formatRupiah, limitsInput, settingsInput, watchdogSettingsInput } from "@billy/core";
 import { settings } from "@billy/db";
 import { getTableColumns } from "drizzle-orm";
 import { Hono } from "hono";
@@ -7,8 +7,17 @@ import type { AppEnv } from "../../env.ts";
 import { audit } from "../../lib/audit.ts";
 import { validate } from "../../lib/validate.ts";
 import { getLimits } from "../pos/service.ts";
+import { getWatchdogSettings } from "../watchdog/service.ts";
 
-const { id: _id, kasirMaxDiscountBp: _max, allowBelowCost: _below, ...columns } = getTableColumns(settings);
+const {
+  id: _id,
+  kasirMaxDiscountBp: _max,
+  allowBelowCost: _below,
+  cashDifferenceThreshold: _threshold,
+  openTime: _open,
+  closeTime: _close,
+  ...columns
+} = getTableColumns(settings);
 
 export const settingsRoutes = new Hono<AppEnv>()
   // Every role reads the shop header: the POS prints it on receipts.
@@ -55,4 +64,26 @@ export const settingsRoutes = new Hono<AppEnv>()
       return row;
     });
     return c.json(limits);
+  })
+  /** Pengawasan: what the watchdog flags. Never sent to the Kasir device, so a cashier cannot stay under it. */
+  .get("/watchdog", adminOnly(), async (c) => c.json(await getWatchdogSettings(c.var.db)))
+  .put("/watchdog", adminOnly(), validate("json", watchdogSettingsInput), async (c) => {
+    const input = c.req.valid("json");
+    const saved = await c.var.db.transaction(async (tx) => {
+      const before = await getWatchdogSettings(tx);
+      const [row] = await tx.update(settings).set(input).returning({ id: settings.id });
+      if (!row) throw new DomainError("not_found", "Simpan pengaturan toko dulu");
+      const after = await getWatchdogSettings(tx);
+      const diff = changedFields(before, after);
+      if (diff) {
+        await audit(tx, c.var.actor, {
+          action: "settings.watchdog.update",
+          entityId: "1",
+          summary: `Pengawasan: selisih kas ${formatRupiah(after.cashDifferenceThreshold)}, jam buka ${after.openTime}–${after.closeTime}`,
+          ...diff,
+        });
+      }
+      return after;
+    });
+    return c.json(saved);
   });

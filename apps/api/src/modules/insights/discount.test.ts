@@ -5,7 +5,7 @@ import { beforeAll, expect, it } from "vitest";
 import { createTestApp } from "../../testing.ts";
 
 /** One Rp100.000 sale of a Rp60.000 product with a Rp20.000 document discount, on each channel. */
-const { db, call, signIn } = await createTestApp();
+const { db, call, signIn, shiftFor } = await createTestApp();
 let cookie: string;
 const date = "2026-11-13";
 const query = `from=${date}&to=${date}`;
@@ -45,6 +45,7 @@ beforeAll(async () => {
     body: {
       id: uuidv7(),
       number: "K1-261113-0001",
+      shiftId: await shiftFor(cookie),
       soldAt: "2026-11-13T02:15:00.000Z",
       lines: [{ productId: product.id, qty: 1, unitPrice: 100_000 }],
       discount: { kind: "amount", value: 20_000 },

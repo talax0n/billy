@@ -1,6 +1,18 @@
-import { approvalKinds, approvalMethods, approvalStatuses, auditSources, discountKinds, roles, uuidv7, type Rupiah } from "@billy/core";
+import {
+  approvalKinds,
+  approvalMethods,
+  approvalStatuses,
+  auditSources,
+  discountKinds,
+  opnameStatuses,
+  quotationStatuses,
+  roles,
+  uuidv7,
+  type Rupiah,
+} from "@billy/core";
 import { sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   bigint,
   boolean,
   check,
@@ -12,8 +24,10 @@ import {
   pgTable,
   primaryKey,
   text,
+  time,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 
@@ -53,7 +67,7 @@ export const cashSourceType = pgEnum("cash_source_type", [
   "manual",
 ]);
 export const stockReason = pgEnum("stock_reason", ["purchase", "sale", "pos", "adjustment", "reversal"]);
-export const stockSourceType = pgEnum("stock_source_type", ["sales_invoice", "purchase_invoice", "pos_sale"]);
+export const stockSourceType = pgEnum("stock_source_type", ["sales_invoice", "purchase_invoice", "pos_sale", "stock_opname"]);
 export const paymentDirection = pgEnum("payment_direction", ["receivable", "payable"]);
 export const paymentMethod = pgEnum("payment_method", ["cash", "transfer", "qris", "giro"]);
 export const posMethod = pgEnum("pos_method", ["cash", "qris", "transfer"]);
@@ -61,6 +75,18 @@ export const auditSource = pgEnum("audit_source", auditSources);
 export const approvalKind = pgEnum("approval_kind", approvalKinds);
 export const approvalStatus = pgEnum("approval_status", approvalStatuses);
 export const approvalMethod = pgEnum("approval_method", approvalMethods);
+export const posDraftStatus = pgEnum("pos_draft_status", ["open", "paid", "cancelled"]);
+export const quotationStatus = pgEnum("quotation_status", quotationStatuses);
+export const opnameStatus = pgEnum("opname_status", opnameStatuses);
+
+/** A document line kept as jsonb on a document that moves no stock (nota sementara, penawaran). */
+export interface DocumentLine {
+  productId: string;
+  qty: number;
+  unitPrice: Rupiah;
+  discountAmount: Rupiah;
+  note: string;
+}
 
 export const users = pgTable("users", {
   id: id(),
@@ -103,6 +129,11 @@ export const settings = pgTable(
     /** Every non-admin: line and document discounts combined, basis points of the gross. */
     kasirMaxDiscountBp: integer().notNull().default(500),
     allowBelowCost: boolean().notNull().default(false),
+    /** Watchdog: a closed shift whose cash difference, either way, reaches this is flagged. */
+    cashDifferenceThreshold: money().notNull().default(10_000 as Rupiah),
+    /** Watchdog: opening hours, Asia/Jakarta wall-clock time. */
+    openTime: time().notNull().default("07:00"),
+    closeTime: time().notNull().default("17:00"),
   },
   (t) => [check("settings_single_row", sql`${t.id} = 1`)],
 );
@@ -441,11 +472,145 @@ export const posSales = pgTable(
       .references(() => accounts.id),
     tendered: money().notNull(),
     change: money().notNull(),
+    /** Null only for sales made before shifts existed. */
+    shiftId: uuid().references(() => cashShifts.id),
+    /** Set on a revisi: the nota it replaced, which is voided in the same transaction. */
+    revisionOf: uuid().references((): AnyPgColumn => posSales.id),
+    /** Prints so far; the receipt printed at checkout is the first. Every later one says SALINAN. */
+    printCount: integer().notNull().default(1),
     /** Server receive time. */
     createdAt: createdAt(),
     ...voidColumns(),
   },
-  (t) => [index().on(t.date), index().on(t.cashierId)],
+  (t) => [index().on(t.date), index().on(t.cashierId), index().on(t.shiftId), uniqueIndex().on(t.revisionOf)],
+);
+
+/**
+ * Nota sementara: an unpaid Kasir cart kept on the server, shared by every device. It moves no
+ * stock and no money. It is never deleted: it ends `paid` (linked to its POS sale) or `cancelled`.
+ */
+export const posDrafts = pgTable(
+  "pos_drafts",
+  {
+    id: id(),
+    number: text().notNull().unique(),
+    date: businessDate().notNull(),
+    createdBy: userRef().notNull(),
+    customerId: uuid().references(() => contacts.id),
+    lines: jsonb().$type<DocumentLine[]>().notNull(),
+    subtotal: money().notNull(),
+    ...documentDiscount(),
+    total: money().notNull(),
+    status: posDraftStatus().notNull().default("open"),
+    printCount: integer().notNull().default(0),
+    saleId: uuid()
+      .unique()
+      .references(() => posSales.id),
+    createdAt: createdAt(),
+    updatedAt: createdAt(),
+    cancelledAt: timestamp({ withTimezone: true }),
+    cancelledBy: userRef(),
+    cancelReason: text(),
+  },
+  (t) => [index().on(t.status)],
+);
+
+/**
+ * One cashier's session at one Kasir device, from the opening float to the blind cash count.
+ * `id` and `opened_at` come from the device, so a shift opened offline syncs idempotently.
+ * The close fields are set together when the shift closes; `expected_cash` is computed by the
+ * server and never sent to a kasir.
+ */
+export const cashShifts = pgTable(
+  "cash_shifts",
+  {
+    id: uuid().primaryKey(),
+    cashierId: userRef().notNull(),
+    deviceCode: text().notNull(),
+    /** The cash drawer: the account the Kasir's cash sales pay into. */
+    accountId: uuid()
+      .notNull()
+      .references(() => accounts.id),
+    openedAt: timestamp({ withTimezone: true }).notNull(),
+    openingFloat: money().notNull(),
+    closedAt: timestamp({ withTimezone: true }),
+    countedCash: money(),
+    expectedCash: money(),
+    /** Counted minus expected: negative when cash is missing. */
+    difference: money(),
+    closeNote: text(),
+  },
+  (t) => [
+    index().on(t.openedAt),
+    uniqueIndex("cash_shifts_one_open").on(t.cashierId, t.deviceCode).where(sql`${t.closedAt} is null`),
+    check("cash_shifts_float_non_negative", sql`${t.openingFloat} >= 0`),
+  ],
+);
+
+/**
+ * Stok opname: a count of all active products, or one category's. Only entered lines count.
+ * A draft is a shared workspace; posting (admin only) takes each line's system stock at that
+ * moment, writes an `adjustment` movement per difference, and freezes the opname.
+ */
+export const stockOpnames = pgTable(
+  "stock_opnames",
+  {
+    id: id(),
+    number: text().notNull().unique(),
+    date: businessDate().notNull(),
+    /** Null: all active products. */
+    categoryId: uuid().references(() => categories.id),
+    note: text().notNull().default(""),
+    status: opnameStatus().notNull().default("draft"),
+    createdBy: userRef().notNull(),
+    createdAt: createdAt(),
+    postedBy: userRef(),
+    postedAt: timestamp({ withTimezone: true }),
+  },
+  (t) => [index().on(t.postedAt)],
+);
+
+export const stockOpnameLines = pgTable(
+  "stock_opname_lines",
+  {
+    opnameId: uuid()
+      .notNull()
+      .references(() => stockOpnames.id),
+    productId: uuid()
+      .notNull()
+      .references(() => products.id),
+    countedQty: integer().notNull(),
+    /** Set at posting: the stock then and the cost price the difference is valued at. */
+    systemQty: integer(),
+    unitCost: money(),
+  },
+  (t) => [primaryKey({ columns: [t.opnameId, t.productId] }), check("stock_opname_lines_counted_non_negative", sql`${t.countedQty} >= 0`)],
+);
+
+/** Penawaran harga: moves no stock and no money, and is in no total. Converts to one sales invoice. */
+export const quotations = pgTable(
+  "quotations",
+  {
+    id: id(),
+    number: text().notNull().unique(),
+    customerId: uuid()
+      .notNull()
+      .references(() => contacts.id),
+    date: businessDate().notNull(),
+    validUntil: businessDate().notNull(),
+    lines: jsonb().$type<DocumentLine[]>().notNull(),
+    subtotal: money().notNull(),
+    ...documentDiscount(),
+    total: money().notNull(),
+    note: text().notNull().default(""),
+    status: quotationStatus().notNull().default("draft"),
+    invoiceId: uuid()
+      .unique()
+      .references(() => salesInvoices.id),
+    createdBy: userRef().notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index().on(t.date), index().on(t.customerId)],
 );
 
 export const posLines = pgTable(

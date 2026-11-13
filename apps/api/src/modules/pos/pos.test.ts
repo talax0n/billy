@@ -4,7 +4,7 @@ import { asc, eq } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 import { createTestApp } from "../../testing.ts";
 
-const { call, signIn, db } = await createTestApp();
+const { call, signIn, db, shiftFor } = await createTestApp();
 let staff: string;
 let admin: string;
 let kasir: string;
@@ -62,7 +62,7 @@ const saleBody = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-const post = (cookie: string, body: object) => call("/api/pos/sales", { method: "POST", cookie, body });
+const post = async (cookie: string, body: object) => call("/api/pos/sales", { method: "POST", cookie, body: { shiftId: await shiftFor(cookie), ...body } });
 
 const sideEffects = async (saleId: string) => ({
   lines: await db
@@ -300,7 +300,7 @@ describe("sales queued offline by another cashier", () => {
     Promise.all(ids.map((id) => call(`/api/pos/sales/${id}/void`, { method: "POST", cookie: admin, body: { reason: "Uji" } })));
 
   it("records a sale uploaded by staff under the cashier who made it", async () => {
-    const queued = saleBody({ number: "K1-261113-0020", cashierId: kasirId });
+    const queued = saleBody({ number: "K1-261113-0020", cashierId: kasirId, shiftId: await shiftFor(kasir) });
     const res = await post(staff, queued);
     expect([res.status, ((await res.json()) as { cashierId: string }).cashierId]).toEqual([201, kasirId]);
     await voidAll([queued.id]);

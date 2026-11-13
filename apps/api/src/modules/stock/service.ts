@@ -1,6 +1,6 @@
 import { needsAttentionSql } from "../../lib/stock-level.ts";
 import type { movementQuery, PaginationQuery } from "@billy/core";
-import { type Db, posSales, products, purchaseInvoices, salesInvoices, stockMovements, users } from "@billy/db";
+import { type Db, posSales, products, purchaseInvoices, salesInvoices, stockMovements, stockOpnames, users } from "@billy/db";
 import { and, asc, count, desc, eq, gte, lte, sql } from "drizzle-orm";
 import type { z } from "zod";
 
@@ -53,7 +53,7 @@ export async function listMovements(db: Db, query: MovementQuery) {
         unitCost: ledger.unitCost,
         sourceType: ledger.sourceType,
         sourceId: ledger.sourceId,
-        sourceNumber: sql<string | null>`coalesce(${purchaseInvoices.number}, ${salesInvoices.number}, ${posSales.number})`,
+        sourceNumber: sql<string | null>`coalesce(${purchaseInvoices.number}, ${salesInvoices.number}, ${posSales.number}, ${stockOpnames.number})`,
         note: ledger.note,
         createdByName: users.name,
         runningStock: ledger.runningStock,
@@ -64,6 +64,7 @@ export async function listMovements(db: Db, query: MovementQuery) {
       .leftJoin(purchaseInvoices, and(eq(ledger.sourceType, "purchase_invoice"), eq(purchaseInvoices.id, ledger.sourceId)))
       .leftJoin(salesInvoices, and(eq(ledger.sourceType, "sales_invoice"), eq(salesInvoices.id, ledger.sourceId)))
       .leftJoin(posSales, and(eq(ledger.sourceType, "pos_sale"), eq(posSales.id, ledger.sourceId)))
+      .leftJoin(stockOpnames, and(eq(ledger.sourceType, "stock_opname"), eq(stockOpnames.id, ledger.sourceId)))
       .where(where)
       .orderBy(desc(ledger.date), desc(ledger.createdAt), desc(ledger.id))
       .limit(query.pageSize)

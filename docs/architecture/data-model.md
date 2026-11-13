@@ -21,7 +21,10 @@ users            id, username (unique), name, password_hash, role: admin|staff|k
 sessions         id, token_hash (unique), user_id, expires_at, created_at
 settings         id = 1 (single row): shop_name, address, phone, whatsapp, invoice_bank_text,
                  invoice_signer, receipt_footer, pos_device_code (e.g. "K1"),
-                 kasir_max_discount_bp (default 500), allow_below_cost (default false)
+                 kasir_max_discount_bp (default 500), allow_below_cost (default false),
+                 cash_difference_threshold (default 10000), open_time (time, default 07:00),
+                 close_time (time, default 17:00). The last three feed the watchdog and are never
+                 sent to the Kasir device.
 
 categories       id, name (unique), description
 products         id, code (unique, nullable), barcode (unique, nullable), name, variant, unit,
@@ -35,7 +38,12 @@ cash_entries     id, account_id, date, direction: in|out, amount (>0), category,
                  category: sale|purchase|expense|transfer|other_in|other_out|reversal
                  source_type: sales_payment|purchase_payment|pos_sale|expense|transfer|manual
 stock_movements  id, product_id, date, qty (integer, signed), reason: purchase|sale|pos|adjustment|reversal,
-                 unit_cost, source_type, source_id, note, created_by, created_at
+                 unit_cost, source_type (sales_invoice|purchase_invoice|pos_sale|stock_opname), source_id,
+                 note, created_by, created_at
+stock_opnames    id, number (unique, OP-YYMMDD-NNNN), date, category_id (null = all active products), note,
+                 status: draft|posted, created_by, created_at, posted_by, posted_at
+stock_opname_lines opname_id + product_id (PK), counted_qty (≥0), system_qty and unit_cost (both set at
+                 posting). Only entered lines exist.
 
 sales_invoices   id, number (unique), customer_id, date, due_date, terms_days, discount_kind: none|percent|amount,
                  discount_value, subtotal, discount_amount, total, note, created_by, created_at,
@@ -56,11 +64,25 @@ transfers        id, date, from_account_id, to_account_id (≠ from), amount (>0
                  created_by, created_at, voided_at, voided_by, void_reason
 invoice_bundles  id, number (unique), customer_id, date, note, created_by, created_at, voided_at
 bundle_invoices  bundle_id, invoice_id (PK both)
+quotations       id, number (unique, Q-YYMMDD-NNNN), customer_id, date, valid_until, lines (jsonb, as on
+                 pos_drafts), subtotal, discount_kind, discount_value, discount_amount, total, note,
+                 status: draft|sent|accepted|rejected, invoice_id (unique, the faktur it became),
+                 created_by, created_at
 
 pos_sales        id (client UUIDv7), number (unique, e.g. K1-261113-0001), device_code, sold_at (timestamptz),
                  date, cashier_id, customer_id (nullable), subtotal, discount_kind, discount_value,
                  discount_amount, total, method: cash|qris|transfer, account_id, tendered, change,
-                 created_at (server receive time), voided_at, voided_by, void_reason
+                 shift_id (null only on sales from before shifts), revision_of (unique; the nota a revisi
+                 replaced), print_count (1 = the checkout receipt), created_at (server receive time),
+                 voided_at, voided_by, void_reason
+pos_drafts       id, number (unique, S-YYMMDD-NNNN), date, created_by, customer_id, lines (jsonb: product_id,
+                 qty, unit_price, discount_amount, note), subtotal, discount_kind, discount_value,
+                 discount_amount, total, status: open|paid|cancelled, print_count, sale_id (unique, the POS
+                 sale that paid it), created_at, updated_at, cancelled_at, cancelled_by, cancel_reason
+cash_shifts      id (client UUIDv7), cashier_id, device_code, account_id (the cash drawer), opened_at (device
+                 time), opening_float (≥0), closed_at, counted_cash, expected_cash, difference (counted −
+                 expected), close_note. One open shift per cashier per device (partial unique index
+                 `cash_shifts_one_open`).
 pos_lines        id, sale_id, position, product_id, note, qty, unit_price, discount_amount, line_total, unit_cost
 
 document_sequences prefix + period (PK), last_value
@@ -93,7 +115,19 @@ Manual cash rows ("terima uang" and other money out) are `cash_entries` with `so
 | Manual cash entry | cash entry `other_in` / `other_out` |
 | POS sale (idempotent by id) | sale + lines, stock movement `pos` (−qty), cash entry `in` / `sale` for `total`. `cashier_id` is the signed-in user; admin or staff uploading a sale another cashier queued offline record it under the payload's `cashierId` (an existing user). A kasir uploads only their own queued sales; the device keeps another cashier's until that cashier signs in again. |
 | Void POS sale | reversal stock movements + reversal cash entry |
+| Revisi POS sale (idempotent by the new id) | original voided; reversal stock movements for its lines; new sale + lines with `revision_of`, stock movement `pos` (−qty); one cash entry for the difference only (see below) |
+| Reprint POS sale | `print_count + 1` |
+| Create / edit nota sementara | draft row only. No stock, no money. |
+| Pay nota sementara | the POS sale as above, then the draft becomes `paid` with `sale_id` |
+| Cancel nota sementara | status `cancelled` with reason. Never deleted. |
+| Create penawaran | quotation row only. No stock, no money, no piutang. |
+| Jadikan faktur | sales invoice as above with the quote's lines; quotation `accepted` with `invoice_id` |
+| Open shift (idempotent by id) | shift row. Refused while the cashier has another open shift on the device. |
+| Close shift (idempotent) | sets `closed_at`, `counted_cash`, and the server-computed `expected_cash` and `difference` (see Shifts) |
 | Stock adjustment | stock movement `adjustment` (signed qty, required note) |
+| Start stok opname | opname row (draft) |
+| Save opname counts | upserts the entered lines; a cleared line is removed. Draft only. |
+| Post stok opname (admin only) | per line, `system_qty` = the stock now and `unit_cost` = the product's cost price; one `adjustment` movement (`source_type = stock_opname`) per line whose count differs; status `posted`. Posted is read-only. |
 | Create tukar faktur | bundle + invoice links. Only the customer's non-voided invoices with outstanding > 0. |
 
 Every command runs in one database transaction, and writes its `audit_events` row in that same transaction (`audit()` in `apps/api/src/lib/audit.ts`), so a change without its log row cannot commit. Logins, failed logins and logouts are logged too. A Kasir sale received more than 2 minutes after `sold_at` is logged with source `kasir_offline`; the legacy importer logs with source `system`.
@@ -104,13 +138,79 @@ Admin is never limited. For everyone else the server refuses with 403 (body `{ e
 
 - a POS sale or sales invoice whose line and document discounts together pass `kasir_max_discount_bp` of the gross;
 - a POS sale with a line priced under qty × unit cost, unless `allow_below_cost`;
-- every POS void.
+- every POS void;
+- cancelling a nota sementara that has been printed (`cancel_printed_draft`);
+- a revisi that lowers the total (`revisi_lower`), or revises another cashier's nota or a nota from an earlier business date (`foreign_or_past_revisi`);
+- converting a penawaran with a line whose net price is under qty × the product's selling price or its cost (`below_cost`).
+
+An action that breaks several rules needs one approval. Its kind is the first rule broken, and its summary names all of them. The subject binds the exact document: a revisi's subject holds the original id and the new nota's id, number, total, discount and lines; a quote conversion's holds the quote id, the faktur date and the quote's lines and total.
 
 The action passes when it carries `approval: { pin }` (any active admin's PIN; recorded as a `used` approval in the action's transaction; 5 wrong PINs lock PIN approval for that user for 15 minutes) or `approval: { id }` of a remote request the admin approved. A remote approval is spent by one conditional update that also requires the same requester, `approved`, unexpired, and a subject equal (jsonb) to the action's own, so it fits one action once.
 
+## Shifts
+
+Everyone selling on the Kasir screen, admin included, sells inside a shift. A POS sale must carry the `shift_id` of an open shift of its cashier; otherwise it is refused (400 without one, 422 for an unknown or another cashier's shift, 409 for a closed one).
+
+The device generates the shift id and queues the open and the close in the same outbox as its sales, so the server receives open, then the sales, then the close, even after an offline stretch. The server answers a replayed open or close with the stored result.
+
+At close the server computes:
+
+```
+expected_cash = opening_float
+              + cash POS sales with this shift_id (a revisi counts its total − the replaced nota's total)
+              − cash POS sales voided by the shift's cashier between opened_at and closed_at,
+                except a nota voided by a revisi
+              + other cash entries on the drawer account between opened_at and closed_at (in − out)
+```
+
+A void counts against the voider's open shift, not the shift that sold it, because the money leaves the drawer in front of the voider. QRIS and transfer sales never count. The window uses the device's `opened_at` and `closed_at` and the server's `voided_at` and `created_at`. When two cashiers' shifts share one drawer account at the same time, a manual cash movement counts in both.
+
+The close answers only `{ id, closedAt }`. A kasir never receives `expected_cash` or `difference`: they appear only in the admin-only Shift report (`GET /api/shifts`) and in the `shift.close` audit event.
+
+## Nota sementara, revisi and penawaran
+
+All three are online only. The device never queues them.
+
+**Nota sementara.** A Kasir cart saved on the server as `S-YYMMDD-NNNN`, shared by every device. Open drafts can be reopened on any device and edited without approval; each edit writes `pos.draft.update` with the changed fields before and after. Printing counts `print_count` and prints "NOTA SEMENTARA / BUKAN BUKTI PEMBAYARAN" without payment rows. Paying posts a normal POS sale to `POST /api/pos/drafts/:id/pay`, numbered on the device and checked against the payer's open shift and every sale limit; in the same transaction the draft takes the paid cart's content (an audited edit if it changed) and turns `paid`. A draft paid or cancelled meanwhile rolls the sale back with 409. No stock is held while a draft is open (assumption, see the plan).
+
+**Revisi.** `POST /api/pos/sales/:id/revise` takes the new nota (device-numbered, server-timed) and a reason. The original is voided with reason `Revisi <new number>: <reason>` and the new nota links to it with `revision_of`; Riwayat Kasir shows "Direvisi" and "revisi dari …". Only the difference changes hands:
+
+| Difference | Cash entry on the new nota | Method and account of the new nota |
+|---|---|---|
+| higher | `in` / `sale` for the difference | as chosen by the cashier |
+| lower | `out` / `reversal` for the difference | always cash, the reviser's drawer |
+| equal | none | as chosen |
+
+The original's own cash entry stays where it was paid, so a QRIS nota revised in cash leaves the QRIS money in the QRIS account. `tendered` is what was handed over for the difference and `change = tendered − difference`, so a refund shows as change. A later plain void of a revisi nota reverses its full total from its account, like any void. Reprints (`POST /api/pos/sales/:id/print`) count `print_count` and print "SALINAN"; a reprint made offline prints "SALINAN" but is not counted.
+
+**Penawaran.** `Q-YYMMDD-NNNN`, back office only. `expired` is derived (draft or sent with `valid_until` before today) and never stored; an expired quote cannot be converted. A quote is in no list total, report or Overview figure, because those read only invoices and POS sales. "Jadikan faktur" creates the sales invoice through the same code as a new faktur, in one transaction with the quote's `accepted` status, and the invoice detail returns `quotation: { id, number }`.
+
+## Stok opname
+
+Admin or staff starts an opname for all active products or one category and enters counted quantities; a product left blank does not count. The draft is saved on the server and can be continued on any device. The screen shows the live system stock, but posting takes the stock at that moment, so sales during the count are accounted for. Posting is admin only and runs in one transaction with its `stock.opname.post` audit event ("Opname OP-… · 12 barang selisih · −Rp 340.000"). Differences are valued at the product's cost price at posting.
+
+## Watchdog
+
+`GET /api/watchdog?from&to` (admin only, at most 93 days) computes red flags on read from the tables they are about; there is no background job. Each flag has a type, severity (`high` | `medium`), who, when, one Indonesian line, and a target (a POS sale, a faktur, an opname, the Shift report filtered to a cashier and day, or Log Aktivitas filtered to a person, action and day). Thresholds that are not settings live in `WATCHDOG` in `@billy/core`.
+
+| Flag | Rule |
+|---|---|
+| voids, revisi, refunds | per cashier (not admin) per business day, from `audit_events`: count > max(3, 2 × the median of that cashier's daily counts over the prior 30 calendar days, zero days included). A refund is a revisi that lowered the total. |
+| shift_difference | a closed shift with \|difference\| ≥ `cash_difference_threshold`. High when cash is missing. |
+| below_cost | a non-voided POS sale or faktur by a non-admin with a line under qty × its stored `unit_cost`. A faktur from a penawaran names the quote. |
+| discount_near_cap | the same documents with line and document discounts at or within 0,5% of `kasir_max_discount_bp` (high when over it, which needed approval). |
+| draft_open_after_close | a nota sementara still open after `close_time` of its business date. |
+| draft_cancelled_printed | a printed nota sementara cancelled by a non-admin. |
+| outside_hours | per person per day, any audited action outside `open_time`–`close_time` (Asia/Jakarta), except the importer's `system` events. |
+| failed_logins, pin_lockout | ≥3 failed logins for one username on one day; every PIN lockout. |
+| clock_tampering | a POS sale or shift open timed more than 5 minutes after the server received it, or a shift opened before the same cashier's previous shift on that device closed (one cashier's events leave a device in order). |
+| opname_difference | a posted opname whose differences at cost add up to ≥ Rp 100.000 ignoring sign. High when the net is a loss. |
+
+Every query is bounded by an indexed date: `audit_events.at`, `pos_sales.date`, `sales_invoices.date`, `cash_shifts.opened_at`, `stock_opnames.posted_at`. The Overview card and the bell share one request for the last 7 days. `GET /api/watchdog/daily?date` is the Ringkasan harian: the day's flags and, per person, voids, revisi, refunds, discounts given (line + document, non-voided) and the sum of shift differences.
+
 ## Document numbers
 
-The server-numbered prefixes are SO (sales), PO (purchase), TF (tukar faktur), and BY (biaya). The format is `{PREFIX}-{YYMMDD}-{NNNN}`. The period is the business date and the counter comes from `document_sequences` inside the transaction. A surat jalan reuses the sales number with an `SJ-` prefix.
+The server-numbered prefixes are SO (sales), PO (purchase), TF (tukar faktur), BY (biaya), S (nota sementara), Q (penawaran) and OP (stok opname). The format is `{PREFIX}-{YYMMDD}-{NNNN}`. The period is the business date and the counter comes from `document_sequences` inside the transaction. A surat jalan reuses the sales number with an `SJ-` prefix.
 
 The POS uses `{device_code}-{YYMMDD}-{NNNN}`, allocated **on the client** from a per-device counter stored in IndexedDB. A unique constraint on `pos_sales.number` guards against duplicates.
 
@@ -118,9 +218,9 @@ The POS uses `{device_code}-{YYMMDD}-{NNNN}`, allocated **on the client** from a
 
 | Role | Can use |
 |---|---|
-| admin | everything, plus users, settings, Log Aktivitas and deciding approvals |
+| admin | everything, plus users, settings, Log Aktivitas, the Shift report, the watchdog and Ringkasan harian, posting a stok opname, and deciding approvals |
 | staff | everything except users and settings |
-| kasir | `POST /api/pos/sales`, its own POS history, reprint, void of its own sales with an admin's approval, remote approval requests, product and account lookup for the POS. Nothing else. Enforced by API middleware. |
+| kasir | `POST /api/pos/sales`, opening and closing its own shifts, its own POS history, reprint, void of its own sales with an admin's approval, revisi (another cashier's or a past day's nota only with approval), every nota sementara, remote approval requests, product and account lookup for the POS. Nothing else. Enforced by API middleware. |
 
 ## Code layout and patterns
 

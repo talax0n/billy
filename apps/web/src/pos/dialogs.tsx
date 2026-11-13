@@ -1,4 +1,4 @@
-import { BASIS_POINTS, type Discount, type PosMethod, posMethods, type Rupiah } from "@billy/core";
+import { BASIS_POINTS, type Discount, entryKey, type PosMethod, posMethods, rupiah, type Rupiah } from "@billy/core";
 import { useQuery } from "@tanstack/react-query";
 import { type FormEvent, type ReactNode, useState } from "react";
 import { Badge } from "../components/ui/badge.tsx";
@@ -10,10 +10,10 @@ import { api, unwrap } from "../lib/api.ts";
 import { cx } from "../lib/cx.ts";
 import { desktop } from "../lib/desktop.ts";
 import type { CartLine } from "./cart.ts";
-import type { Catalog, CatalogCustomer, ParkedCart, QueuedSale, SyncProblem } from "./local.ts";
+import type { Catalog, CatalogCustomer, OutboxItem, ParkedCart, SyncProblem } from "./local.ts";
 import { dismissProblem, retryProblem } from "./outbox.ts";
 import { accountFor, type PosPreferences } from "./preferences.ts";
-import { methodLabels, type ReceiptData, receiptFromSale } from "./receipt.tsx";
+import { countedReprint, methodLabels, type ReceiptData } from "./receipt.tsx";
 import { productLabel } from "./search.tsx";
 import { VoidSaleDialog } from "./void-sale.tsx";
 import { money } from "./ui.tsx";
@@ -215,7 +215,14 @@ export function ParkedDialog({
   );
 }
 
-/** Sales the server refused, with its reason. Nothing leaves this list without a person deciding. */
+const problemLabel = (p: SyncProblem) =>
+  "sale" in p
+    ? { title: p.sale.number, detail: `Rp ${money(p.receipt.total)}`, lost: "Transaksi ini" }
+    : p.shift.event === "open"
+      ? { title: "Buka shift", detail: `Modal Rp ${money(p.shift.openingFloat)}`, lost: "Pembukaan shift ini" }
+      : { title: "Tutup shift", detail: time.format(new Date(p.shift.closedAt)), lost: "Penutupan shift ini" };
+
+/** Entries the server refused, with its reason. Nothing leaves this list without a person deciding. */
 export function ProblemsDialog({ problems, onClose }: { problems: SyncProblem[]; onClose: () => void }) {
   return (
     <Dialog open onClose={onClose} title="Masalah sinkron" description="Server menolak transaksi ini. Perbaiki penyebabnya, lalu coba lagi.">
@@ -223,31 +230,35 @@ export function ProblemsDialog({ problems, onClose }: { problems: SyncProblem[];
         <p className="text-muted">Tidak ada masalah.</p>
       ) : (
         <ul className="flex flex-col gap-2">
-          {problems.map((p) => (
-            <li key={p.sale.id} className="rounded-lg border border-line px-3 py-2.5">
-              <div className="flex items-center justify-between gap-2">
-                <b className="font-medium">{p.sale.number}</b>
-                <span className="tabular-nums">Rp {money(p.receipt.total)}</span>
-              </div>
-              <p className="mt-0.5 text-down">{p.error}</p>
-              <div className="mt-2 flex justify-end gap-2">
-                <Button
-                  size="sm"
-                  variant="danger"
-                  onClick={() => {
-                    if (window.confirm(`Hapus ${p.sale.number} dari antrean? Transaksi ini tidak akan tercatat di server.`)) {
-                      void dismissProblem(p.sale.id);
-                    }
-                  }}
-                >
-                  Hapus
-                </Button>
-                <Button size="sm" onClick={() => void retryProblem(p.sale.id)}>
-                  Coba lagi
-                </Button>
-              </div>
-            </li>
-          ))}
+          {problems.map((p) => {
+            const key = entryKey(p);
+            const label = problemLabel(p);
+            return (
+              <li key={key} className="rounded-lg border border-line px-3 py-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <b className="font-medium">{label.title}</b>
+                  <span className="tabular-nums">{label.detail}</span>
+                </div>
+                <p className="mt-0.5 text-down">{p.error}</p>
+                <div className="mt-2 flex justify-end gap-2">
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    onClick={() => {
+                      if (window.confirm(`Hapus ${label.title} dari antrean? ${label.lost} tidak akan tercatat di server.`)) {
+                        void dismissProblem(key);
+                      }
+                    }}
+                  >
+                    Hapus
+                  </Button>
+                  <Button size="sm" onClick={() => void retryProblem(key)}>
+                    Coba lagi
+                  </Button>
+                </div>
+              </li>
+            );
+          })}
         </ul>
       )}
     </Dialog>
@@ -260,10 +271,13 @@ const stamp = new Intl.DateTimeFormat("id-ID", { dateStyle: "short", timeStyle: 
 export function HistoryDialog({
   pending,
   onReprint,
+  onRevise,
   onClose,
 }: {
-  pending: QueuedSale[];
+  pending: OutboxItem[];
   onReprint: (receipt: ReceiptData) => void;
+  /** Starts a revisi of a sale the server holds; online only. */
+  onRevise: (saleId: string) => void;
   onClose: () => void;
 }) {
   const sales = useQuery({
@@ -274,7 +288,7 @@ export function HistoryDialog({
   const [voiding, setVoiding] = useState<{ id: string; number: string } | null>(null);
   const reprint = async (id: string) => {
     try {
-      onReprint(receiptFromSale(await unwrap(api.pos.sales[":id"].$get({ param: { id } }))));
+      onReprint(await countedReprint(id));
     } catch (err) {
       toast((err as Error).message, "down");
     }
@@ -284,7 +298,7 @@ export function HistoryDialog({
   return (
     <Dialog open onClose={onClose} title="Riwayat kasir" className="max-w-xl">
       <div className="flex flex-col">
-        {[...pending].reverse().map((q) => (
+        {pending.flatMap((q) => ("sale" in q ? [q] : [])).reverse().map((q) => (
           <div key={q.sale.id} className={row}>
             <span>
               {q.sale.number}
@@ -294,7 +308,7 @@ export function HistoryDialog({
               <Badge tone="warn">Menunggu sinkron</Badge>
               {money(q.receipt.total)}
             </span>
-            <Button size="sm" onClick={() => onReprint(q.receipt)}>
+            <Button size="sm" onClick={() => onReprint({ ...q.receipt, copy: true })}>
               Cetak ulang
             </Button>
           </div>
@@ -305,10 +319,11 @@ export function HistoryDialog({
               {s.number}
               <small className="block text-muted">
                 {stamp.format(new Date(s.soldAt))} · {methodLabels[s.method]}
+                {s.revisionOfNumber && ` · revisi dari ${s.revisionOfNumber}`}
               </small>
             </span>
             <span className="flex items-center gap-2 tabular-nums">
-              {s.voidedAt && <Badge>Void</Badge>}
+              {s.revisedByNumber ? <Badge>Direvisi</Badge> : s.voidedAt && <Badge>Void</Badge>}
               {money(s.total)}
             </span>
             <span className="flex gap-1.5">
@@ -316,9 +331,14 @@ export function HistoryDialog({
                 Cetak ulang
               </Button>
               {!s.voidedAt && (
-                <Button size="sm" variant="danger" onClick={() => setVoiding(s)} aria-label={`Void ${s.number}`}>
-                  Void
-                </Button>
+                <>
+                  <Button size="sm" onClick={() => onRevise(s.id)} aria-label={`Revisi ${s.number}`}>
+                    Revisi
+                  </Button>
+                  <Button size="sm" variant="danger" onClick={() => setVoiding(s)} aria-label={`Void ${s.number}`}>
+                    Void
+                  </Button>
+                </>
               )}
             </span>
           </div>
@@ -389,6 +409,71 @@ export function CustomerDialog({
         </ul>
         {terms.length > 0 && matches.length === 0 && <p className="text-muted">Tidak ada pelanggan yang cocok.</p>}
       </div>
+    </Dialog>
+  );
+}
+
+/** Before the first sale: the cash put in the drawer to give change. Selling waits until it is set. */
+export function OpenShiftDialog({
+  drawer,
+  deviceCode,
+  onOpen,
+  onLogout,
+}: {
+  drawer: { name: string } | undefined;
+  deviceCode: string;
+  onOpen: (openingFloat: Rupiah) => void;
+  onLogout: () => void;
+}) {
+  const [float, setFloat] = useState(rupiah(0));
+  return (
+    <Dialog open onClose={() => {}} title="Buka shift" description={drawer ? `Laci ${drawer.name} · ${deviceCode}` : undefined}>
+      <DialogForm submitLabel="Buka shift" onSubmit={() => drawer && onOpen(float)}>
+        <Field label="Modal awal di laci" hint="Uang kembalian yang ada di laci sebelum transaksi pertama." error={drawer ? undefined : "Belum ada akun tunai. Buat dulu di Kas & Bank."}>
+          {(p) => <MoneyInput {...p} autoFocus value={float} onChange={setFloat} />}
+        </Field>
+        <Button variant="ghost" onClick={onLogout}>
+          Keluar
+        </Button>
+      </DialogForm>
+    </Dialog>
+  );
+}
+
+/**
+ * The blind count: the cashier counts the drawer and types what is there. The amount the system
+ * expects is never shown; the server compares the two and only the admin sees the difference.
+ */
+export function CloseShiftDialog({
+  openDrafts,
+  onSave,
+  onClose,
+}: {
+  /** Open nota sementara this cashier made; `null` when the server cannot be reached to check. */
+  openDrafts: { id: string; number: string; total: number }[] | null;
+  onSave: (countedCash: Rupiah, note: string) => void;
+  onClose: () => void;
+}) {
+  const [counted, setCounted] = useState(rupiah(0));
+  const [note, setNote] = useState("");
+  return (
+    <Dialog open onClose={onClose} title="Tutup shift" description="Hitung semua uang tunai di laci, termasuk modal awal.">
+      <DialogForm submitLabel="Tutup shift" onSubmit={() => onSave(counted, note)}>
+        {openDrafts && openDrafts.length > 0 && (
+          <div role="alert" className="rounded-lg bg-warn-bg px-3 py-2 text-warn">
+            Masih ada {openDrafts.length} nota sementara terbuka yang Anda buat. Shift tetap bisa ditutup; nota ini tetap terbuka untuk kasir lain.
+            <ul className="mt-1 tabular-nums">
+              {openDrafts.map((d) => (
+                <li key={d.id}>
+                  {d.number} · Rp {money(d.total)}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        <Field label="Uang tunai di laci">{(p) => <MoneyInput {...p} autoFocus value={counted} onChange={setCounted} />}</Field>
+        <Field label="Catatan">{(p) => <Input {...p} maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} />}</Field>
+      </DialogForm>
     </Dialog>
   );
 }
