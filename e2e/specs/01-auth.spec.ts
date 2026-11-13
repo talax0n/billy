@@ -17,7 +17,8 @@ test("admin creates a kasir, who only ever reaches the cashier", async ({ page }
   await expect(page.getByText("Pengguna disimpan")).toBeVisible();
   await expect(page.getByRole("row", { name: /Kasir Satu kasir1 Kasir Aktif/ })).toBeVisible();
 
-  await page.getByRole("button", { name: "Keluar" }).click();
+  await page.getByRole("button", { name: "Menu akun" }).click();
+  await page.getByRole("menuitem", { name: "Keluar" }).click();
   await expect(page).toHaveURL(/\/login/);
 
   await login(page, KASIR);

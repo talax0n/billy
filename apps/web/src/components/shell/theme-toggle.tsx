@@ -11,7 +11,7 @@ const options: { value: Theme; label: string; icon: typeof Sun }[] = [
 export function ThemeToggle() {
   const theme = useTheme();
   return (
-    <div role="radiogroup" aria-label="Tema" className="flex rounded-lg bg-line-2 p-0.5 group-data-[collapsed=true]/sb:flex-col">
+    <div role="radiogroup" aria-label="Tema" className="flex rounded-lg bg-line-2 p-0.5">
       {options.map(({ value, label, icon: Icon }) => (
         <button
           key={value}
@@ -22,7 +22,7 @@ export function ThemeToggle() {
           title={label}
           onClick={() => setTheme(value)}
           className={cx(
-            "flex h-6 flex-1 items-center justify-center rounded-md text-muted group-data-[collapsed=true]/sb:flex-none",
+            "flex h-6 w-8 items-center justify-center rounded-md text-muted",
             theme === value && "bg-panel text-ink shadow-xs",
           )}
         >

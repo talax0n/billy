@@ -6,7 +6,9 @@ test("switches between light and dark and keeps the choice after a reload", asyn
   const html = page.locator("html");
   const background = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
   const theme = page.getByRole("radiogroup", { name: "Tema" });
+  const openMenu = () => page.getByRole("button", { name: "Menu akun" }).click();
 
+  await openMenu();
   await theme.getByRole("radio", { name: "Terang" }).click();
   await expect(html).toHaveAttribute("data-theme", "light");
   const light = await background();
@@ -17,6 +19,7 @@ test("switches between light and dark and keeps the choice after a reload", asyn
 
   await page.reload();
   await expect(html).toHaveAttribute("data-theme", "dark");
+  await openMenu();
   await expect(theme.getByRole("radio", { name: "Gelap" })).toBeChecked();
 
   await theme.getByRole("radio", { name: "Terang" }).click();

@@ -48,12 +48,16 @@ export interface NavItem {
   path: string;
   label: string;
   icon: LucideIcon;
-  /** Sidebar group; `null` sits at the bottom of the sidebar, `"hidden"` is a route with no sidebar link. */
-  group: (typeof navGroups)[number] | null | "hidden";
+  /** Sidebar group; `"hidden"` is a route with no sidebar link of its own. */
+  group: (typeof navGroups)[number] | "hidden";
   /** The page. Without one the route shows "Segera hadir". */
   page?: () => ReactNode;
   /** Roles that may open it. Default: admin and staff (kasir never sees the shell). */
   roles?: Role[];
+  /** Shown as a tab of this sidebar entry's page instead of its own sidebar link. */
+  section?: string;
+  /** Label on the section's tab strip; defaults to `label`. */
+  tab?: string;
 }
 
 /**
@@ -62,23 +66,37 @@ export interface NavItem {
  */
 export const navItems: NavItem[] = [
   { group: "Umum", path: "/", label: "Overview", icon: LayoutDashboard, page: DashboardPage },
-  { group: "Umum", path: "/ringkasan-harian", label: "Ringkasan harian", icon: ShieldAlert, page: DailySummaryPage, roles: ["admin"] },
+  { group: "hidden", section: "/", path: "/ringkasan-harian", label: "Ringkasan harian", icon: ShieldAlert, page: DailySummaryPage, roles: ["admin"] },
   // Reached from the notification bell in every page header.
   { group: "hidden", path: "/tindakan", label: "Perlu Tindakan", icon: BellDot, page: ActionsPage },
-  { group: "Transaksi", path: "/penjualan", label: "Penjualan", icon: Receipt, page: SalesPage },
-  { group: "Transaksi", path: "/penawaran", label: "Penawaran", icon: FileText, page: QuotationsPage },
+  { group: "Transaksi", path: "/penjualan", label: "Penjualan", tab: "Faktur", icon: Receipt, page: SalesPage },
+  { group: "hidden", section: "/penjualan", path: "/riwayat-kasir", label: "Nota Kasir", icon: History, page: RiwayatKasirPage },
+  { group: "hidden", section: "/penjualan", path: "/penawaran", label: "Penawaran", icon: FileText, page: QuotationsPage },
+  { group: "hidden", section: "/penjualan", path: "/tukar-faktur", label: "Tukar Faktur", icon: FileStack, page: BundlesPage },
   { group: "Transaksi", path: "/pembelian", label: "Pembelian", icon: ShoppingCart, page: PurchasesPage },
-  { group: "Transaksi", path: "/biaya", label: "Biaya", icon: WalletCards, page: ExpensesPage },
-  { group: "Transaksi", path: "/tukar-faktur", label: "Tukar Faktur", icon: FileStack, page: BundlesPage },
-  { group: "Transaksi", path: "/riwayat-kasir", label: "Riwayat Kasir", icon: History, page: RiwayatKasirPage },
-  { group: "Keuangan", path: "/kas-bank", label: "Kas & Bank", icon: Wallet, page: CashPage },
-  { group: "Keuangan", path: "/laporan-shift", label: "Laporan Shift", icon: ClipboardCheck, page: ShiftsPage, roles: ["admin"] },
-  { group: "Keuangan", path: "/piutang", label: "Piutang", icon: HandCoins, page: ReceivablesPage },
-  { group: "Keuangan", path: "/hutang", label: "Hutang", icon: ArrowLeftRight, page: PayablesPage },
-  { group: "Persediaan", path: "/produk", label: "Produk", icon: Package, page: ProductsPage },
-  { group: "Persediaan", path: "/mutasi-stok", label: "Mutasi Stok", icon: Boxes, page: StockPage },
-  { group: "Persediaan", path: "/stok-opname", label: "Stok Opname", icon: ClipboardList, page: OpnamePage },
+  { group: "Keuangan", path: "/kas-bank", label: "Kas & Biaya", tab: "Kas & Bank", icon: Wallet, page: CashPage },
+  { group: "hidden", section: "/kas-bank", path: "/biaya", label: "Biaya", icon: WalletCards, page: ExpensesPage },
+  { group: "hidden", section: "/kas-bank", path: "/laporan-shift", label: "Laporan Shift", icon: ClipboardCheck, page: ShiftsPage, roles: ["admin"] },
+  { group: "Keuangan", path: "/piutang", label: "Piutang & Hutang", tab: "Piutang", icon: HandCoins, page: ReceivablesPage },
+  { group: "hidden", section: "/piutang", path: "/hutang", label: "Hutang", icon: ArrowLeftRight, page: PayablesPage },
+  { group: "Persediaan", path: "/produk", label: "Produk & Stok", tab: "Produk", icon: Package, page: ProductsPage },
+  { group: "hidden", section: "/produk", path: "/mutasi-stok", label: "Mutasi Stok", icon: Boxes, page: StockPage },
+  { group: "hidden", section: "/produk", path: "/stok-opname", label: "Stok Opname", icon: ClipboardList, page: OpnamePage },
   { group: "Persediaan", path: "/kontak", label: "Kontak", icon: Users, page: ContactsPage },
-  { group: null, path: "/log-aktivitas", label: "Log Aktivitas", icon: ScrollText, page: AuditPage, roles: ["admin"] },
-  { group: null, path: "/pengaturan", label: "Pengaturan", icon: Settings, page: SettingsPage },
+  // In the account menu at the bottom of the sidebar.
+  { group: "hidden", path: "/log-aktivitas", label: "Log Aktivitas", icon: ScrollText, page: AuditPage, roles: ["admin"] },
+  { group: "hidden", path: "/pengaturan", label: "Pengaturan", icon: Settings, page: SettingsPage },
 ];
+
+export const canOpen = (item: NavItem, role: Role | undefined) => !item.roles || (!!role && item.roles.includes(role));
+
+/** The sidebar entry a path belongs to: itself, or the section it is a tab of. */
+export const sectionOf = (pathname: string) => navItems.find((i) => i.path === pathname)?.section ?? pathname;
+
+/** The tabs of the section `pathname` belongs to that `role` may open; one tab means no strip. */
+export function sectionTabs(pathname: string, role: Role | undefined) {
+  const section = sectionOf(pathname);
+  const leader = navItems.find((i) => i.path === section);
+  const tabs = navItems.filter((i) => (i.path === section || i.section === section) && canOpen(i, role));
+  return { leader, tabs: tabs.length > 1 ? tabs : [] };
+}

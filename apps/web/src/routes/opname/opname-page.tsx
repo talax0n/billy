@@ -170,6 +170,7 @@ function OpnameDetail({ id }: { id: string }) {
   return (
     <>
       <PageHeader
+        detail
         title={opname ? `Opname ${opname.number}` : "Stok Opname"}
         actions={
           <>

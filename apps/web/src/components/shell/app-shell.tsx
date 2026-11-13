@@ -1,13 +1,14 @@
 import { roleLabels } from "@billy/core";
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
-import { LayoutDashboard, LogOut, Menu, MonitorSmartphone, Package, PanelLeftClose, PanelLeftOpen, Receipt, ShoppingCart, X } from "lucide-react";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { ChevronsUpDown, LayoutDashboard, LogOut, Menu, MonitorSmartphone, Package, PanelLeftClose, PanelLeftOpen, Receipt, ShoppingCart, X } from "lucide-react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { meQuery, useLogout } from "../../lib/auth.ts";
 import { settingsQuery } from "../../lib/settings.ts";
-import { type NavItem, navGroups, navItems } from "../../nav.tsx";
+import { canOpen, type NavItem, navGroups, navItems, sectionOf, sectionTabs } from "../../nav.tsx";
 import { cx } from "../../lib/cx.ts";
 import { Button } from "../ui/button.tsx";
+import { SectionContext } from "../ui/page.tsx";
 import { NotificationBell } from "./notification-bell.tsx";
 import { ThemeToggle } from "./theme-toggle.tsx";
 
@@ -29,6 +30,11 @@ export function AppShell() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   useEffect(() => setDrawerOpen(false), [pathname]);
+  const { data: me } = useSuspenseQuery(meQuery);
+  const section = useMemo(() => {
+    const { leader, tabs } = sectionTabs(pathname, me?.role);
+    return leader && tabs.length ? { title: leader.label, tabs: tabs.map((t) => ({ path: t.path, label: t.tab ?? t.label })) } : null;
+  }, [pathname, me?.role]);
   // The drawer only exists below `md`; growing past it must not leave the rail expanded.
   useEffect(() => {
     const wide = window.matchMedia("(min-width: 48rem)");
@@ -70,7 +76,9 @@ export function AppShell() {
             </Button>
           </div>
         </div>
-        <Outlet />
+        <SectionContext.Provider value={section}>
+          <Outlet />
+        </SectionContext.Provider>
       </main>
       <TabBar />
     </div>
@@ -87,13 +95,14 @@ const tabs = [
 /** Phones: the most used pages within thumb reach; the top bar's menu button opens the rest. */
 function TabBar() {
   const tab = "flex flex-1 flex-col items-center gap-0.5 pt-2 pb-1.5 text-xs text-muted";
+  const current = sectionOf(useRouterState({ select: (s) => s.location.pathname }));
   return (
     <nav
       aria-label="Navigasi cepat"
       className="fixed inset-x-0 bottom-0 z-20 flex border-t border-line bg-panel pb-[env(safe-area-inset-bottom)] md:hidden"
     >
       {tabs.map(({ to, label, icon: Icon }) => (
-        <Link key={to} to={to} activeOptions={{ exact: to === "/" }} className={tab} activeProps={{ className: "text-ink! font-medium" }}>
+        <Link key={to} to={to} className={cx(tab, current === to && "font-medium text-ink")}>
           <Icon className="size-5" />
           {label}
         </Link>
@@ -163,7 +172,7 @@ function Sidebar({
 }) {
   const { data: settings } = useQuery(settingsQuery);
   const { data: me } = useSuspenseQuery(meQuery);
-  const allowed = navItems.filter((item) => !item.roles || (me && item.roles.includes(me.role)));
+  const allowed = navItems.filter((item) => canOpen(item, me?.role));
   const ToggleIcon = collapsed ? PanelLeftOpen : PanelLeftClose;
 
   return (
@@ -220,28 +229,24 @@ function Sidebar({
       </nav>
       <div className="flex-1" />
       <SyncCard deviceCode={settings?.posDeviceCode} />
-      <nav className="flex flex-col">
-        {allowed
-          .filter((item) => item.group === null)
-          .map((item) => (
-            <NavLink key={item.path} item={item} />
-          ))}
-      </nav>
-      <ThemeToggle />
-      <UserCard />
+      <AccountMenu />
     </aside>
   );
 }
 
 function NavLink({ item }: { item: NavItem }) {
   const Icon = item.icon;
+  // Active on any of its tabs, e.g. Penjualan stays lit on /riwayat-kasir.
+  const active = sectionOf(useRouterState({ select: (s) => s.location.pathname })) === item.path;
   return (
     <Link
       to={item.path}
       title={item.label}
-      activeOptions={{ exact: item.path === "/" }}
-      className="flex items-center gap-2.5 rounded-lg border border-transparent px-2 py-1.5 text-ink-2 hover:text-ink max-md:py-2 group-data-[collapsed=true]/sb:justify-center"
-      activeProps={{ className: "border-line! bg-panel font-medium text-ink!" }}
+      aria-current={active ? "page" : undefined}
+      className={cx(
+        "flex items-center gap-2.5 rounded-lg border border-transparent px-2 py-1.5 text-ink-2 hover:text-ink max-md:py-2 group-data-[collapsed=true]/sb:justify-center",
+        active && "border-line bg-panel font-medium text-ink",
+      )}
     >
       <Icon className="size-4 shrink-0 opacity-60" />
       <span className="group-data-[collapsed=true]/sb:sr-only">{item.label}</span>
@@ -281,22 +286,70 @@ function SyncCard({ deviceCode }: { deviceCode: string | undefined }) {
   );
 }
 
-function UserCard() {
+/** Who is signed in; opens a menu with the account-level pages, the theme and Keluar. */
+function AccountMenu() {
   const { data: me } = useSuspenseQuery(meQuery);
   const logout = useLogout();
+  const [open, setOpen] = useState(false);
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  useEffect(() => setOpen(false), [pathname]);
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
   if (!me) return null;
+  const links = navItems.filter((i) => (i.path === "/pengaturan" || i.path === "/log-aktivitas") && canOpen(i, me.role));
+  const row = "flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-ink-2 hover:bg-line-2 hover:text-ink";
+
   return (
-    <div className="flex items-center gap-2.5 px-2 py-1 group-data-[collapsed=true]/sb:flex-col group-data-[collapsed=true]/sb:px-0">
-      <div title={me.name} className="grid size-[30px] shrink-0 place-items-center rounded-full bg-line text-xs font-medium text-ink-2">
-        {me.name.slice(0, 1).toUpperCase()}
-      </div>
-      <div className="min-w-0 flex-1 group-data-[collapsed=true]/sb:hidden">
-        <div className="truncate font-medium">{me.name}</div>
-        <div className="text-xs text-muted">{roleLabels[me.role]}</div>
-      </div>
-      <Button variant="ghost" size="icon" aria-label="Keluar" title="Keluar" onClick={logout}>
-        <LogOut className="size-4" />
-      </Button>
+    <div className="relative">
+      {open && <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />}
+      {open && (
+        <div
+          role="menu"
+          aria-label="Menu akun"
+          className="absolute bottom-full left-0 z-50 mb-1.5 w-[232px] rounded-xl border border-line bg-panel p-1.5 shadow-lg max-md:right-0 max-md:left-auto"
+        >
+          <div className="truncate px-2 pt-1 pb-1.5 text-xs text-muted">
+            {me.username} · {roleLabels[me.role]}
+          </div>
+          {links.map(({ path, label, icon: Icon }) => (
+            <Link key={path} role="menuitem" to={path} className={row}>
+              <Icon className="size-4 opacity-60" />
+              {label}
+            </Link>
+          ))}
+          <div className="my-1.5 border-t border-line" />
+          <div className="flex items-center justify-between gap-2 px-2 py-1">
+            <span className="text-ink-2">Tema</span>
+            <ThemeToggle />
+          </div>
+          <div className="my-1.5 border-t border-line" />
+          <button type="button" role="menuitem" className={row} onClick={logout}>
+            <LogOut className="size-4 opacity-60" />
+            Keluar
+          </button>
+        </div>
+      )}
+      <button
+        type="button"
+        aria-label="Menu akun"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left hover:bg-line-2 group-data-[collapsed=true]/sb:justify-center group-data-[collapsed=true]/sb:px-0"
+      >
+        <span title={me.name} className="grid size-[30px] shrink-0 place-items-center rounded-full bg-line text-xs font-medium text-ink-2">
+          {me.name.slice(0, 1).toUpperCase()}
+        </span>
+        <span className="min-w-0 flex-1 group-data-[collapsed=true]/sb:hidden">
+          <span className="block truncate font-medium">{me.name}</span>
+          <span className="block text-xs text-muted">{roleLabels[me.role]}</span>
+        </span>
+        <ChevronsUpDown className="size-4 shrink-0 text-muted group-data-[collapsed=true]/sb:hidden" />
+      </button>
     </div>
   );
 }
