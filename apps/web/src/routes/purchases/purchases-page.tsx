@@ -80,7 +80,7 @@ export function PurchasesPage() {
           </div>
         </FilterRow>
 
-        <div className="grid grid-cols-3 gap-3.5 max-md:grid-cols-1">
+        <div className="grid grid-cols-3 gap-3.5 max-md:grid-cols-2 max-md:gap-2 max-md:[&>:last-child:nth-child(odd)]:col-span-2">
           <StatTile
             label="Nilai pembelian"
             value={<Amount value={rupiah(summary?.purchased ?? 0)} />}

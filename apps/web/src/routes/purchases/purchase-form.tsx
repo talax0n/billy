@@ -15,6 +15,8 @@ import { useId, useState } from "react";
 import { Button } from "../../components/ui/button.tsx";
 import { Combobox } from "../../components/ui/combobox.tsx";
 import { DateInput, Field, Input, MoneyInput } from "../../components/ui/field.tsx";
+import { lineTable } from "../../components/ui/line-table.ts";
+import { cx } from "../../lib/cx.ts";
 import { toast } from "../../components/ui/toast.tsx";
 import { api, unwrap } from "../../lib/api.ts";
 import { useForm } from "../../lib/form.ts";
@@ -152,8 +154,8 @@ export function PurchaseForm({ onSaved, onCancel }: { onSaved: (id: string) => v
           </Button>
         </div>
         <div className="rounded-xl border border-line">
-          <table className="w-full border-collapse">
-            <thead>
+          <table className={cx("w-full border-collapse", lineTable.table)}>
+            <thead className={lineTable.head}>
               <tr className="border-b border-line text-xs text-muted">
                 <th className="w-8 py-2 pl-4 text-left font-normal">#</th>
                 <th className="px-2 py-2 text-left font-normal">Barang</th>
@@ -164,14 +166,14 @@ export function PurchaseForm({ onSaved, onCancel }: { onSaved: (id: string) => v
                 <th className="w-10" />
               </tr>
             </thead>
-            <tbody>
+            <tbody className={lineTable.body}>
               {v.lines.map((line, i) => {
                 const product = productsById[line.productId];
                 const lineTotal = totals?.lineTotals[i];
                 return (
-                  <tr key={i} className="border-b border-line-2 align-top">
-                    <td className="py-2.5 pl-4 text-muted tabular-nums">{i + 1}</td>
-                    <td className="px-2 py-1.5">
+                  <tr key={i} className={cx("border-b border-line-2 align-top", lineTable.row)}>
+                    <td className={cx("py-2.5 pl-4 text-muted tabular-nums", lineTable.index)}>{i + 1}</td>
+                    <td className={cx("px-2 py-1.5", lineTable.product)}>
                       <div className="pt-1">
                         {product && lookups.product.label(product)}
                         {product && <span className="ml-1.5 text-muted">/ {product.unit}</span>}
@@ -184,7 +186,7 @@ export function PurchaseForm({ onSaved, onCancel }: { onSaved: (id: string) => v
                         onChange={(ev) => setLine(i, { note: ev.target.value })}
                       />
                     </td>
-                    <td className="px-2 py-1.5">
+                    <td data-label="Qty" className={cx("px-2 py-1.5", lineTable.field)}>
                       <Input
                         id={qtyId(i)}
                         aria-label={`Qty baris ${i + 1}`}
@@ -197,11 +199,11 @@ export function PurchaseForm({ onSaved, onCancel }: { onSaved: (id: string) => v
                         onKeyDown={(ev) => ev.key === "Enter" && focusSoon(entryId)}
                       />
                     </td>
-                    <td className="px-2 py-1.5">
+                    <td data-label="Harga satuan" className={cx("px-2 py-1.5", lineTable.field)}>
                       <MoneyInput aria-label={`Harga satuan baris ${i + 1}`} value={line.unitCost} onChange={(value) => setLine(i, { unitCost: value })} />
                     </td>
                     {lineDiscounts && (
-                      <td className="px-2 py-1.5">
+                      <td data-label="Diskon" className={cx("px-2 py-1.5", lineTable.field)}>
                         <MoneyInput
                           aria-label={`Diskon baris ${i + 1}`}
                           value={line.discountAmount}
@@ -209,8 +211,8 @@ export function PurchaseForm({ onSaved, onCancel }: { onSaved: (id: string) => v
                         />
                       </td>
                     )}
-                    <td className="px-2 py-2.5 text-right tabular-nums">{lineTotal === undefined ? "—" : <Amount value={lineTotal} />}</td>
-                    <td className="py-1.5 pr-2">
+                    <td data-label="Jumlah" className={cx("px-2 py-2.5 text-right tabular-nums", lineTable.field)}>{lineTotal === undefined ? "—" : <Amount value={lineTotal} />}</td>
+                    <td className={cx("py-1.5 pr-2", lineTable.remove)}>
                       <Button
                         variant="ghost"
                         size="icon"
@@ -223,9 +225,9 @@ export function PurchaseForm({ onSaved, onCancel }: { onSaved: (id: string) => v
                   </tr>
                 );
               })}
-              <tr>
-                <td className="py-2.5 pl-4 text-faint tabular-nums">{v.lines.length + 1}</td>
-                <td colSpan={lineDiscounts ? 6 : 5} className="px-2 py-1.5">
+              <tr className={lineTable.row}>
+                <td className={cx("py-2.5 pl-4 text-faint tabular-nums", lineTable.index)}>{v.lines.length + 1}</td>
+                <td colSpan={lineDiscounts ? 6 : 5} className={cx("px-2 py-1.5", lineTable.wide)}>
                   <Combobox
                     id={entryId}
                     {...(e.lines && { "aria-invalid": true as const })}

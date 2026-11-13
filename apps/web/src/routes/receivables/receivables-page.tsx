@@ -21,7 +21,7 @@ export function ReceivablesPage() {
     <>
       <PageHeader title="Piutang" />
       <PageBody>
-        <div className="grid grid-cols-3 gap-3.5 max-md:grid-cols-1">
+        <div className="grid grid-cols-3 gap-3.5 max-md:grid-cols-2 max-md:gap-2 max-md:[&>:last-child:nth-child(odd)]:col-span-2">
           <StatTile label="Total piutang" value={formatRupiah(rupiah(data?.totals?.total ?? 0))} note={`${asOf} · semua faktur belum lunas`} />
           <StatTile label="Belum jatuh tempo" value={formatRupiah(rupiah(data?.totals?.current ?? 0))} note={asOf} />
           <StatTile
@@ -35,7 +35,34 @@ export function ReceivablesPage() {
           />
         </div>
         <div className="overflow-x-auto rounded-xl border border-line">
-          <table className="w-full min-w-[640px] border-collapse">
+          <ul className="md:hidden">
+            {data?.rows.map((row) => (
+              <li
+                key={row.id}
+                onClick={() => setCustomer({ id: row.id, name: row.customerName })}
+                className="cursor-pointer border-b border-line-2 px-4 py-3 last:border-b-0 active:bg-line-2"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-medium">{row.customerName}</div>
+                    <div className="text-xs text-muted">{row.invoiceCount} faktur</div>
+                  </div>
+                  <div className="shrink-0 font-medium tabular-nums">{money(row.total)}</div>
+                </div>
+                <dl className="mt-1.5 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-sm">
+                  {agingBuckets
+                    .filter((b) => row[b] > 0)
+                    .map((b) => (
+                      <div key={b} className="contents">
+                        <dt className="text-muted">{agingLabels[b]}</dt>
+                        <dd className={cx("text-right tabular-nums", b !== "current" && "text-down")}>{money(row[b])}</dd>
+                      </div>
+                    ))}
+                </dl>
+              </li>
+            ))}
+          </ul>
+          <table className="w-full min-w-[640px] border-collapse max-md:hidden">
             <thead className="sticky top-0 bg-panel">
               <tr className="border-b border-line text-xs text-muted">
                 <th className="px-4 py-2.5 text-left font-normal">Pelanggan</th>

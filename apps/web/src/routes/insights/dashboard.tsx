@@ -127,7 +127,7 @@ export function DashboardPage() {
         title="Overview"
         actions={
           data && (
-            <div className="flex gap-2.5 rounded-full border border-line px-3.5 py-[7px] whitespace-nowrap text-muted max-[900px]:flex-wrap max-[900px]:whitespace-normal">
+            <div className="flex items-baseline gap-x-2.5 rounded-full border border-line px-3.5 py-[7px] whitespace-nowrap text-muted max-md:gap-x-1.5 max-md:text-sm">
               Saldo kas & bank <b className="font-medium text-ink">{formatRupiah(data.totalBalance)}</b>
               <span>· {data.balances.length} akun</span>
             </div>

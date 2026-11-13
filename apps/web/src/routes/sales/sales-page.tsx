@@ -85,7 +85,7 @@ export function SalesPage() {
             </Button>
           )}
         </FilterRow>
-        <div className="grid grid-cols-4 gap-3.5 max-lg:grid-cols-2 max-sm:grid-cols-1">
+        <div className="grid grid-cols-4 gap-3.5 max-lg:grid-cols-2 max-md:grid-cols-2 max-md:gap-2 max-md:[&>:last-child:nth-child(odd)]:col-span-2">
           <StatTile label="Total penjualan" value={money(summary?.total)} note={windowNote} />
           <StatTile label="Sudah dibayar" value={money(summary?.paid)} note={windowNote} />
           <StatTile label="Sisa piutang" value={money(summary?.outstanding)} note={`${windowNote} · sisa per hari ini`} />
@@ -110,7 +110,7 @@ export function SalesPage() {
               className: "whitespace-nowrap",
             },
             { header: "Total", align: "right", cell: (r) => money(r.total) },
-            { header: "Dibayar", align: "right", cell: (r) => money(r.paid) },
+            { header: "Dibayar", mobile: false, align: "right", cell: (r) => money(r.paid) },
             { header: "Sisa", align: "right", cell: (r) => money(r.state.outstanding) },
             { header: "Status", cell: (r) => <StatusTag state={r.state} /> },
           ]}

@@ -53,7 +53,7 @@ export function Select({ className, children, ...props }: SelectHTMLAttributes<H
 
 export function SearchInput({ className, ...props }: Omit<InputHTMLAttributes<HTMLInputElement>, "type">) {
   return (
-    <div className={cx("relative w-full max-w-xs", className)}>
+    <div className={cx("relative w-full max-w-xs max-md:max-w-none", className)}>
       <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-faint" />
       <input type="search" className={cx(controlClass, "pl-8")} placeholder="Cari…" {...props} />
     </div>

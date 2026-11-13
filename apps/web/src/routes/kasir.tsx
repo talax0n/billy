@@ -463,8 +463,9 @@ function TopBar({
         <Contrast className="size-3.5" />
       </Chip>
       {backOffice && (
-        <Link to="/" title="Kembali ke dasbor" className="flex items-center gap-1.5 rounded-full border border-line bg-panel px-2 py-1 text-muted hover:text-ink">
+        <Link to="/" title="Pindah ke mode Kantor" className="flex items-center gap-1.5 rounded-full border border-line bg-panel px-2 py-1 text-muted hover:text-ink">
           <LayoutDashboard className="size-3.5" />
+          Kantor
         </Link>
       )}
       <Chip onClick={logout} title="Keluar" className="px-2">

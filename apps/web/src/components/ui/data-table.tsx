@@ -61,6 +61,8 @@ export interface Column<Row> {
   cell: (row: Row) => ReactNode;
   align?: "right";
   className?: string;
+  /** Phone card list: false leaves the column out of the card. */
+  mobile?: boolean;
 }
 
 export function DataTable<Row extends { id: string }>({
@@ -89,13 +91,14 @@ export function DataTable<Row extends { id: string }>({
   return (
     <div className="flex flex-col gap-3">
       {(search || toolbar) && (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 max-md:flex-wrap">
           {search && <SearchInput value={paged.q} onChange={(e) => paged.setQ(e.target.value)} placeholder={searchPlaceholder} />}
           {toolbar}
         </div>
       )}
       <div className="overflow-x-auto rounded-xl border border-line">
-        <table className="w-full min-w-[520px] border-collapse">
+        {data && <MobileCards rows={data.rows} columns={columns} onRowClick={onRowClick} />}
+        <table className="w-full min-w-[520px] border-collapse max-md:hidden">
           <thead className="sticky top-0 bg-panel">
             <tr className="border-b border-line">
               {columns.map((col) => (
@@ -147,5 +150,50 @@ export function DataTable<Row extends { id: string }>({
         </Button>
       </div>
     </div>
+  );
+}
+
+/**
+ * Below `md` each row is a card: the first column is the title, the last sits beside it
+ * (usually a status or amount), and the columns between are label/value lines.
+ */
+function MobileCards<Row extends { id: string }>({
+  rows,
+  columns,
+  onRowClick,
+}: {
+  rows: Row[];
+  columns: Column<Row>[];
+  onRowClick?: ((row: Row) => void) | undefined;
+}) {
+  const shown = columns.filter((col) => col.mobile !== false);
+  const [first, ...rest] = shown;
+  const last = rest.length > 1 ? rest.pop() : undefined;
+  if (!first) return null;
+  return (
+    <ul className="md:hidden">
+      {rows.map((row) => (
+        <li
+          key={row.id}
+          onClick={onRowClick && (() => onRowClick(row))}
+          className={cx("border-b border-line-2 px-4 py-3 last:border-b-0", onRowClick && "cursor-pointer active:bg-line-2")}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 font-medium">{first.cell(row)}</div>
+            {last && <div className="shrink-0 text-right tabular-nums">{last.cell(row)}</div>}
+          </div>
+          {rest.length > 0 && (
+            <dl className="mt-1.5 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-sm">
+              {rest.map((col) => (
+                <div key={col.header} className="contents">
+                  <dt className="text-muted">{col.header}</dt>
+                  <dd className="text-right tabular-nums">{col.cell(row)}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+        </li>
+      ))}
+    </ul>
   );
 }

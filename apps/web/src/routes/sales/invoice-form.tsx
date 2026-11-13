@@ -19,6 +19,7 @@ import { Combobox } from "../../components/ui/combobox.tsx";
 import { controlClass, DateInput, Field, Input, MoneyInput, Select } from "../../components/ui/field.tsx";
 import { toast } from "../../components/ui/toast.tsx";
 import { api, ApiError, unwrap } from "../../lib/api.ts";
+import { lineTable } from "../../components/ui/line-table.ts";
 import { cx } from "../../lib/cx.ts";
 import { type Contact, LookupPicker, lookups } from "../../components/lookup-picker.tsx";
 import { PaymentFields, type PaymentValues } from "./payment-fields.tsx";
@@ -182,8 +183,8 @@ export function InvoiceForm({ onSaved }: { onSaved: (id: string) => void }) {
 
       <section className="flex flex-col gap-2">
         <div className="overflow-x-auto rounded-xl border border-line">
-          <table className="w-full min-w-[640px] border-collapse">
-            <thead>
+          <table className={cx("w-full min-w-[640px] border-collapse", lineTable.table)}>
+            <thead className={lineTable.head}>
               <tr className="border-b border-line text-left text-xs text-muted">
                 <th className="w-8 px-3 py-2 font-normal">#</th>
                 <th className="px-2 py-2 font-normal">Barang</th>
@@ -194,7 +195,7 @@ export function InvoiceForm({ onSaved }: { onSaved: (id: string) => void }) {
                 <th className="w-10" />
               </tr>
             </thead>
-            <tbody>
+            <tbody className={lineTable.body}>
               {lines.map((line, index) => (
                 <LineRow
                   key={line.key}
@@ -222,7 +223,7 @@ export function InvoiceForm({ onSaved }: { onSaved: (id: string) => void }) {
           <Button size="sm" variant="ghost" aria-pressed={showLineDiscount} onClick={() => setShowLineDiscount((v) => !v)}>
             {showLineDiscount ? "Sembunyikan diskon baris" : "+ diskon baris"}
           </Button>
-          <span className="ml-auto text-xs text-muted">Ketik nama barang, Enter untuk jumlah, Enter lagi untuk baris baru</span>
+          <span className="ml-auto text-xs text-muted max-md:hidden">Ketik nama barang, Enter untuk jumlah, Enter lagi untuk baris baru</span>
         </div>
         {errors.lines && <p className="text-xs text-down">{errors.lines}</p>}
       </section>
@@ -339,9 +340,9 @@ function LineRow({
   const cellInput = cx(controlClass, "h-8 text-right tabular-nums");
 
   return (
-    <tr className="border-b border-line-2 align-top last:border-b-0">
-      <td className="px-3 py-2.5 text-muted tabular-nums">{index + 1}</td>
-      <td className="px-2 py-1.5">
+    <tr className={cx("border-b border-line-2 align-top last:border-b-0", lineTable.row)}>
+      <td className={cx("px-3 py-2.5 text-muted tabular-nums", lineTable.index)}>{index + 1}</td>
+      <td className={cx("px-2 py-1.5", lineTable.product)}>
         {line.product ? (
           <div className="flex flex-col gap-1">
             <button
@@ -390,7 +391,7 @@ function LineRow({
           />
         )}
       </td>
-      <td className="px-2 py-1.5">
+      <td data-label="Jumlah" className={cx("px-2 py-1.5", lineTable.field)}>
         <input
           id={`line-${line.key}-qty`}
           aria-label={`Jumlah baris ${index + 1}`}
@@ -402,7 +403,7 @@ function LineRow({
           onKeyDown={enterTo(onNext)}
         />
       </td>
-      <td className="px-2 py-1.5">
+      <td data-label="Harga" className={cx("px-2 py-1.5", lineTable.field)}>
         <MoneyInput
           aria-label={`Harga baris ${index + 1}`}
           className="[&_input]:h-8"
@@ -412,7 +413,7 @@ function LineRow({
         />
       </td>
       {showDiscount && (
-        <td className="px-2 py-1.5">
+        <td data-label="Diskon" className={cx("px-2 py-1.5", lineTable.field)}>
           <MoneyInput
             aria-label={`Diskon baris ${index + 1}`}
             className="[&_input]:h-8"
@@ -422,8 +423,8 @@ function LineRow({
           />
         </td>
       )}
-      <td className="px-3 py-2.5 text-right tabular-nums">{lineTotal === null ? <span className="text-faint">—</span> : formatRupiah(rupiah(lineTotal))}</td>
-      <td className="py-1.5 pr-2">
+      <td data-label="Total" className={cx("px-3 py-2.5 text-right tabular-nums", lineTable.field)}>{lineTotal === null ? <span className="text-faint">—</span> : formatRupiah(rupiah(lineTotal))}</td>
+      <td className={cx("py-1.5 pr-2", lineTable.remove)}>
         {onRemove && (
           <Button size="icon" variant="ghost" aria-label={`Hapus baris ${index + 1}`} onClick={onRemove}>
             <X className="size-4" />

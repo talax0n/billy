@@ -41,7 +41,7 @@ export function ExpensesPage() {
         }
       />
       <PageBody>
-        <div className="grid grid-cols-3 gap-3.5 max-md:grid-cols-1">
+        <div className="grid grid-cols-3 gap-3.5 max-md:grid-cols-2 max-md:gap-2 max-md:[&>:last-child:nth-child(odd)]:col-span-2">
           <StatTile
             label={month ? `Total biaya ${monthLabel.format(new Date(`${month}-01T00:00:00Z`))}` : "Total biaya semua periode"}
             value={amountTotal === undefined ? "—" : formatRupiah(rupiah(amountTotal))}

@@ -40,7 +40,7 @@ export function PayablesPage() {
     <>
       <PageHeader title="Hutang" />
       <PageBody>
-        <div className="grid grid-cols-5 gap-3.5">
+        <div className="grid grid-cols-5 gap-3.5 max-lg:grid-cols-3 max-md:grid-cols-2 max-md:gap-2 max-md:[&>:last-child:nth-child(odd)]:col-span-2">
           {(Object.keys(bucketLabels) as DueBucket[]).map((bucket) => (
             <StatTile key={bucket} label={bucketLabels[bucket]} value={<Amount value={rupiah(totals?.[bucket] ?? 0)} />} note={`Per ${asOf}`} />
           ))}

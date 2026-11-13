@@ -1,13 +1,14 @@
 import { roleLabels } from "@billy/core";
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
-import { LogOut, Menu, MonitorSmartphone, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { LayoutDashboard, LogOut, Menu, MonitorSmartphone, Package, PanelLeftClose, PanelLeftOpen, Receipt, ShoppingCart, X } from "lucide-react";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { meQuery, useLogout } from "../../lib/auth.ts";
 import { settingsQuery } from "../../lib/settings.ts";
 import { type NavItem, navGroups, navItems } from "../../nav.tsx";
 import { cx } from "../../lib/cx.ts";
 import { Button } from "../ui/button.tsx";
+import { NotificationBell } from "./notification-bell.tsx";
 import { ThemeToggle } from "./theme-toggle.tsx";
 
 export function AppShell() {
@@ -28,6 +29,13 @@ export function AppShell() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   useEffect(() => setDrawerOpen(false), [pathname]);
+  // The drawer only exists below `md`; growing past it must not leave the rail expanded.
+  useEffect(() => {
+    const wide = window.matchMedia("(min-width: 48rem)");
+    const close = () => wide.matches && setDrawerOpen(false);
+    wide.addEventListener("change", close);
+    return () => wide.removeEventListener("change", close);
+  }, []);
 
   const toggleCollapsed = () => {
     setCollapsed(!collapsed);
@@ -52,15 +60,61 @@ export function AppShell() {
         onToggle={toggleCollapsed}
         onCloseDrawer={() => setDrawerOpen(false)}
       />
-      <main className="min-w-0 overflow-hidden rounded-[14px] border border-line bg-panel max-md:min-h-dvh max-md:rounded-none max-md:border-0">
-        <div className="flex items-center gap-2 border-b border-line px-3 py-2 md:hidden">
-          <Button variant="ghost" size="icon" aria-label="Buka menu" onClick={() => setDrawerOpen(true)}>
-            <Menu className="size-4" />
-          </Button>
+      <main className="min-w-0 overflow-hidden rounded-[14px] border border-line bg-panel max-md:min-h-dvh max-md:overflow-visible max-md:rounded-none max-md:border-0 max-md:pb-[calc(64px+env(safe-area-inset-bottom))]">
+        <div className="sticky top-0 z-20 flex items-center gap-2 border-b border-line bg-panel px-3 py-2 md:hidden">
           <ShopName />
+          <div className="ml-auto flex items-center gap-1">
+            <NotificationBell />
+            <Button variant="ghost" size="icon" aria-label="Buka menu" onClick={() => setDrawerOpen(true)}>
+              <Menu className="size-5" />
+            </Button>
+          </div>
         </div>
         <Outlet />
       </main>
+      <TabBar />
+    </div>
+  );
+}
+
+const tabs = [
+  { to: "/", label: "Overview", icon: LayoutDashboard },
+  { to: "/penjualan", label: "Penjualan", icon: Receipt },
+  { to: "/pembelian", label: "Pembelian", icon: ShoppingCart },
+  { to: "/produk", label: "Produk", icon: Package },
+] as const;
+
+/** Phones: the most used pages within thumb reach; the top bar's menu button opens the rest. */
+function TabBar() {
+  const tab = "flex flex-1 flex-col items-center gap-0.5 pt-2 pb-1.5 text-xs text-muted";
+  return (
+    <nav
+      aria-label="Navigasi cepat"
+      className="fixed inset-x-0 bottom-0 z-20 flex border-t border-line bg-panel pb-[env(safe-area-inset-bottom)] md:hidden"
+    >
+      {tabs.map(({ to, label, icon: Icon }) => (
+        <Link key={to} to={to} activeOptions={{ exact: to === "/" }} className={tab} activeProps={{ className: "text-ink! font-medium" }}>
+          <Icon className="size-5" />
+          {label}
+        </Link>
+      ))}
+    </nav>
+  );
+}
+
+/** Phones: back office or cashier, like switching roles; Kasir opens the full-screen POS. */
+function ModeSwitch() {
+  const item = "flex flex-1 items-center justify-center gap-1.5 rounded-md py-1.5";
+  return (
+    <div role="group" aria-label="Mode" className="flex gap-1 rounded-lg border border-line bg-panel p-1 md:hidden">
+      <span aria-current="page" className={cx(item, "bg-ink font-medium text-panel")}>
+        <LayoutDashboard className="size-4" />
+        Kantor
+      </span>
+      <Link to="/kasir" className={cx(item, "text-ink-2 hover:text-ink")}>
+        <MonitorSmartphone className="size-4" />
+        Kasir
+      </Link>
     </div>
   );
 }
@@ -87,7 +141,7 @@ function ShopName() {
   return (
     <div className="flex min-w-0 items-center gap-2.5 text-[15px] font-semibold">
       <div className="grid size-[26px] shrink-0 place-items-center rounded-[7px] bg-ink text-xs text-panel">{initials || "B"}</div>
-      <span className="truncate group-data-[collapsed=true]/sb:hidden">{shopName || "Billy"}</span>
+      <span className="truncate max-md:overflow-visible max-md:whitespace-nowrap group-data-[collapsed=true]/sb:hidden">{shopName || "Billy"}</span>
     </div>
   );
 }
@@ -115,12 +169,16 @@ function Sidebar({
       data-collapsed={collapsed}
       className={cx(
         "group/sb sticky top-2.5 flex h-[calc(100dvh-20px)] flex-col gap-2.5 px-1 py-2",
-        "max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:h-dvh max-md:w-[260px] max-md:bg-bg max-md:px-2.5 max-md:shadow-xl max-md:transition-transform",
-        !drawerOpen && "max-md:-translate-x-full",
+        "max-md:fixed max-md:inset-y-0 max-md:right-0 max-md:z-40 max-md:h-dvh max-md:w-[260px] max-md:bg-bg max-md:px-2.5 max-md:shadow-xl max-md:transition-transform",
+        !drawerOpen && "max-md:translate-x-full",
       )}
     >
       <div className="flex items-center gap-1 px-2 py-1.5 group-data-[collapsed=true]/sb:flex-col group-data-[collapsed=true]/sb:px-0">
-        <ShopName />
+        {/* Phones already show the shop in the top bar. */}
+        <div className="max-md:hidden">
+          <ShopName />
+        </div>
+        <span className="text-[15px] font-semibold md:hidden">Menu</span>
         <Button
           variant="ghost"
           size="icon"
@@ -132,13 +190,14 @@ function Sidebar({
           <ToggleIcon className="size-4" />
         </Button>
         <Button variant="ghost" size="icon" className="ml-auto md:hidden" aria-label="Tutup menu" onClick={onCloseDrawer}>
-          <PanelLeftClose className="size-4" />
+          <X className="size-5" />
         </Button>
       </div>
+      <ModeSwitch />
       <Link
         to="/kasir"
         title="Buka Kasir (F2)"
-        className="flex items-center gap-2 rounded-[9px] bg-ink px-2.5 py-2 font-medium text-panel hover:opacity-90 group-data-[collapsed=true]/sb:justify-center"
+        className="flex items-center max-md:hidden gap-2 rounded-[9px] bg-ink px-2.5 py-2 font-medium text-panel hover:opacity-90 group-data-[collapsed=true]/sb:justify-center"
       >
         <MonitorSmartphone className="size-4 shrink-0" />
         <span className="group-data-[collapsed=true]/sb:sr-only">Buka Kasir</span>
