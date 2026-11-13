@@ -1,7 +1,7 @@
 import { eq, sql } from "drizzle-orm";
 import { expect, it } from "vitest";
 import { createDb } from "./client.ts";
-import { products, settings, stockMovements } from "./schema.ts";
+import { auditEvents, products, settings, stockMovements } from "./schema.ts";
 import { isEmpty, seed } from "./seed.ts";
 
 it("migrates an in-memory database and seeds it once", async () => {
@@ -23,5 +23,23 @@ it("migrates an in-memory database and seeds it once", async () => {
     .groupBy(products.id);
   expect(amplas).toEqual({ sellPrice: 3_500, stock: 180 });
 
+  await close();
+});
+
+it("keeps audit_events append-only, even for direct SQL", async () => {
+  const { db, migrate, close } = await createDb();
+  await migrate();
+  await db.execute(sql`insert into audit_events (id, source, action, entity_type, entity_id, summary)
+    values ('01a1d234-3800-7000-8000-000000000001', 'system', 'settings.update', 'settings', '1', 'Uji')`);
+
+  const refusal = (query: Promise<unknown>) =>
+    query.then(
+      () => "allowed",
+      (err: Error) => (err.cause as Error | undefined)?.message ?? err.message,
+    );
+  expect(await refusal(db.execute(sql`update audit_events set summary = 'Diubah'`))).toBe("audit_events is append-only: UPDATE is not allowed");
+  expect(await refusal(db.execute(sql`delete from audit_events`))).toBe("audit_events is append-only: DELETE is not allowed");
+  expect(await refusal(db.execute(sql`truncate audit_events`))).toBe("audit_events is append-only: TRUNCATE is not allowed");
+  expect(await db.select({ summary: auditEvents.summary }).from(auditEvents)).toEqual([{ summary: "Uji" }]);
   await close();
 });

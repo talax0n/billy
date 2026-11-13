@@ -21,16 +21,16 @@ export const salesRoutes = new Hono<AppEnv>()
   .get("/receivables", async (c) => c.json(await listReceivables(c.var.db)))
   .get("/", validate("query", salesListQuery), async (c) => c.json(await listInvoices(c.var.db, c.req.valid("query"))))
   .post("/", validate("json", salesInvoiceInput), async (c) =>
-    c.json(await createInvoice(c.var.db, c.req.valid("json"), c.var.user.id), 201),
+    c.json(await createInvoice(c.var.db, c.req.valid("json"), c.var.actor), 201),
   )
   .get("/:id", validate("param", idParam), async (c) => c.json(await getInvoice(c.var.db, c.req.valid("param").id)))
   .post("/:id/payments", validate("param", idParam), validate("json", salesPaymentInput), async (c) =>
-    c.json(await recordPayment(c.var.db, c.req.valid("param").id, c.req.valid("json"), c.var.user.id), 201),
+    c.json(await recordPayment(c.var.db, c.req.valid("param").id, c.req.valid("json"), c.var.actor), 201),
   )
   .post("/:id/payments/:paymentId/void", validate("param", paymentParam), validate("json", voidInput), async (c) => {
     const { id, paymentId } = c.req.valid("param");
-    return c.json(await voidPayment(c.var.db, id, paymentId, c.req.valid("json"), c.var.user.id));
+    return c.json(await voidPayment(c.var.db, id, paymentId, c.req.valid("json"), c.var.actor));
   })
   .post("/:id/void", validate("param", idParam), validate("json", voidInput), async (c) =>
-    c.json(await voidInvoice(c.var.db, c.req.valid("param").id, c.req.valid("json"), c.var.user.id)),
+    c.json(await voidInvoice(c.var.db, c.req.valid("param").id, c.req.valid("json"), c.var.actor)),
   );

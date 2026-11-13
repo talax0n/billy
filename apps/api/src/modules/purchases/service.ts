@@ -29,6 +29,8 @@ import {
 } from "@billy/db";
 import { and, asc, count, desc, eq, gte, inArray, isNull, lte, sql, type SQL } from "drizzle-orm";
 import type { z } from "zod";
+import type { Actor } from "../../env.ts";
+import { audit } from "../../lib/audit.ts";
 import { costAsOf } from "../../lib/cost-as-of.ts";
 import { allocateDocNumber } from "../../lib/doc-number.ts";
 import { invoiceState } from "../../lib/invoice-state.ts";
@@ -164,7 +166,7 @@ export async function getPurchase(db: Db, id: string) {
 
 async function lockInvoice(tx: Db, id: string) {
   const [invoice] = await tx
-    .select({ id: purchaseInvoices.id, total: purchaseInvoices.total, voidedAt: purchaseInvoices.voidedAt })
+    .select({ id: purchaseInvoices.id, number: purchaseInvoices.number, total: purchaseInvoices.total, voidedAt: purchaseInvoices.voidedAt })
     .from(purchaseInvoices)
     .where(eq(purchaseInvoices.id, id))
     .for("update");
@@ -181,7 +183,8 @@ async function paidSoFar(tx: Db, invoiceId: string): Promise<Rupiah> {
 }
 
 /** Payment + cash entry `out` / `purchase`. Call with the invoice row locked. */
-async function recordPayment(tx: Db, invoice: Awaited<ReturnType<typeof lockInvoice>>, input: PaymentInput, userId: string) {
+async function recordPayment(tx: Db, invoice: Awaited<ReturnType<typeof lockInvoice>>, input: PaymentInput, actor: Actor) {
+  const userId = actor.id;
   if (invoice.voidedAt) throw new DomainError("invalid", "Faktur ini sudah di-void");
   const outstanding = rupiah(invoice.total - (await paidSoFar(tx, invoice.id)));
   if (input.amount > outstanding) {
@@ -208,6 +211,12 @@ async function recordPayment(tx: Db, invoice: Awaited<ReturnType<typeof lockInvo
     note: input.note,
     createdBy: userId,
   });
+  await audit(tx, actor, {
+    action: "purchase.payment.create",
+    entityId: payment!.id,
+    summary: `Pembayaran ${invoice.number} ${formatRupiah(input.amount)}`,
+    after: { invoiceId: invoice.id, date: input.date, amount: input.amount, method: input.method, accountId: input.accountId },
+  });
   return payment!;
 }
 
@@ -215,7 +224,8 @@ async function recordPayment(tx: Db, invoice: Awaited<ReturnType<typeof lockInvo
  * Posts a supplier invoice: lines, a `purchase` stock movement per line valued at its net unit
  * cost, the products' latest cost, and the optional "bayar sekarang" payment, in one transaction.
  */
-export async function createPurchase(db: Db, input: PurchaseInput, userId: string) {
+export async function createPurchase(db: Db, input: PurchaseInput, actor: Actor) {
+  const userId = actor.id;
   const totals = computeTotals(
     input.lines.map((line) => ({ qty: line.qty, unitPrice: line.unitCost, discountAmount: line.discountAmount })),
     { kind: input.discountKind, value: input.discountValue },
@@ -255,7 +265,7 @@ export async function createPurchase(db: Db, input: PurchaseInput, userId: strin
         note: input.note,
         createdBy: userId,
       })
-      .returning({ id: purchaseInvoices.id, total: purchaseInvoices.total, voidedAt: purchaseInvoices.voidedAt });
+      .returning({ id: purchaseInvoices.id, number: purchaseInvoices.number, total: purchaseInvoices.total, voidedAt: purchaseInvoices.voidedAt });
 
     await tx.insert(purchaseLines).values(
       lines.map((line) => ({
@@ -283,24 +293,47 @@ export async function createPurchase(db: Db, input: PurchaseInput, userId: strin
       })),
     );
     // Latest-cost method: a product listed twice ends at its last line's cost.
+    const costsBefore = new Map(
+      (await tx.select({ id: products.id, costPrice: products.costPrice }).from(products).where(inArray(products.id, productIds))).map(
+        (p) => [p.id, p.costPrice],
+      ),
+    );
     for (const line of lines) {
       await tx.update(products).set({ costPrice: line.netUnitCost }).where(eq(products.id, line.productId));
     }
-    if (input.payment) await recordPayment(tx, invoice!, input.payment, userId);
+    const costsAfter = new Map(lines.map((line) => [line.productId, line.netUnitCost]));
+    const costChanges = [...costsAfter].filter(([id, cost]) => costsBefore.get(id) !== cost);
+    await audit(tx, actor, {
+      action: "purchase.invoice.create",
+      entityId: invoice!.id,
+      summary: `Pembelian ${invoice!.number} ${formatRupiah(totals.total)}`,
+      ...(costChanges.length > 0 && { before: { costPrice: Object.fromEntries(costChanges.map(([id]) => [id, costsBefore.get(id)])) } }),
+      after: {
+        number: invoice!.number,
+        supplierId: input.supplierId,
+        supplierInvoiceNumber: input.supplierInvoiceNumber,
+        date: input.date,
+        total: totals.total,
+        lines: lines.map(({ productId, qty, unitCost, discountAmount }) => ({ productId, qty, unitCost, discountAmount })),
+        ...(costChanges.length > 0 && { costPrice: Object.fromEntries(costChanges) }),
+      },
+    });
+    if (input.payment) await recordPayment(tx, invoice!, input.payment, actor);
     return invoice!.id;
   });
   return getPurchase(db, id);
 }
 
-export async function payPurchase(db: Db, id: string, input: PaymentInput, userId: string) {
-  await db.transaction(async (tx) => recordPayment(tx, await lockInvoice(tx, id), input, userId));
+export async function payPurchase(db: Db, id: string, input: PaymentInput, actor: Actor) {
+  await db.transaction(async (tx) => recordPayment(tx, await lockInvoice(tx, id), input, actor));
   return getPurchase(db, id);
 }
 
 /** Marks the payment void and puts the money back with a reversal cash entry dated today. */
-export async function voidPayment(db: Db, id: string, paymentId: string, reason: string, userId: string) {
+export async function voidPayment(db: Db, id: string, paymentId: string, reason: string, actor: Actor) {
+  const userId = actor.id;
   await db.transaction(async (tx) => {
-    await lockInvoice(tx, id);
+    const invoice = await lockInvoice(tx, id);
     const [payment] = await tx
       .select({ accountId: payments.accountId, amount: payments.amount, voidedAt: payments.voidedAt })
       .from(payments)
@@ -323,12 +356,21 @@ export async function voidPayment(db: Db, id: string, paymentId: string, reason:
       note: reason,
       createdBy: userId,
     });
+    await audit(tx, actor, {
+      action: "purchase.payment.void",
+      entityId: paymentId,
+      summary: `Void pembayaran ${invoice.number} ${formatRupiah(payment.amount)}`,
+      before: { voidedAt: null },
+      after: { voidedAt: new Date().toISOString(), amount: payment.amount },
+      reason,
+    });
   });
   return getPurchase(db, id);
 }
 
 /** Refused while a non-voided payment exists; otherwise takes the goods back out of stock. */
-export async function voidPurchase(db: Db, id: string, reason: string, userId: string) {
+export async function voidPurchase(db: Db, id: string, reason: string, actor: Actor) {
+  const userId = actor.id;
   await db.transaction(async (tx) => {
     const invoice = await lockInvoice(tx, id);
     if (invoice.voidedAt) throw new DomainError("invalid", "Faktur ini sudah di-void");
@@ -362,7 +404,21 @@ export async function voidPurchase(db: Db, id: string, reason: string, userId: s
     // The voided lines no longer count: each product's cost_price goes back to the net cost of
     // its latest remaining non-voided purchase, or stays as is when none remains (rule 8).
     const productIds = [...new Set(posted.map((movement) => movement.productId))];
+    const cost = () => tx.select({ id: products.id, costPrice: products.costPrice }).from(products).where(inArray(products.id, productIds));
+    const costsBefore = new Map((await cost()).map((p) => [p.id, p.costPrice]));
     await tx.update(products).set({ costPrice: costAsOf(null) }).where(inArray(products.id, productIds));
+    const costChanges = (await cost()).filter((p) => costsBefore.get(p.id) !== p.costPrice);
+    await audit(tx, actor, {
+      action: "purchase.invoice.void",
+      entityId: id,
+      summary: `Void pembelian ${invoice.number} ${formatRupiah(invoice.total)}`,
+      before: { voidedAt: null, ...(costChanges.length > 0 && { costPrice: Object.fromEntries(costChanges.map((p) => [p.id, costsBefore.get(p.id)])) }) },
+      after: {
+        voidedAt: new Date().toISOString(),
+        ...(costChanges.length > 0 && { costPrice: Object.fromEntries(costChanges.map((p) => [p.id, p.costPrice])) }),
+      },
+      reason,
+    });
   });
   return getPurchase(db, id);
 }

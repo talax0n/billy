@@ -4,12 +4,15 @@ import {
   type contactInput,
   type contactLookupQuery,
   type contactQuery,
+  changedFields,
   DomainError,
   nextContactCode,
 } from "@billy/core";
 import { contacts, type Db } from "@billy/db";
 import { and, asc, count, desc, eq, like, type SQL, sql } from "drizzle-orm";
 import type { z } from "zod";
+import type { Actor } from "../../env.ts";
+import { audit } from "../../lib/audit.ts";
 import { matchAllTerms } from "../../lib/search.ts";
 
 /** Optional kind, and every whitespace-separated term in the name, code or phone. */
@@ -57,13 +60,22 @@ export async function getContact(db: Db, id: string) {
   return row;
 }
 
-export async function createContact(db: Db, input: z.output<typeof contactInput>) {
-  const [row] = await db.insert(contacts).values(input).returning();
-  return row!;
+export async function createContact(db: Db, input: z.output<typeof contactInput>, actor: Actor) {
+  return db.transaction(async (tx) => {
+    const [row] = await tx.insert(contacts).values(input).returning();
+    await audit(tx, actor, { action: "contact.create", entityId: row!.id, summary: `Kontak ${row!.code} ${row!.name}`, after: input });
+    return row!;
+  });
 }
 
-export async function updateContact(db: Db, id: string, input: z.output<typeof contactInput>) {
-  const [row] = await db.update(contacts).set(input).where(eq(contacts.id, id)).returning();
-  if (!row) throw new DomainError("not_found", "Kontak tidak ditemukan");
-  return row;
+export async function updateContact(db: Db, id: string, input: z.output<typeof contactInput>, actor: Actor) {
+  return db.transaction(async (tx) => {
+    const [before] = await tx.select().from(contacts).where(eq(contacts.id, id)).for("update");
+    if (!before) throw new DomainError("not_found", "Kontak tidak ditemukan");
+    const [row] = await tx.update(contacts).set(input).where(eq(contacts.id, id)).returning();
+    const { createdAt: _c, updatedAt: _u, id: _id, ...fields } = before;
+    const diff = changedFields(fields, { ...fields, ...input });
+    if (diff) await audit(tx, actor, { action: "contact.update", entityId: id, summary: `Kontak ${row!.code} ${row!.name} diubah`, ...diff });
+    return row!;
+  });
 }

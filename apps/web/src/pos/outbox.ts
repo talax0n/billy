@@ -1,10 +1,23 @@
-import { createFlush, initialSyncState, mayUpload, requeueProblem, type Role, settleEntry, type SyncEvent, type SyncState, syncTransition } from "@billy/core";
+import {
+  createFlush,
+  initialSyncState,
+  mayUpload,
+  type PosSaleInput,
+  requeueProblem,
+  type Role,
+  settleEntry,
+  type SyncEvent,
+  type SyncState,
+  syncTransition,
+} from "@billy/core";
 import { useSyncExternalStore } from "react";
 import { api } from "../lib/api.ts";
 import { change, changeQueue, type QueuedSale, read, type SyncProblem } from "./local.ts";
 
 /**
- * The offline outbox. Selling only ever writes to IndexedDB; this loop uploads queued sales
+ * The offline outbox. Online, the Kasir sends a sale straight to the server with `sendSale`, so
+ * a limit that needs an admin's approval is caught at the counter. Offline, or when that send
+ * fails to reach the server, the sale is queued here; this loop uploads queued sales
  * to `POST /api/pos/sales` in order, one at a time, skipping another cashier's sales when a
  * kasir is signed in. A sale leaves the outbox only when the
  * server answers 2xx; a 4xx moves it to the visible problem list; anything else backs off
@@ -42,17 +55,32 @@ async function reload() {
   publish({ pending, othersPending: pending.filter((q) => !mine(q)).length, problems: (await read("problems")) ?? [] });
 }
 
-async function upload(item: QueuedSale): Promise<{ status: number; error: string }> {
+export interface UploadResult {
+  /** 0 when the server could not be reached in time. */
+  status: number;
+  error: string;
+  /** The server refused the sale until an admin approves it. */
+  needsApproval: boolean;
+}
+
+/** One `POST /api/pos/sales`, given up after `timeoutMs` so a dead connection never holds the cashier. */
+export async function sendSale(sale: PosSaleInput, timeoutMs = 15_000): Promise<UploadResult> {
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), timeoutMs);
   try {
-    const res = await api.pos.sales.$post({ json: item.sale });
-    if (res.ok) return { status: res.status, error: "" };
-    const body = (await res.json().catch(() => ({}))) as { error?: string; fields?: Record<string, string> };
+    const res = await api.pos.sales.$post({ json: sale }, { init: { signal: abort.signal } });
+    if (res.ok) return { status: res.status, error: "", needsApproval: false };
+    const body = (await res.json().catch(() => ({}))) as { error?: string; fields?: Record<string, string>; approval?: object };
     const fields = Object.entries(body.fields ?? {}).map(([field, message]) => `${field}: ${message}`);
-    return { status: res.status, error: [body.error ?? `Gagal (${res.status})`, ...fields].join(" · ") };
+    return { status: res.status, error: [body.error ?? `Gagal (${res.status})`, ...fields].join(" · "), needsApproval: Boolean(body.approval) };
   } catch {
-    return { status: 0, error: "Tidak tersambung ke server" };
+    return { status: 0, error: "Tidak tersambung ke server", needsApproval: false };
+  } finally {
+    clearTimeout(timer);
   }
 }
+
+const upload = (item: QueuedSale) => sendSale(item.sale);
 
 /** Uploads the queue head-first until it is empty or the server cannot be reached. One loop at a time. */
 export const flush = createFlush<QueuedSale>({

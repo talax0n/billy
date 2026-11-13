@@ -42,7 +42,7 @@ const reversalDates = async (sourceIds: string[]) => [
 ];
 
 beforeAll(async () => {
-  ({ cookie } = await signIn("staff"));
+  ({ cookie } = await signIn("admin"));
   await db.insert(settings).values({ shopName: "Toko Uji", receiptFooter: "", posDeviceCode: "K1" });
   kas = (await post("/api/accounts", { code: "KAS", name: "Kas", kind: "cash" })).id;
   bca = (await post("/api/accounts", { code: "BCA", name: "BCA", kind: "bank" })).id;

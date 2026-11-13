@@ -13,7 +13,7 @@ let thinnerId: string;
 const today = businessDate();
 
 beforeAll(async () => {
-  ({ cookie } = await signIn("staff"));
+  ({ cookie } = await signIn("admin"));
   const [customer] = await db
     .insert(contacts)
     .values({ code: "P-001", name: "CV Bangun Jaya", kind: "customer", paymentTermsDays: 30 })

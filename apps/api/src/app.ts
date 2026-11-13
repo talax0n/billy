@@ -1,6 +1,8 @@
 import type { Db } from "@billy/db";
 import { Hono } from "hono";
 import { authRoutes } from "./auth/routes.ts";
+import { approvalRoutes } from "./modules/approvals/routes.ts";
+import { auditRoutes } from "./modules/audit/routes.ts";
 import type { AppEnv } from "./env.ts";
 import { onError } from "./lib/errors.ts";
 import { categoryRoutes } from "./modules/categories/routes.ts";
@@ -45,6 +47,8 @@ export function createApp(db: Db) {
     .route("/purchases", purchaseRoutes)
     .route("/stock", stockRoutes)
     .route("/pos", posRoutes)
+    .route("/approvals", approvalRoutes)
+    .route("/audit", auditRoutes)
     .route("/", insightRoutes);
 }
 

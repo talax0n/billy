@@ -5,12 +5,14 @@ import { PageHeader } from "../../components/ui/page.tsx";
 import { meQuery } from "../../lib/auth.ts";
 import { cx } from "../../lib/cx.ts";
 import { CategoriesTab } from "./categories-tab.tsx";
+import { SecurityTab } from "./security-tab.tsx";
 import { ShopTab } from "./shop-tab.tsx";
 import { UsersTab } from "./users-tab.tsx";
 
 const tabs: { label: string; roles: Role[]; component: ComponentType }[] = [
   { label: "Toko", roles: ["admin"], component: ShopTab },
   { label: "Pengguna", roles: ["admin"], component: UsersTab },
+  { label: "Keamanan", roles: ["admin"], component: SecurityTab },
   { label: "Kategori", roles: ["admin", "staff"], component: CategoriesTab },
 ];
 

@@ -14,8 +14,8 @@ export const contactRoutes = new Hono<AppEnv>()
   .get("/next-code", validate("query", contactCodeQuery), async (c) =>
     c.json(await suggestContactCode(c.var.db, c.req.valid("query").kind)),
   )
-  .post("/", validate("json", contactInput), async (c) => c.json(await createContact(c.var.db, c.req.valid("json")), 201))
+  .post("/", validate("json", contactInput), async (c) => c.json(await createContact(c.var.db, c.req.valid("json"), c.var.actor), 201))
   .get("/:id", validate("param", idParam), async (c) => c.json(await getContact(c.var.db, c.req.valid("param").id)))
   .put("/:id", validate("param", idParam), validate("json", contactInput), async (c) =>
-    c.json(await updateContact(c.var.db, c.req.valid("param").id, c.req.valid("json"))),
+    c.json(await updateContact(c.var.db, c.req.valid("param").id, c.req.valid("json"), c.var.actor)),
   );

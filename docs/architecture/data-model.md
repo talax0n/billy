@@ -16,10 +16,12 @@ This is the shared contract for every module. Read it together with `docs/archit
 ## Tables
 
 ```
-users            id, username (unique), name, password_hash, role: admin|staff|kasir, active, created_at
+users            id, username (unique), name, password_hash, role: admin|staff|kasir, active,
+                 approval_pin_hash (admins only, never sent to a client), created_at
 sessions         id, token_hash (unique), user_id, expires_at, created_at
 settings         id = 1 (single row): shop_name, address, phone, whatsapp, invoice_bank_text,
-                 invoice_signer, receipt_footer, pos_device_code (e.g. "K1")
+                 invoice_signer, receipt_footer, pos_device_code (e.g. "K1"),
+                 kasir_max_discount_bp (default 500), allow_below_cost (default false)
 
 categories       id, name (unique), description
 products         id, code (unique, nullable), barcode (unique, nullable), name, variant, unit,
@@ -62,6 +64,15 @@ pos_sales        id (client UUIDv7), number (unique, e.g. K1-261113-0001), devic
 pos_lines        id, sale_id, position, product_id, note, qty, unit_price, discount_amount, line_total, unit_cost
 
 document_sequences prefix + period (PK), last_value
+
+approvals        id, kind: void|discount|below_cost|revisi_lower|refund|cancel_printed_draft|foreign_or_past_revisi,
+                 status: pending|approved|rejected|used|expired, method: pin|remote, requested_by,
+                 device_code, subject (jsonb: exactly what was approved), summary, decided_by, decided_at,
+                 used_at, created_at, expires_at (remote: 10 minutes)
+audit_events     id, at, actor_id (null only for a failed login with an unknown username), actor_role,
+                 source: web|kasir|kasir_offline|system, device_code, action (a key of `auditActions`
+                 in @billy/core), entity_type, entity_id, summary, before, after (changed fields only),
+                 reason, approval_id. Append-only: a trigger rejects UPDATE, DELETE and TRUNCATE.
 ```
 
 Manual cash rows ("terima uang" and other money out) are `cash_entries` with `source_type = manual` and category `other_in` or `other_out`.
@@ -85,7 +96,17 @@ Manual cash rows ("terima uang" and other money out) are `cash_entries` with `so
 | Stock adjustment | stock movement `adjustment` (signed qty, required note) |
 | Create tukar faktur | bundle + invoice links. Only the customer's non-voided invoices with outstanding > 0. |
 
-Every command runs in one database transaction.
+Every command runs in one database transaction, and writes its `audit_events` row in that same transaction (`audit()` in `apps/api/src/lib/audit.ts`), so a change without its log row cannot commit. Logins, failed logins and logouts are logged too. A Kasir sale received more than 2 minutes after `sold_at` is logged with source `kasir_offline`; the legacy importer logs with source `system`.
+
+## Limits and approvals
+
+Admin is never limited. For everyone else the server refuses with 403 (body `{ error, approval: { kind } }`, the message names the limit):
+
+- a POS sale or sales invoice whose line and document discounts together pass `kasir_max_discount_bp` of the gross;
+- a POS sale with a line priced under qty × unit cost, unless `allow_below_cost`;
+- every POS void.
+
+The action passes when it carries `approval: { pin }` (any active admin's PIN; recorded as a `used` approval in the action's transaction; 5 wrong PINs lock PIN approval for that user for 15 minutes) or `approval: { id }` of a remote request the admin approved. A remote approval is spent by one conditional update that also requires the same requester, `approved`, unexpired, and a subject equal (jsonb) to the action's own, so it fits one action once.
 
 ## Document numbers
 
@@ -97,9 +118,9 @@ The POS uses `{device_code}-{YYMMDD}-{NNNN}`, allocated **on the client** from a
 
 | Role | Can use |
 |---|---|
-| admin | everything, plus users and settings |
+| admin | everything, plus users, settings, Log Aktivitas and deciding approvals |
 | staff | everything except users and settings |
-| kasir | `POST /api/pos/sales`, its own POS history, reprint, product and account lookup for the POS. Nothing else. Enforced by API middleware. |
+| kasir | `POST /api/pos/sales`, its own POS history, reprint, void of its own sales with an admin's approval, remote approval requests, product and account lookup for the POS. Nothing else. Enforced by API middleware. |
 
 ## Code layout and patterns
 

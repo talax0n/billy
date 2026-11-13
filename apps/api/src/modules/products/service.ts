@@ -1,5 +1,6 @@
 import {
   businessDate,
+  changedFields,
   DomainError,
   type PaginationQuery,
   rankProducts,
@@ -9,6 +10,8 @@ import {
 import { categories, type Db, products, stockMovements, users } from "@billy/db";
 import { asc, count, desc, eq, sql, type SQL } from "drizzle-orm";
 import type { z } from "zod";
+import type { Actor } from "../../env.ts";
+import { audit } from "../../lib/audit.ts";
 import { matchAllTerms } from "../../lib/search.ts";
 
 /** Stock is derived: the sum of a product's movements (data-model ground rule 4). */
@@ -76,15 +79,35 @@ export async function getProduct(db: Db, id: string) {
   return row;
 }
 
-export async function createProduct(db: Db, input: z.output<typeof productInput>) {
-  const [row] = await db.insert(products).values(input).returning({ id: products.id });
-  return getProduct(db, row!.id);
+const productLabel = (p: { name: string; variant: string }) => `${p.name} ${p.variant}`.trim();
+
+export async function createProduct(db: Db, input: z.output<typeof productInput>, actor: Actor) {
+  return db.transaction(async (tx) => {
+    const [row] = await tx.insert(products).values(input).returning({ id: products.id });
+    await audit(tx, actor, { action: "product.create", entityId: row!.id, summary: `Produk ${productLabel(input)}`, after: input });
+    return getProduct(tx, row!.id);
+  });
 }
 
-export async function updateProduct(db: Db, id: string, input: z.output<typeof productInput>) {
-  const [row] = await db.update(products).set(input).where(eq(products.id, id)).returning({ id: products.id });
-  if (!row) throw new DomainError("not_found", "Produk tidak ditemukan");
-  return getProduct(db, id);
+/** Logs only the changed fields, so a price or cost change shows its old and new value. */
+export async function updateProduct(db: Db, id: string, input: z.output<typeof productInput>, actor: Actor) {
+  return db.transaction(async (tx) => {
+    const [before] = await tx.select().from(products).where(eq(products.id, id)).for("update");
+    if (!before) throw new DomainError("not_found", "Produk tidak ditemukan");
+    await tx.update(products).set(input).where(eq(products.id, id));
+    const { createdAt: _c, updatedAt: _u, id: _id, ...fields } = before;
+    const diff = changedFields(fields, { ...fields, ...input });
+    if (diff) {
+      const price = "sellPrice" in diff.after || "costPrice" in diff.after;
+      await audit(tx, actor, {
+        action: "product.update",
+        entityId: id,
+        summary: `${price ? "Harga" : "Data"} ${productLabel(input)} diubah`,
+        ...diff,
+      });
+    }
+    return getProduct(tx, id);
+  });
 }
 
 /** Writes one `adjustment` movement valued at the current cost price. */
@@ -92,18 +115,30 @@ export async function adjustStock(
   db: Db,
   productId: string,
   input: z.output<typeof stockAdjustmentInput>,
-  userId: string,
+  actor: Actor,
 ) {
   return db.transaction(async (tx) => {
     const product = await getProduct(tx, productId);
-    await tx.insert(stockMovements).values({
-      productId,
-      date: input.date ?? businessDate(),
-      qty: input.qty,
-      reason: "adjustment",
-      unitCost: product.costPrice,
-      note: input.note,
-      createdBy: userId,
+    const date = input.date ?? businessDate();
+    const [movement] = await tx
+      .insert(stockMovements)
+      .values({
+        productId,
+        date,
+        qty: input.qty,
+        reason: "adjustment",
+        unitCost: product.costPrice,
+        note: input.note,
+        createdBy: actor.id,
+      })
+      .returning({ id: stockMovements.id });
+    await audit(tx, actor, {
+      action: "stock.adjust",
+      entityId: productId,
+      summary: `Stok ${productLabel(product)} ${input.qty > 0 ? "+" : ""}${input.qty}`,
+      before: { stock: product.stock },
+      after: { stock: product.stock + input.qty, qty: input.qty, date, movementId: movement!.id },
+      reason: input.note,
     });
     return getProduct(tx, productId);
   });

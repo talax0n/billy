@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { approvalInput } from "../approvals.ts";
 import { discountKinds } from "../invoice.ts";
 import { rupiah } from "../money.ts";
 import { salesStatusFilters } from "../sales.ts";
@@ -41,6 +42,8 @@ export const salesInvoiceInput = z.object({
   lines: z.array(salesLineInput).min(1, "Minimal satu baris barang").max(200),
   /** "Bayar sekarang": a payment recorded on the invoice date in the same transaction. */
   payment: z.object(paymentFields).nullable().default(null),
+  /** Only when a non-admin's discount passes the cap. */
+  approval: approvalInput.optional(),
 });
 export type SalesInvoiceInput = z.input<typeof salesInvoiceInput>;
 

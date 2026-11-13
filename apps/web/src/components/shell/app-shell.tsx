@@ -162,6 +162,8 @@ function Sidebar({
   onCloseDrawer: () => void;
 }) {
   const { data: settings } = useQuery(settingsQuery);
+  const { data: me } = useSuspenseQuery(meQuery);
+  const allowed = navItems.filter((item) => !item.roles || (me && item.roles.includes(me.role)));
   const ToggleIcon = collapsed ? PanelLeftOpen : PanelLeftClose;
 
   return (
@@ -208,7 +210,7 @@ function Sidebar({
           <div key={group} className="flex flex-col">
             <div className="px-2 pt-2.5 pb-1 text-xs text-muted group-data-[collapsed=true]/sb:hidden">{group}</div>
             <div className="mx-2 my-1.5 hidden border-t border-line group-data-[collapsed=true]/sb:block" />
-            {navItems
+            {allowed
               .filter((item) => item.group === group)
               .map((item) => (
                 <NavLink key={item.path} item={item} />
@@ -219,7 +221,7 @@ function Sidebar({
       <div className="flex-1" />
       <SyncCard deviceCode={settings?.posDeviceCode} />
       <nav className="flex flex-col">
-        {navItems
+        {allowed
           .filter((item) => item.group === null)
           .map((item) => (
             <NavLink key={item.path} item={item} />

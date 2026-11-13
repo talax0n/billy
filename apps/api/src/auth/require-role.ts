@@ -7,7 +7,7 @@ import { findSessionUser, SESSION_COOKIE } from "./session.ts";
 
 /**
  * Gate for every protected router: 401 without a live session, 403 when the role is not listed.
- * Sets `c.var.user` for the handlers after it. Roles follow docs/architecture/data-model.md.
+ * Sets `c.var.user` and `c.var.actor` (source `web`) for the handlers after it. Roles follow docs/architecture/data-model.md.
  */
 export const requireRole = (...allowed: Role[]) =>
   createMiddleware<AuthedEnv>(async (c, next) => {
@@ -16,6 +16,7 @@ export const requireRole = (...allowed: Role[]) =>
     if (!user) throw new HTTPException(401, { message: "Silakan masuk terlebih dulu" });
     if (!allowed.includes(user.role)) throw new HTTPException(403, { message: "Anda tidak punya akses ke fitur ini" });
     c.set("user", user);
+    c.set("actor", { id: user.id, role: user.role, source: "web" });
     await next();
   });
 

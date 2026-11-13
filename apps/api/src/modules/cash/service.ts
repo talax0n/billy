@@ -4,6 +4,8 @@ import {
   type cashBookQuery,
   type cashEntryInput,
   DomainError,
+  changedFields,
+  formatRupiah,
   manualCashCategory,
   type PaginationQuery,
   reversalOf,
@@ -13,6 +15,8 @@ import {
 import { accounts, cashEntries, type Db, expenses, transfers, users } from "@billy/db";
 import { and, asc, count, desc, eq, gte, ilike, lte, ne, or, sql } from "drizzle-orm";
 import type { z } from "zod";
+import type { Actor } from "../../env.ts";
+import { audit } from "../../lib/audit.ts";
 import { likePattern } from "../../lib/search.ts";
 
 /** Money in counts up, money out counts down. */
@@ -71,16 +75,28 @@ export async function getAccount(db: Db, id: string) {
   return row;
 }
 
-export async function createAccount(db: Db, input: z.output<typeof accountInput>) {
-  const [row] = await db.insert(accounts).values(input).returning({ id: accounts.id });
-  return getAccount(db, row!.id);
+export async function createAccount(db: Db, input: z.output<typeof accountInput>, actor: Actor) {
+  return db.transaction(async (tx) => {
+    const [row] = await tx.insert(accounts).values(input).returning({ id: accounts.id });
+    await audit(tx, actor, { action: "account.create", entityId: row!.id, summary: `Akun ${input.code} ${input.name}`, after: input });
+    return getAccount(tx, row!.id);
+  });
 }
 
 /** Accounts are never deleted: their cash entries stay. `active: false` hides them from pickers. */
-export async function updateAccount(db: Db, id: string, input: z.output<typeof accountInput>) {
-  const [row] = await db.update(accounts).set(input).where(eq(accounts.id, id)).returning({ id: accounts.id });
-  if (!row) throw new DomainError("not_found", "Akun tidak ditemukan");
-  return getAccount(db, id);
+export async function updateAccount(db: Db, id: string, input: z.output<typeof accountInput>, actor: Actor) {
+  return db.transaction(async (tx) => {
+    const [before] = await tx
+      .select({ code: accounts.code, name: accounts.name, kind: accounts.kind, active: accounts.active })
+      .from(accounts)
+      .where(eq(accounts.id, id))
+      .for("update");
+    if (!before) throw new DomainError("not_found", "Akun tidak ditemukan");
+    await tx.update(accounts).set(input).where(eq(accounts.id, id));
+    const diff = changedFields(before, { ...before, ...input });
+    if (diff) await audit(tx, actor, { action: "account.update", entityId: id, summary: `Akun ${input.code} ${input.name} diubah`, ...diff });
+    return getAccount(tx, id);
+  });
 }
 
 async function requireActiveAccount(db: Db, id: string) {
@@ -159,18 +175,25 @@ export async function cashBook(db: Db, accountId: string, query: z.output<typeof
 }
 
 /** Uang masuk / uang keluar lain. */
-export async function createCashEntry(db: Db, input: z.output<typeof cashEntryInput>, userId: string) {
+export async function createCashEntry(db: Db, input: z.output<typeof cashEntryInput>, actor: Actor) {
   return db.transaction(async (tx) => {
     await requireActiveAccount(tx, input.accountId);
     const [row] = await tx
       .insert(cashEntries)
-      .values({ ...input, category: manualCashCategory(input.direction), sourceType: "manual", createdBy: userId })
+      .values({ ...input, category: manualCashCategory(input.direction), sourceType: "manual", createdBy: actor.id })
       .returning();
+    await audit(tx, actor, {
+      action: "cash.entry.create",
+      entityId: row!.id,
+      summary: `${input.direction === "in" ? "Uang masuk" : "Uang keluar"} ${formatRupiah(input.amount)}${input.note ? `: ${input.note}` : ""}`,
+      after: input,
+    });
     return row!;
   });
 }
 
-export async function createTransfer(db: Db, input: z.output<typeof transferInput>, userId: string) {
+export async function createTransfer(db: Db, input: z.output<typeof transferInput>, actor: Actor) {
+  const userId = actor.id;
   return db.transaction(async (tx) => {
     await requireActiveAccount(tx, input.fromAccountId);
     await requireActiveAccount(tx, input.toAccountId);
@@ -188,13 +211,19 @@ export async function createTransfer(db: Db, input: z.output<typeof transferInpu
         createdBy: userId,
       })),
     );
+    await audit(tx, actor, { action: "cash.transfer.create", entityId: row!.id, summary: `Transfer ${formatRupiah(input.amount)}`, after: input });
     return row!;
   });
 }
 
-export async function voidTransfer(db: Db, id: string, reason: string, userId: string) {
+export async function voidTransfer(db: Db, id: string, reason: string, actor: Actor) {
+  const userId = actor.id;
   return db.transaction(async (tx) => {
-    const [row] = await tx.select({ voidedAt: transfers.voidedAt }).from(transfers).where(eq(transfers.id, id)).for("update");
+    const [row] = await tx
+      .select({ voidedAt: transfers.voidedAt, amount: transfers.amount })
+      .from(transfers)
+      .where(eq(transfers.id, id))
+      .for("update");
     if (!row) throw new DomainError("not_found", "Transfer tidak ditemukan");
     if (row.voidedAt) throw new DomainError("conflict", "Transfer ini sudah di-void");
     const [voided] = await tx
@@ -203,6 +232,14 @@ export async function voidTransfer(db: Db, id: string, reason: string, userId: s
       .where(eq(transfers.id, id))
       .returning();
     await writeReversals(tx, "transfer", id, reason, userId);
+    await audit(tx, actor, {
+      action: "cash.transfer.void",
+      entityId: id,
+      summary: `Void transfer ${formatRupiah(row.amount)}`,
+      before: { voidedAt: null },
+      after: { voidedAt: voided!.voidedAt },
+      reason,
+    });
     return voided!;
   });
 }

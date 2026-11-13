@@ -1,24 +1,22 @@
-import { formatRupiah, posVoidInput } from "@billy/core";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { formatRupiah } from "@billy/core";
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Printer } from "lucide-react";
 import { useState } from "react";
 import { Badge } from "../../components/ui/badge.tsx";
 import { Button } from "../../components/ui/button.tsx";
 import { DataTable, usePagedQuery } from "../../components/ui/data-table.tsx";
-import { Dialog, Sheet } from "../../components/ui/dialog.tsx";
-import { Field, Input } from "../../components/ui/field.tsx";
+import { Sheet } from "../../components/ui/dialog.tsx";
 import { EmptyState, PageBody, PageHeader } from "../../components/ui/page.tsx";
-import { toast } from "../../components/ui/toast.tsx";
 import { api, unwrap } from "../../lib/api.ts";
-import { useForm } from "../../lib/form.ts";
 import { settingsQuery } from "../../lib/settings.ts";
 import { methodLabels, printReceipt, ReceiptPrinter, receiptFromSale } from "../../pos/receipt.tsx";
+import { VoidSaleDialog } from "../../pos/void-sale.tsx";
 
 const stamp = new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Jakarta" });
 
 /**
- * Every POS receipt the server holds, newest first. Admin and staff void from the detail sheet.
+ * Every POS receipt the server holds, newest first. Void is in the detail sheet; staff need an admin's approval.
  * The open receipt lives in the URL (`/riwayat-kasir?id=…`) so Mutasi Stok can link to it.
  */
 export function RiwayatKasirPage() {
@@ -124,39 +122,7 @@ function SaleSheet({ id, onClose }: { id: string; onClose: () => void }) {
           </dl>
         </div>
       )}
-      {s && <VoidDialog id={s.id} number={s.number} open={voiding} onClose={() => setVoiding(false)} />}
+      {s && voiding && <VoidSaleDialog sale={s} onClose={() => setVoiding(false)} />}
     </Sheet>
-  );
-}
-
-function VoidDialog({ id, number, open, onClose }: { id: string; number: string; open: boolean; onClose: () => void }) {
-  return (
-    <Dialog open={open} onClose={onClose} title={`Void ${number}`} description="Stok dikembalikan dan uang dikeluarkan dari akun lewat baris pembalik.">
-      {open && <VoidForm id={id} onDone={onClose} />}
-    </Dialog>
-  );
-}
-
-function VoidForm({ id, onDone }: { id: string; onDone: () => void }) {
-  const queryClient = useQueryClient();
-  const form = useForm(posVoidInput, { reason: "" });
-  const submit = form.onSubmit(async (input) => {
-    await unwrap(api.pos.sales[":id"].void.$post({ param: { id }, json: input }));
-    await queryClient.invalidateQueries({ queryKey: ["pos", "sales"] });
-    toast("Struk di-void", "up");
-    onDone();
-  });
-  return (
-    <form onSubmit={submit} noValidate className="flex flex-col gap-4">
-      <Field label="Alasan" error={form.errors.reason}>
-        {(p) => <Input {...p} autoFocus value={form.values.reason} onChange={(e) => form.set("reason", e.target.value)} />}
-      </Field>
-      <div className="flex justify-end gap-2">
-        <Button onClick={onDone}>Batal</Button>
-        <Button type="submit" variant="danger" disabled={form.submitting}>
-          Void struk
-        </Button>
-      </div>
-    </form>
   );
 }

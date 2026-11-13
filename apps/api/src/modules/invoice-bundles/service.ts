@@ -2,6 +2,8 @@ import { DomainError, type invoiceBundleInput, type PaginationQuery, rupiah } fr
 import { bundleInvoices, contacts, type Db, invoiceBundles, salesInvoices, users } from "@billy/db";
 import { and, count, desc, eq, ilike, inArray, isNull, or } from "drizzle-orm";
 import type { z } from "zod";
+import type { Actor } from "../../env.ts";
+import { audit } from "../../lib/audit.ts";
 import { likePattern } from "../../lib/search.ts";
 import { allocateDocNumber } from "../../lib/doc-number.ts";
 import { invoicesWithState } from "../sales/service.ts";
@@ -79,7 +81,7 @@ export async function getBundle(db: Db, id: string) {
   };
 }
 
-export async function createBundle(db: Db, input: z.output<typeof invoiceBundleInput>, userId: string) {
+export async function createBundle(db: Db, input: z.output<typeof invoiceBundleInput>, actor: Actor) {
   return db.transaction(async (tx) => {
     const invoiceIds = [...new Set(input.invoiceIds)];
     const invoices = await invoicesWithState(tx, inArray(salesInvoices.id, invoiceIds));
@@ -98,20 +100,35 @@ export async function createBundle(db: Db, input: z.output<typeof invoiceBundleI
     const number = await allocateDocNumber(tx, "TF", input.date);
     const [bundle] = await tx
       .insert(invoiceBundles)
-      .values({ number, customerId: input.customerId, date: input.date, note: input.note, createdBy: userId })
+      .values({ number, customerId: input.customerId, date: input.date, note: input.note, createdBy: actor.id })
       .returning({ id: invoiceBundles.id });
     await tx.insert(bundleInvoices).values(invoiceIds.map((invoiceId) => ({ bundleId: bundle!.id, invoiceId })));
+    await audit(tx, actor, {
+      action: "invoice_bundle.create",
+      entityId: bundle!.id,
+      summary: `Tukar faktur ${number} (${invoiceIds.length} faktur)`,
+      after: { number, customerId: input.customerId, date: input.date, invoiceIds },
+    });
     return getBundle(tx, bundle!.id);
   });
 }
 
 /** A bundle has no side effects to reverse: voiding only frees its invoices for a new bundle. */
-export async function voidBundle(db: Db, id: string) {
-  const [row] = await db
-    .update(invoiceBundles)
-    .set({ voidedAt: new Date() })
-    .where(and(eq(invoiceBundles.id, id), isNull(invoiceBundles.voidedAt)))
-    .returning({ id: invoiceBundles.id });
-  if (!row) throw new DomainError("conflict", "Tukar faktur tidak ditemukan atau sudah di-void");
-  return getBundle(db, id);
+export async function voidBundle(db: Db, id: string, actor: Actor) {
+  return db.transaction(async (tx) => {
+    const [row] = await tx
+      .update(invoiceBundles)
+      .set({ voidedAt: new Date() })
+      .where(and(eq(invoiceBundles.id, id), isNull(invoiceBundles.voidedAt)))
+      .returning({ id: invoiceBundles.id, number: invoiceBundles.number, voidedAt: invoiceBundles.voidedAt });
+    if (!row) throw new DomainError("conflict", "Tukar faktur tidak ditemukan atau sudah di-void");
+    await audit(tx, actor, {
+      action: "invoice_bundle.void",
+      entityId: id,
+      summary: `Void tukar faktur ${row.number}`,
+      before: { voidedAt: null },
+      after: { voidedAt: row.voidedAt },
+    });
+    return getBundle(tx, id);
+  });
 }

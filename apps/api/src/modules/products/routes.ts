@@ -12,13 +12,13 @@ import { adjustStock, createProduct, getProduct, listMovements, listProducts, up
 export const productRoutes = new Hono<AppEnv>()
   .use(backOffice())
   .get("/", validate("query", paginationQuery), async (c) => c.json(await listProducts(c.var.db, c.req.valid("query"))))
-  .post("/", validate("json", productInput), async (c) => c.json(await createProduct(c.var.db, c.req.valid("json")), 201))
+  .post("/", validate("json", productInput), async (c) => c.json(await createProduct(c.var.db, c.req.valid("json"), c.var.actor), 201))
   .get("/:id", validate("param", idParam), async (c) => c.json(await getProduct(c.var.db, c.req.valid("param").id)))
   .put("/:id", validate("param", idParam), validate("json", productInput), async (c) =>
-    c.json(await updateProduct(c.var.db, c.req.valid("param").id, c.req.valid("json"))),
+    c.json(await updateProduct(c.var.db, c.req.valid("param").id, c.req.valid("json"), c.var.actor)),
   )
   .post("/:id/adjustments", validate("param", idParam), validate("json", stockAdjustmentInput), async (c) =>
-    c.json(await adjustStock(c.var.db, c.req.valid("param").id, c.req.valid("json"), c.var.user.id), 201),
+    c.json(await adjustStock(c.var.db, c.req.valid("param").id, c.req.valid("json"), c.var.actor), 201),
   )
   .get("/:id/movements", validate("param", idParam), validate("query", paginationQuery), async (c) =>
     c.json(await listMovements(c.var.db, c.req.valid("param").id, c.req.valid("query"))),

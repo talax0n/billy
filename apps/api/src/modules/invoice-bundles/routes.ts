@@ -10,7 +10,7 @@ export const invoiceBundleRoutes = new Hono<AppEnv>()
   .use(backOffice())
   .get("/", validate("query", paginationQuery), async (c) => c.json(await listBundles(c.var.db, c.req.valid("query"))))
   .post("/", validate("json", invoiceBundleInput), async (c) =>
-    c.json(await createBundle(c.var.db, c.req.valid("json"), c.var.user.id), 201),
+    c.json(await createBundle(c.var.db, c.req.valid("json"), c.var.actor), 201),
   )
   .get("/:id", validate("param", idParam), async (c) => c.json(await getBundle(c.var.db, c.req.valid("param").id)))
-  .post("/:id/void", validate("param", idParam), async (c) => c.json(await voidBundle(c.var.db, c.req.valid("param").id)));
+  .post("/:id/void", validate("param", idParam), async (c) => c.json(await voidBundle(c.var.db, c.req.valid("param").id, c.var.actor)));

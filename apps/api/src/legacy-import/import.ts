@@ -26,6 +26,7 @@ import {
 import { categories, createDb, isEmpty, products, settings, stockMovements, users } from "@billy/db";
 import { sql } from "drizzle-orm";
 import { hashPassword } from "../auth/password.ts";
+import { systemActor } from "../lib/audit.ts";
 import { createAccount, createCashEntry } from "../modules/cash/service.ts";
 import { createContact } from "../modules/contacts/service.ts";
 import { createExpense } from "../modules/expenses/service.ts";
@@ -107,7 +108,8 @@ const [admin] = await db
     passwordHash: await hashPassword(process.env.SEED_ADMIN_PASSWORD ?? "admin12345"),
   })
   .returning();
-const adminUser = { id: admin!.id, username: admin!.username, name: admin!.name, role: admin!.role };
+// Every imported document is logged as the admin with source `system`; admin is never limited.
+const system = systemActor(admin!.id);
 // Shop contact details live in the gitignored .legacy/shop.json (copied from the legacy Pengaturan page).
 const shop = existsSync(`${src}shop.json`) ? (JSON.parse(readFileSync(`${src}shop.json`, "utf8")) as Record<string, string>) : {};
 await db.insert(settings).values({
@@ -134,6 +136,7 @@ for (const [, code, name, kind] of list("akun")) {
       name: name!.trim(),
       kind: kind === "kas" ? "cash" : name!.trim() === "QR" ? "ewallet" : "bank",
     }),
+    system,
   );
   accountByName.set(normName(name!), account.id);
 }
@@ -142,7 +145,7 @@ const jurnal = list("jurnal");
 let extraAccounts = 0;
 for (const name of new Set(jurnal.map((r) => normName(r[3] ?? "")).filter(Boolean))) {
   if (accountByName.has(name)) continue;
-  const created = await createAccount(db, accountInput.parse({ code: `LEG-${++extraAccounts}`, name, kind: "bank" }));
+  const created = await createAccount(db, accountInput.parse({ code: `LEG-${++extraAccounts}`, name, kind: "bank" }), system);
   accountByName.set(name, created.id);
 }
 const kas = accountByName.get("KAS")!;
@@ -158,7 +161,7 @@ for (const [, , code, name, kind, phone, email] of list("kontak")) {
     const unique = usedCodes.has(code!) ? `${code}-${usedCodes.size}` : code!;
     usedCodes.add(unique);
     const parsed = contactInput.safeParse({ code: unique, name, kind: k, phone: phone ?? "", email: email ?? "" });
-    const row = await createContact(db, parsed.success ? parsed.data : contactInput.parse({ code: unique, name, kind: k, phone: phone ?? "" }));
+    const row = await createContact(db, parsed.success ? parsed.data : contactInput.parse({ code: unique, name, kind: k, phone: phone ?? "" }), system);
     if (!contactByName[k].has(normName(name!))) contactByName[k].set(normName(name!), row.id);
   });
 }
@@ -169,6 +172,7 @@ async function contactId(kind: "customer" | "supplier", name: string) {
   const row = await createContact(
     db,
     contactInput.parse({ code: `LEG-${kind === "customer" ? "C" : "S"}${++extraContacts}`, name: name.trim() || "Tanpa nama", kind }),
+    system,
   );
   contactByName[kind].set(key, row.id);
   return row.id;
@@ -192,6 +196,7 @@ for (const [, name, , sell, cost, stock, unit] of list("produk")) {
         costPrice: Math.max(0, money(cost)),
         minStock: 0,
       }),
+      system,
     );
     productByName.set(key, p.id);
     legacyStock.set(p.id, Number(stock) || 0);
@@ -207,6 +212,7 @@ async function product(lineName: string, price: number): Promise<{ id: string; n
   const p = await createProduct(
     db,
     productInput.parse({ code: null, barcode: null, name: lineName.trim(), unit: "PCS", categoryId: null, sellPrice: price, costPrice: 0, minStock: 0 }),
+    system,
   );
   productByName.set(normName(lineName), p.id);
   return { id: p.id, note: "" };
@@ -272,7 +278,7 @@ for (const d of purchases) {
         note: `Legacy ${h.kode_pembelian ?? ""}`.trim(),
         lines,
       }),
-      admin!.id,
+      system,
     );
     purchaseIds.set(d.id, created.id);
     noteTotal("purchases", h.kode_pembelian ?? d.id, created.total, h.total_tagihan);
@@ -304,7 +310,7 @@ for (const d of sales) {
         note: `Legacy ${h.no_faktur ?? ""}`.trim(),
         lines,
       }),
-      admin!.id,
+      system,
     );
     salesIds.set(d.id, invoice.id);
     noteTotal("sales", h.no_faktur ?? d.id, invoice.total, h.total_tagihan);
@@ -330,7 +336,7 @@ for (const d of bundles) {
         note: `Legacy ${h.kode_tukar_faktur ?? ""}`.trim(),
         invoiceIds: invoices.map((i) => i.id),
       }),
-      admin!.id,
+      system,
     );
   });
 }
@@ -351,8 +357,8 @@ for (const p of oldestFirst(payments)) {
     if (amount < money(p.r[6])) appendFileSync(errorsFile, `${JSON.stringify({ kind: `${p.kind} payments`, ref: p.r[1], error: `Capped ${money(p.r[6])} to outstanding ${outstanding}` })}\n`);
     if (amount <= 0) return;
     const input = { accountId: account(p.r[2]), date: p.date, amount, method: method(p.r[4]), note: "" };
-    if (p.kind === "sales") await recordPayment(db, p.doc!, salesPaymentInput.parse(input), admin!.id);
-    else await payPurchase(db, p.doc!, purchasePaymentInput.parse(input), admin!.id);
+    if (p.kind === "sales") await recordPayment(db, p.doc!, salesPaymentInput.parse(input), system);
+    else await payPurchase(db, p.doc!, purchasePaymentInput.parse(input), system);
   });
 }
 
@@ -372,7 +378,7 @@ for (const r of list("biaya").reverse()) {
         amount,
         proofUrl: "",
       }),
-      admin!.id,
+      system,
     );
   });
 }
@@ -392,7 +398,7 @@ for (const r of jurnal.filter((r) => r[2] === "terima uang" || r[2] === "transfe
         amount: inn > 0 ? inn : out,
         note: r[2] === "terima uang" ? "Terima uang (aplikasi lama)" : "Transfer uang (aplikasi lama)",
       }),
-      admin!.id,
+      system,
     );
   });
 }
@@ -434,7 +440,7 @@ for (const d of receipts) {
         tendered: Math.max(total, receiptAmount(rows, "Total Dibayar")),
         total,
       }),
-      adminUser,
+      system,
     );
   });
 }
@@ -453,7 +459,7 @@ for (const [id, target] of legacyStock) {
   const diff = target - (derived.get(id) ?? 0);
   if (diff === 0) continue;
   await attempt("stock", id, () =>
-    adjustStock(db, id, stockAdjustmentInput.parse({ qty: diff, note: "Penyesuaian migrasi: samakan dengan stok aplikasi lama" }), admin!.id),
+    adjustStock(db, id, stockAdjustmentInput.parse({ qty: diff, note: "Penyesuaian migrasi: samakan dengan stok aplikasi lama" }), system),
   );
 }
 

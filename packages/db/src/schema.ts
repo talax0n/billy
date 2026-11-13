@@ -1,4 +1,4 @@
-import { discountKinds, roles, uuidv7, type Rupiah } from "@billy/core";
+import { approvalKinds, approvalMethods, approvalStatuses, auditSources, discountKinds, roles, uuidv7, type Rupiah } from "@billy/core";
 import { sql } from "drizzle-orm";
 import {
   bigint,
@@ -7,6 +7,7 @@ import {
   date,
   index,
   integer,
+  jsonb,
   pgEnum,
   pgTable,
   primaryKey,
@@ -56,6 +57,10 @@ export const stockSourceType = pgEnum("stock_source_type", ["sales_invoice", "pu
 export const paymentDirection = pgEnum("payment_direction", ["receivable", "payable"]);
 export const paymentMethod = pgEnum("payment_method", ["cash", "transfer", "qris", "giro"]);
 export const posMethod = pgEnum("pos_method", ["cash", "qris", "transfer"]);
+export const auditSource = pgEnum("audit_source", auditSources);
+export const approvalKind = pgEnum("approval_kind", approvalKinds);
+export const approvalStatus = pgEnum("approval_status", approvalStatuses);
+export const approvalMethod = pgEnum("approval_method", approvalMethods);
 
 export const users = pgTable("users", {
   id: id(),
@@ -64,6 +69,8 @@ export const users = pgTable("users", {
   passwordHash: text().notNull(),
   role: userRole().notNull(),
   active: boolean().notNull().default(true),
+  /** Admins only: the 6-digit PIN that approves a kasir's action, hashed like a password. Never sent to a client. */
+  approvalPinHash: text(),
   createdAt: createdAt(),
 });
 
@@ -93,6 +100,9 @@ export const settings = pgTable(
     invoiceSigner: text().notNull().default(""),
     receiptFooter: text().notNull().default(""),
     posDeviceCode: text().notNull().default("K1"),
+    /** Every non-admin: line and document discounts combined, basis points of the gross. */
+    kasirMaxDiscountBp: integer().notNull().default(500),
+    allowBelowCost: boolean().notNull().default(false),
   },
   (t) => [check("settings_single_row", sql`${t.id} = 1`)],
 );
@@ -468,4 +478,53 @@ export const documentSequences = pgTable(
     lastValue: integer().notNull(),
   },
   (t) => [primaryKey({ columns: [t.prefix, t.period] })],
+);
+
+/**
+ * An admin's yes to one exact action. `subject` is what was approved (sale, amount, discount,
+ * lines); spending it compares that subject with the action's own, so it fits nothing else.
+ */
+export const approvals = pgTable(
+  "approvals",
+  {
+    id: id(),
+    kind: approvalKind().notNull(),
+    status: approvalStatus().notNull(),
+    method: approvalMethod().notNull(),
+    requestedBy: userRef().notNull(),
+    deviceCode: text(),
+    subject: jsonb().notNull(),
+    /** One readable line for the admin's bell, e.g. "Diskon 8% · K1-261113-0004 · Rp 380.000". */
+    summary: text().notNull(),
+    decidedBy: userRef(),
+    decidedAt: timestamp({ withTimezone: true }),
+    usedAt: timestamp({ withTimezone: true }),
+    createdAt: createdAt(),
+    expiresAt: timestamp({ withTimezone: true }).notNull(),
+  },
+  (t) => [index().on(t.status, t.createdAt), index().on(t.requestedBy)],
+);
+
+/** Append-only: a trigger in the migration rejects UPDATE, DELETE and TRUNCATE. */
+export const auditEvents = pgTable(
+  "audit_events",
+  {
+    id: id(),
+    at: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    /** Null only for a failed login with an unknown username. */
+    actorId: userRef(),
+    actorRole: userRole(),
+    source: auditSource().notNull(),
+    deviceCode: text(),
+    /** A key of `auditActions` in @billy/core. */
+    action: text().notNull(),
+    entityType: text().notNull(),
+    entityId: text().notNull(),
+    summary: text().notNull(),
+    before: jsonb(),
+    after: jsonb(),
+    reason: text(),
+    approvalId: uuid().references(() => approvals.id),
+  },
+  (t) => [index().on(t.at), index().on(t.actorId, t.action, t.at)],
 );

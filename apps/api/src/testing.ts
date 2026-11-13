@@ -1,8 +1,8 @@
 import type { Role } from "@billy/core";
-import { createDb } from "@billy/db";
+import { createDb, users } from "@billy/db";
 import { sql } from "drizzle-orm";
 import { createApp } from "./app.ts";
-import { createUser } from "./modules/users/service.ts";
+import { hashPassword } from "./auth/password.ts";
 
 /**
  * A fresh, empty database on the Postgres server at `serverUrl`, for tests that need real
@@ -36,10 +36,13 @@ export async function createTestApp({ postgres }: { postgres?: string | undefine
 
   /** Creates a user with the role and returns the `cookie` header of a fresh session. */
   const signIn = async (role: Role, username: string = role) => {
-    const user = await createUser(db, { username, name: `Uji ${role}`, role, password: "rahasia123" });
+    const [user] = await db
+      .insert(users)
+      .values({ username, name: `Uji ${role}`, role, passwordHash: await hashPassword("rahasia123") })
+      .returning({ id: users.id, username: users.username, name: users.name, role: users.role });
     const res = await call("/api/auth/login", { method: "POST", body: { username, password: "rahasia123" } });
     const cookie = res.headers.get("set-cookie")!.split(";")[0]!;
-    return { user, cookie };
+    return { user: user!, cookie };
   };
 
   return { app, db, call, signIn, close };

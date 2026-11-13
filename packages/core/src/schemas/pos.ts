@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { approvalInput } from "../approvals.ts";
 import { discountKinds } from "../invoice.ts";
 import { rupiah } from "../money.ts";
 import { rupiahInput, text } from "./common.ts";
@@ -37,9 +38,12 @@ export const posSaleInput = z.object({
    * admin and staff may upload any cashier's queued sales, recorded under that cashier.
    */
   cashierId: z.uuid().optional(),
+  /** Only when the sale breaks a limit; never stored on the device, since it may hold the admin's PIN. */
+  approval: approvalInput.optional(),
 });
 export type PosSaleInput = z.input<typeof posSaleInput>;
 
 export const posVoidInput = z.object({
   reason: z.string().trim().min(1, "Alasan void wajib diisi").max(500),
+  approval: approvalInput.optional(),
 });

@@ -3,11 +3,16 @@ import {
   addDays,
   assertInvoiceVoidable,
   assertPaymentAllowed,
+  breachMessage,
   businessDate,
+  combinedDiscountBp,
   computeTotals,
   deriveInvoiceStatus,
   DomainError,
+  formatBp,
+  formatRupiah,
   rupiah,
+  saleLimitBreaches,
   type salesInvoiceInput,
   type salesListQuery,
   type salesPaymentInput,
@@ -27,12 +32,17 @@ import {
 } from "@billy/db";
 import { and, asc, count, desc, eq, gte, inArray, isNull, lte, sql, type SQL } from "drizzle-orm";
 import type { z } from "zod";
+import type { Actor } from "../../env.ts";
+import { authorize, pinApprover, type Requirement } from "../../lib/approval.ts";
+import { audit } from "../../lib/audit.ts";
 import { costAsOf } from "../../lib/cost-as-of.ts";
+import { getLimits } from "../pos/service.ts";
 import { allocateDocNumber } from "../../lib/doc-number.ts";
 import { invoiceState } from "../../lib/invoice-state.ts";
 import { matchAllTerms } from "../../lib/search.ts";
 
 type PaymentFields = Omit<z.output<typeof salesPaymentInput>, "date">;
+type InvoiceInput = z.output<typeof salesInvoiceInput>;
 
 function invoiceQuery(db: Db) {
   const state = invoiceState(db, salesInvoices, payments.salesInvoiceId);
@@ -219,14 +229,21 @@ async function insertPayment(
   tx: Db,
   invoice: { id: string; number: string },
   input: PaymentFields & { date: string },
-  userId: string,
+  actor: Actor,
 ) {
+  const userId = actor.id;
   const { state } = await getInvoice(tx, invoice.id);
   assertPaymentAllowed(state, input.amount);
   const [payment] = await tx
     .insert(payments)
     .values({ ...input, direction: "receivable", salesInvoiceId: invoice.id, createdBy: userId })
     .returning({ id: payments.id });
+  await audit(tx, actor, {
+    action: "sales.payment.create",
+    entityId: payment!.id,
+    summary: `Pembayaran ${invoice.number} ${formatRupiah(input.amount)}`,
+    after: { invoiceId: invoice.id, date: input.date, amount: input.amount, method: input.method, accountId: input.accountId },
+  });
   await tx.insert(cashEntries).values({
     accountId: input.accountId,
     date: input.date,
@@ -240,8 +257,34 @@ async function insertPayment(
   });
 }
 
-export async function createInvoice(db: Db, input: z.output<typeof salesInvoiceInput>, userId: string) {
+/** A non-admin's invoice whose line and document discounts together pass the kasir cap needs approval. */
+async function invoiceRequirement(tx: Db, input: InvoiceInput, actor: Pick<Actor, "role">): Promise<Requirement | null> {
+  if (actor.role === "admin") return null;
+  const discount = { kind: input.discountKind, value: input.discountValue };
+  const breaches = saleLimitBreaches(input.lines, discount, await getLimits(tx)).filter((b) => b.kind === "discount");
+  if (breaches.length === 0) return null;
+  const total = computeTotals(input.lines, discount).total;
+  return {
+    kind: "discount",
+    subject: {
+      customerId: input.customerId,
+      date: input.date,
+      total,
+      discount,
+      lines: input.lines.map(({ productId, qty, unitPrice, discountAmount }) => ({ productId, qty, unitPrice, discountAmount })),
+    },
+    summary: `Diskon ${formatBp(combinedDiscountBp(input.lines, discount))} · faktur ${input.date} · ${formatRupiah(total)}`,
+    message: breachMessage(breaches),
+  };
+}
+
+export const invoiceApproval = (db: Db, input: InvoiceInput, actor: Pick<Actor, "role">) => invoiceRequirement(db, input, actor);
+
+export async function createInvoice(db: Db, input: InvoiceInput, actor: Actor) {
+  const userId = actor.id;
+  const pinAdmin = await pinApprover(db, actor, input.approval);
   return db.transaction(async (tx) => {
+    const approvalId = await authorize(tx, actor, await invoiceRequirement(tx, input, actor), input.approval, pinAdmin);
     const [customer] = await tx
       .select({ id: contacts.id })
       .from(contacts)
@@ -292,15 +335,30 @@ export async function createInvoice(db: Db, input: z.output<typeof salesInvoiceI
       })),
     );
 
-    if (input.payment) await insertPayment(tx, invoice!, { ...input.payment, date: input.date }, userId);
+    await audit(tx, actor, {
+      action: "sales.invoice.create",
+      entityId: invoice!.id,
+      summary: `Faktur ${number} ${formatRupiah(totals.total)}`,
+      after: {
+        number,
+        customerId: input.customerId,
+        date: input.date,
+        subtotal: totals.subtotal,
+        discountAmount: totals.discountAmount,
+        total: totals.total,
+        lines: lines.map(({ productId, qty, unitPrice, discountAmount }) => ({ productId, qty, unitPrice, discountAmount })),
+      },
+      approvalId,
+    });
+    if (input.payment) await insertPayment(tx, invoice!, { ...input.payment, date: input.date }, actor);
     return getInvoice(tx, invoice!.id);
   });
 }
 
-export async function recordPayment(db: Db, invoiceId: string, input: z.output<typeof salesPaymentInput>, userId: string) {
+export async function recordPayment(db: Db, invoiceId: string, input: z.output<typeof salesPaymentInput>, actor: Actor) {
   return db.transaction(async (tx) => {
     const invoice = await lockInvoice(tx, invoiceId);
-    await insertPayment(tx, invoice, input, userId);
+    await insertPayment(tx, invoice, input, actor);
     return getInvoice(tx, invoiceId);
   });
 }
@@ -310,8 +368,9 @@ export async function voidPayment(
   invoiceId: string,
   paymentId: string,
   { reason }: z.output<typeof voidInput>,
-  userId: string,
+  actor: Actor,
 ) {
+  const userId = actor.id;
   return db.transaction(async (tx) => {
     const invoice = await lockInvoice(tx, invoiceId);
     const [payment] = await tx
@@ -331,11 +390,20 @@ export async function voidPayment(
       note: `Void pembayaran ${invoice.number}: ${reason}`,
       createdBy: userId,
     });
+    await audit(tx, actor, {
+      action: "sales.payment.void",
+      entityId: payment.id,
+      summary: `Void pembayaran ${invoice.number} ${formatRupiah(payment.amount)}`,
+      before: { voidedAt: null },
+      after: { voidedAt: new Date().toISOString(), amount: payment.amount },
+      reason,
+    });
     return getInvoice(tx, invoiceId);
   });
 }
 
-export async function voidInvoice(db: Db, invoiceId: string, { reason }: z.output<typeof voidInput>, userId: string) {
+export async function voidInvoice(db: Db, invoiceId: string, { reason }: z.output<typeof voidInput>, actor: Actor) {
+  const userId = actor.id;
   return db.transaction(async (tx) => {
     const invoice = await lockInvoice(tx, invoiceId);
     const current = await getInvoice(tx, invoiceId);
@@ -364,6 +432,14 @@ export async function voidInvoice(db: Db, invoiceId: string, { reason }: z.outpu
         createdBy: userId,
       })),
     );
+    await audit(tx, actor, {
+      action: "sales.invoice.void",
+      entityId: invoiceId,
+      summary: `Void faktur ${invoice.number} ${formatRupiah(current.total)}`,
+      before: { voidedAt: null },
+      after: { voidedAt: new Date().toISOString(), total: current.total },
+      reason,
+    });
     return getInvoice(tx, invoiceId);
   });
 }

@@ -9,8 +9,8 @@ export const userRoutes = new Hono<AppEnv>()
   .use(adminOnly())
   .get("/", validate("query", paginationQuery), async (c) => c.json(await listUsers(c.var.db, c.req.valid("query"))))
   .post("/", validate("json", userCreateInput), async (c) =>
-    c.json(await createUser(c.var.db, c.req.valid("json")), 201),
+    c.json(await createUser(c.var.db, c.req.valid("json"), c.var.actor), 201),
   )
   .put("/:id", validate("param", idParam), validate("json", userUpdateInput), async (c) =>
-    c.json(await updateUser(c.var.db, c.var.user.id, c.req.valid("param").id, c.req.valid("json"))),
+    c.json(await updateUser(c.var.db, c.var.actor, c.req.valid("param").id, c.req.valid("json"))),
   );

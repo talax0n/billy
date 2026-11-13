@@ -1,20 +1,26 @@
-import { DomainError, fieldErrors } from "@billy/core";
+import { type ApprovalKind, DomainError, fieldErrors } from "@billy/core";
 import type { Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
+import { ApprovalRequired } from "./approval.ts";
 
 /** Body of every non-2xx response. `fields` maps an input path to its message. */
 export interface ErrorBody {
   error: string;
   fields?: Record<string, string>;
+  /** Present on a 403 that an admin's approval would lift. */
+  approval?: { kind: ApprovalKind | null };
 }
 
-const domainStatus = { invalid: 422, conflict: 409, not_found: 404 } as const;
+const domainStatus = { invalid: 422, conflict: 409, not_found: 404, forbidden: 403 } as const;
 
 /** Never leaks stack traces or SQL: unknown errors are logged and answered with a generic 500. */
 export function onError(err: Error, c: Context): Response {
   if (err instanceof z.core.$ZodError) {
     return c.json<ErrorBody>({ error: "Periksa kembali isian", fields: fieldErrors(err) }, 400);
+  }
+  if (err instanceof ApprovalRequired) {
+    return c.json<ErrorBody>({ error: err.message, approval: { kind: err.approvalKind } }, 403);
   }
   if (err instanceof DomainError) {
     return c.json<ErrorBody>({ error: err.message }, domainStatus[err.kind]);

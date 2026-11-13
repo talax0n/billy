@@ -1,4 +1,4 @@
-import type { Role } from "@billy/core";
+import type { AuditSource, Role } from "@billy/core";
 import type { Db } from "@billy/db";
 
 export interface SessionUser {
@@ -8,6 +8,13 @@ export interface SessionUser {
   role: Role;
 }
 
+/** Who an audited change is recorded under, and where it came from. */
+export interface Actor {
+  id: string;
+  role: Role;
+  source: AuditSource;
+}
+
 /** Every request carries the database; set once in `createApp`, so tests inject an in-memory one. */
 export interface AppEnv {
   Variables: { db: Db };
@@ -15,5 +22,5 @@ export interface AppEnv {
 
 /** After `requireRole`, handlers also see the signed-in user. */
 export interface AuthedEnv {
-  Variables: { db: Db; user: SessionUser };
+  Variables: { db: Db; user: SessionUser; actor: Actor };
 }

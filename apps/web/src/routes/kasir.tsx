@@ -1,10 +1,23 @@
-import { cartTotals, emptyCartTotals, type PosMethod, type PosSaleInput, rupiah, type Rupiah, uuidv7 } from "@billy/core";
+import {
+  breachMessage,
+  cartTotals,
+  emptyCartTotals,
+  type PosMethod,
+  type PosSaleInput,
+  rupiah,
+  type Rupiah,
+  saleLimitBreaches,
+  uploadOutcome,
+  uuidv7,
+} from "@billy/core";
 import { useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Contrast, LayoutDashboard, LogOut, Settings2 } from "lucide-react";
 import { type KeyboardEvent, useEffect, useEffectEvent, useReducer, useRef, useState } from "react";
+import { ApprovalDialog } from "../components/approval-dialog.tsx";
 import { EmptyState } from "../components/ui/page.tsx";
 import { toast } from "../components/ui/toast.tsx";
+import { ApiError } from "../lib/api.ts";
 import { meQuery, useLogout } from "../lib/auth.ts";
 import { cx } from "../lib/cx.ts";
 import { setTheme } from "../lib/theme.ts";
@@ -20,8 +33,8 @@ import {
   ProblemsDialog,
   TxDiscountDialog,
 } from "../pos/dialogs.tsx";
-import { allocateNumber, type Catalog, catalogQuery, change, deductSold, type ParkedCart, peekNumber, read, write } from "../pos/local.ts";
-import { onFlushed, type OutboxSnapshot, queueSale, startOutbox, useOutbox } from "../pos/outbox.ts";
+import { type Catalog, catalogQuery, change, commitNumber, deductSold, type ParkedCart, peekNumber, type QueuedSale, read, write } from "../pos/local.ts";
+import { onFlushed, type OutboxSnapshot, queueSale, sendSale, startOutbox, useOutbox } from "../pos/outbox.ts";
 import { PayPanel } from "../pos/pay-panel.tsx";
 import { accountFor, usePosPreferences } from "../pos/preferences.ts";
 import { printReceipt, type ReceiptData, ReceiptPrinter } from "../pos/receipt.tsx";
@@ -83,6 +96,9 @@ function Register({ catalog }: { catalog: Catalog }) {
   const [dialog, setDialog] = useState<DialogName | null>(null);
   const [parked, setParked] = useState<ParkedCart[]>([]);
   const [nextNumber, setNextNumber] = useState("");
+  /** A sale the server refused until an admin approves it; `offline` when approval cannot be reached. */
+  const [blocked, setBlocked] = useState<{ item: QueuedSale; message: string; offline: boolean } | null>(null);
+  const paying = useRef(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const tenderRef = useRef<HTMLInputElement>(null);
 
@@ -126,9 +142,37 @@ function Register({ catalog }: { catalog: Catalog }) {
     if (thenQty) setQtyEdit(existing >= 0 ? existing : cart.lines.length);
   };
 
+  /**
+   * Online, the sale goes straight to the server so a limit is caught before the receipt prints.
+   * Offline, or when the server cannot be reached, it is queued; a sale the device already knows
+   * is over the discount cap is blocked instead, since approval needs the server.
+   */
   async function pay() {
-    if (!canPay || !account) return;
-    const number = await allocateNumber(shop.deviceCode, catalog.lastNumber);
+    if (!canPay || !account || paying.current) return;
+    paying.current = true;
+    try {
+      const item = buildSale(account, await peekNumber(shop.deviceCode, catalog.lastNumber));
+      const limits = catalog.limits ?? { kasirMaxDiscountBp: 500, allowBelowCost: false };
+      const breaches = me?.role === "admin" ? [] : saleLimitBreaches(cart.lines, cart.discount, limits);
+      const offlineBlock = () => setBlocked({ item, message: breachMessage(breaches), offline: true });
+      // Backoff: the server was just unreachable; queue at once rather than wait for another timeout.
+      if (outbox.sync.phase === "offline" || outbox.sync.phase === "backoff") {
+        if (breaches.length) offlineBlock();
+        else await complete(item, false);
+        return;
+      }
+      const result = await sendSale(item.sale, 6_000);
+      if (result.status >= 200 && result.status < 300) await complete(item, true);
+      else if (result.needsApproval) setBlocked({ item, message: result.error, offline: false });
+      else if (uploadOutcome(result.status) !== "retry") toast(result.error, "down");
+      else if (breaches.length) offlineBlock();
+      else await complete(item, false);
+    } finally {
+      paying.current = false;
+    }
+  }
+
+  function buildSale(account: { id: string; name: string }, number: string): QueuedSale {
     const paid = method === "cash" && tendered > 0 ? tendered : totals.total;
     const soldAt = new Date().toISOString();
     const sale: PosSaleInput = {
@@ -158,12 +202,28 @@ function Register({ catalog }: { catalog: Catalog }) {
       tendered: paid,
       change: rupiah(paid - totals.total),
     };
-    await queueSale({ sale, receipt });
-    await deductSold(sale.lines, (fn) => queryClient.setQueryData(catalogQuery.queryKey, (c) => c && fn(c)));
-    await write("lastReceipt", receipt);
-    printReceipt(receipt, shop, prefs.paper);
+    return { sale, receipt };
+  }
+
+  /** The sale happened: keep its number, queue it unless the server already holds it, print. */
+  async function complete(item: QueuedSale, uploaded: boolean) {
+    await commitNumber(item.sale.number);
+    if (!uploaded) await queueSale(item);
+    else setNextNumber(await peekNumber(shop.deviceCode, catalog.lastNumber));
+    await deductSold(item.sale.lines, (fn) => queryClient.setQueryData(catalogQuery.queryKey, (c) => c && fn(c)));
+    await write("lastReceipt", item.receipt);
+    printReceipt(item.receipt, shop, prefs.paper);
+    setBlocked(null);
     reset();
     focusSearch();
+  }
+
+  /** Retries the blocked sale with the admin's approval. The PIN rides only on this request, never in the outbox. */
+  async function payApproved(approval: NonNullable<PosSaleInput["approval"]>) {
+    if (!blocked) return;
+    const result = await sendSale({ ...blocked.item.sale, approval });
+    if (result.status >= 200 && result.status < 300) return complete(blocked.item, true);
+    throw new ApiError(result.error, result.status);
   }
 
   // State first, storage after: a quick second F8 must already see the emptied cart.
@@ -194,7 +254,7 @@ function Register({ catalog }: { catalog: Catalog }) {
   }
 
   const onGlobalKey = useEffectEvent((e: globalThis.KeyboardEvent) => {
-    if (dialog) return;
+    if (dialog || blocked) return;
     if (e.key === "F2") focusSearch();
     else if (e.key === "F3") setDialog("customer");
     else if (e.key === "F4") setDialog("txDiscount");
@@ -377,6 +437,18 @@ function Register({ catalog }: { catalog: Catalog }) {
           onClose={focusSearch}
           onSave={(discount) => {
             dispatch({ type: "txDiscount", discount });
+            focusSearch();
+          }}
+        />
+      )}
+      {blocked && (
+        <ApprovalDialog
+          message={blocked.message}
+          offline={blocked.offline}
+          request={{ action: "pos.sale", sale: blocked.item.sale }}
+          submit={payApproved}
+          onClose={() => {
+            setBlocked(null);
             focusSearch();
           }}
         />

@@ -1,9 +1,10 @@
-import { categoryInput, DomainError, idParam, paginationQuery } from "@billy/core";
+import { categoryInput, changedFields, DomainError, idParam, paginationQuery } from "@billy/core";
 import { categories, products } from "@billy/db";
 import { asc, count, eq, ilike } from "drizzle-orm";
 import { Hono } from "hono";
 import { backOffice } from "../../auth/require-role.ts";
 import type { AppEnv } from "../../env.ts";
+import { audit } from "../../lib/audit.ts";
 import { likePattern } from "../../lib/search.ts";
 import { validate } from "../../lib/validate.ts";
 
@@ -32,15 +33,28 @@ export const categoryRoutes = new Hono<AppEnv>()
     return c.json({ rows, total: counted!.total });
   })
   .post("/", validate("json", categoryInput), async (c) => {
-    const [row] = await c.var.db.insert(categories).values(c.req.valid("json")).returning();
-    return c.json(row!, 201);
+    const input = c.req.valid("json");
+    const row = await c.var.db.transaction(async (tx) => {
+      const [row] = await tx.insert(categories).values(input).returning();
+      await audit(tx, c.var.actor, { action: "category.create", entityId: row!.id, summary: `Kategori ${row!.name}`, after: input });
+      return row!;
+    });
+    return c.json(row, 201);
   })
   .put("/:id", validate("param", idParam), validate("json", categoryInput), async (c) => {
-    const [row] = await c.var.db
-      .update(categories)
-      .set(c.req.valid("json"))
-      .where(eq(categories.id, c.req.valid("param").id))
-      .returning();
-    if (!row) throw new DomainError("not_found", "Kategori tidak ditemukan");
+    const input = c.req.valid("json");
+    const { id } = c.req.valid("param");
+    const row = await c.var.db.transaction(async (tx) => {
+      const [before] = await tx
+        .select({ name: categories.name, description: categories.description })
+        .from(categories)
+        .where(eq(categories.id, id))
+        .for("update");
+      if (!before) throw new DomainError("not_found", "Kategori tidak ditemukan");
+      const [row] = await tx.update(categories).set(input).where(eq(categories.id, id)).returning();
+      const diff = changedFields(before, input);
+      if (diff) await audit(tx, c.var.actor, { action: "category.update", entityId: id, summary: `Kategori ${row!.name} diubah`, ...diff });
+      return row!;
+    });
     return c.json(row);
   });

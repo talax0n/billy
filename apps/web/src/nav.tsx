@@ -10,6 +10,7 @@ import {
   type LucideIcon,
   Package,
   Receipt,
+  ScrollText,
   Settings,
   ShoppingCart,
   Users,
@@ -17,6 +18,7 @@ import {
   WalletCards,
 } from "lucide-react";
 import type { ReactNode } from "react";
+import { AuditPage } from "./routes/audit/audit-page.tsx";
 import { BundlesPage } from "./routes/invoice-bundles/bundles-page.tsx";
 import { CashPage } from "./routes/cash/cash-page.tsx";
 import { ContactsPage } from "./routes/contacts/contacts-page.tsx";
@@ -65,5 +67,6 @@ export const navItems: NavItem[] = [
   { group: "Persediaan", path: "/produk", label: "Produk", icon: Package, page: ProductsPage },
   { group: "Persediaan", path: "/mutasi-stok", label: "Mutasi Stok", icon: Boxes, page: StockPage },
   { group: "Persediaan", path: "/kontak", label: "Kontak", icon: Users, page: ContactsPage },
+  { group: null, path: "/log-aktivitas", label: "Log Aktivitas", icon: ScrollText, page: AuditPage, roles: ["admin"] },
   { group: null, path: "/pengaturan", label: "Pengaturan", icon: Settings, page: SettingsPage },
 ];

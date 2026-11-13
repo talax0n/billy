@@ -1,12 +1,19 @@
 import {
+  approvalKindLabels,
+  breachMessage,
   businessDate,
+  combinedDiscountBp,
   computeTotals,
   docPeriod,
   DomainError,
+  formatBp,
   formatRupiah,
+  type Limits,
   type PaginationQuery,
   type posSaleInput,
+  type posVoidInput,
   rupiah,
+  saleLimitBreaches,
 } from "@billy/core";
 import {
   accounts,
@@ -23,16 +30,29 @@ import {
 } from "@billy/db";
 import { and, asc, count, desc, eq, getTableColumns, ilike, inArray, isNull, like, ne, sql, type SQL } from "drizzle-orm";
 import type { z } from "zod";
-import type { SessionUser } from "../../env.ts";
+import type { Actor } from "../../env.ts";
+import { authorize, pinApprover, type Requirement } from "../../lib/approval.ts";
+import { audit } from "../../lib/audit.ts";
 import { costAsOf } from "../../lib/cost-as-of.ts";
 import { likePattern } from "../../lib/search.ts";
 import { stockByProduct } from "../products/service.ts";
 
 type PosSale = z.output<typeof posSaleInput>;
+type Viewer = Pick<Actor, "id" | "role">;
 
 /** A kasir only ever sees their own sales (data-model roles). */
-const visibleTo = (user: SessionUser): SQL | undefined =>
+const visibleTo = (user: Viewer): SQL | undefined =>
   user.role === "kasir" ? eq(posSales.cashierId, user.id) : undefined;
+
+/** A sale uploaded this long after it was made was made offline. */
+const OFFLINE_AFTER_MS = 2 * 60_000;
+
+export async function getLimits(db: Db): Promise<Limits> {
+  const [row] = await db
+    .select({ kasirMaxDiscountBp: settings.kasirMaxDiscountBp, allowBelowCost: settings.allowBelowCost })
+    .from(settings);
+  return row ?? { kasirMaxDiscountBp: 500, allowBelowCost: false };
+}
 
 /**
  * Everything the cashier device caches to keep selling offline: products, accounts and the
@@ -90,7 +110,61 @@ export async function getCatalog(db: Db) {
       .limit(1),
   ]);
 
-  return { products: productRows, accounts: accountRows, customers: customerRows, shop, lastNumber: last?.number ?? null };
+  return {
+    products: productRows,
+    accounts: accountRows,
+    customers: customerRows,
+    shop,
+    lastNumber: last?.number ?? null,
+    limits: await getLimits(db),
+  };
+}
+
+/** The sale's lines with each product's cost as of the sale date. Refuses an unknown or inactive product. */
+async function priceLines(tx: Db, input: PosSale) {
+  const date = businessDate(new Date(input.soldAt));
+  const productIds = [...new Set(input.lines.map((l) => l.productId))];
+  const catalog = await tx
+    .select({ id: products.id, active: products.active, costPrice: costAsOf(date) })
+    .from(products)
+    .where(inArray(products.id, productIds));
+  const byId = new Map(catalog.map((p) => [p.id, p]));
+  return input.lines.map((line) => {
+    const product = byId.get(line.productId);
+    if (!product?.active) throw new DomainError("invalid", "Produk di struk tidak ditemukan atau nonaktif");
+    return { ...line, unitCost: product.costPrice };
+  });
+}
+
+/**
+ * What a non-admin's sale needs approved: a combined discount over the cap, or a line below
+ * cost. Admin is never limited. The subject pins the exact sale, so an approval for one
+ * discount cannot be spent on a bigger one.
+ */
+async function saleRequirement(tx: Db, input: PosSale, lines: Awaited<ReturnType<typeof priceLines>>, actor: Viewer): Promise<Requirement | null> {
+  if (actor.role === "admin") return null;
+  const breaches = saleLimitBreaches(lines, input.discount, await getLimits(tx));
+  if (breaches.length === 0) return null;
+  const bp = combinedDiscountBp(lines, input.discount);
+  const reason = breaches.map((b) => (b.kind === "discount" ? `Diskon ${formatBp(bp)}` : approvalKindLabels.below_cost)).join(" + ");
+  return {
+    kind: breaches[0]!.kind,
+    subject: {
+      saleId: input.id,
+      number: input.number,
+      total: input.total,
+      discount: { kind: input.discount.kind, value: input.discount.value },
+      lines: input.lines.map(({ productId, qty, unitPrice, discountAmount }) => ({ productId, qty, unitPrice, discountAmount })),
+    },
+    summary: `${reason} · ${input.number} · ${formatRupiah(input.total)}`,
+    message: breachMessage(breaches),
+    deviceCode: input.number.split("-")[0]!,
+  };
+}
+
+/** For a remote approval request: what this sale would need approved, computed as `recordSale` does. */
+export async function posSaleApproval(db: Db, input: PosSale, actor: Viewer) {
+  return saleRequirement(db, input, await priceLines(db, input), actor);
 }
 
 /**
@@ -98,15 +172,18 @@ export async function getCatalog(db: Db) {
  * (`created: false`). The sale already happened and was paid, so each line keeps the price
  * actually charged, even when the catalog price changed while the device was offline. The
  * server still recomputes the totals from those lines and refuses a total that disagrees.
+ * A non-admin's sale over a limit needs `input.approval`.
  */
-export async function recordSale(db: Db, input: PosSale, user: SessionUser) {
+export async function recordSale(db: Db, input: PosSale, actor: Actor) {
   // A replay answers like GET: a kasir never sees another cashier's sale.
-  const replay = (tx: Db) => getSale(tx, input.id, user).then((sale) => ({ created: false, sale }));
+  const replay = (tx: Db) => getSale(tx, input.id, actor).then((sale) => ({ created: false, sale }));
+  const [known] = await db.select({ id: posSales.id }).from(posSales).where(eq(posSales.id, input.id));
+  const pinAdmin = known ? null : await pinApprover(db, actor, input.approval);
   return db.transaction(async (tx) => {
     const [existing] = await tx.select({ id: posSales.id }).from(posSales).where(eq(posSales.id, input.id));
     if (existing) return replay(tx);
 
-    const cashierId = await cashierOf(tx, input.cashierId, user);
+    const cashierId = await cashierOf(tx, input.cashierId, actor);
     const [taken] = await tx
       .select({ id: posSales.id })
       .from(posSales)
@@ -126,18 +203,7 @@ export async function recordSale(db: Db, input: PosSale, user: SessionUser) {
     // keeps the cost that applied when it was sold.
     const soldAt = new Date(input.soldAt);
     const date = businessDate(soldAt);
-    const productIds = [...new Set(input.lines.map((l) => l.productId))];
-    const catalog = await tx
-      .select({ id: products.id, active: products.active, costPrice: costAsOf(date) })
-      .from(products)
-      .where(inArray(products.id, productIds));
-    const byId = new Map(catalog.map((p) => [p.id, p]));
-
-    const lines = input.lines.map((line) => {
-      const product = byId.get(line.productId);
-      if (!product?.active) throw new DomainError("invalid", "Produk di struk tidak ditemukan atau nonaktif");
-      return { ...line, unitCost: product.costPrice };
-    });
+    const lines = await priceLines(tx, input);
 
     const totals = computeTotals(lines, input.discount);
     if (totals.total !== input.total) {
@@ -147,15 +213,17 @@ export async function recordSale(db: Db, input: PosSale, user: SessionUser) {
       );
     }
     if (input.tendered < totals.total) throw new DomainError("invalid", "Uang diterima kurang dari total");
+    const approvalId = await authorize(tx, actor, await saleRequirement(tx, input, lines, actor), input.approval, pinAdmin);
 
     // Two uploads of the same new sale can both get here; the one that loses the insert
     // waits for the winner and answers as a replay.
+    const deviceCode = input.number.split("-")[0]!;
     const [inserted] = await tx
       .insert(posSales)
       .values({
         id: input.id,
         number: input.number,
-        deviceCode: input.number.split("-")[0]!,
+        deviceCode,
         soldAt,
         date,
         cashierId,
@@ -213,6 +281,26 @@ export async function recordSale(db: Db, input: PosSale, user: SessionUser) {
         createdBy: cashierId,
       });
     }
+    const offline = actor.source === "kasir" && Date.now() - soldAt.getTime() > OFFLINE_AFTER_MS;
+    await audit(tx, actor, {
+      action: "pos.sale.create",
+      entityId: input.id,
+      summary: `Penjualan ${input.number} ${formatRupiah(totals.total)}`,
+      after: {
+        number: input.number,
+        soldAt: input.soldAt,
+        cashierId,
+        method: input.method,
+        subtotal: totals.subtotal,
+        discountAmount: totals.discountAmount,
+        discountBp: combinedDiscountBp(lines, input.discount),
+        total: totals.total,
+        lines: lines.length,
+      },
+      approvalId,
+      deviceCode,
+      ...(offline && { source: "kasir_offline" as const }),
+    });
     return { created: true, sale: await getSale(tx, input.id) };
   });
 }
@@ -221,7 +309,7 @@ export async function recordSale(db: Db, input: PosSale, user: SessionUser) {
  * Who the sale is recorded under. A kasir uploads only their own sales; admin or staff signed in
  * on the POS may upload sales another cashier queued offline, under that cashier's id.
  */
-async function cashierOf(tx: Db, cashierId: string | undefined, user: SessionUser) {
+async function cashierOf(tx: Db, cashierId: string | undefined, user: Viewer) {
   if (!cashierId || cashierId === user.id) return user.id;
   if (user.role === "kasir") {
     throw new DomainError("invalid", "Transaksi ini milik kasir lain. Kirim dari akun kasir itu atau akun admin.");
@@ -237,7 +325,7 @@ const saleColumns = {
   accountName: accounts.name,
 };
 
-export async function listSales(db: Db, user: SessionUser, { q, page, pageSize }: PaginationQuery) {
+export async function listSales(db: Db, user: Viewer, { q, page, pageSize }: PaginationQuery) {
   const where = and(visibleTo(user), q ? ilike(posSales.number, likePattern(q)) : undefined);
   const [rows, [counted]] = await Promise.all([
     db
@@ -255,7 +343,7 @@ export async function listSales(db: Db, user: SessionUser, { q, page, pageSize }
 }
 
 /** The sale with its lines, for the detail sheet and reprints. Receipt-safe: no cost prices. */
-export async function getSale(db: Db, id: string, user?: SessionUser) {
+export async function getSale(db: Db, id: string, user?: Viewer) {
   const [sale] = await db
     .select(saleColumns)
     .from(posSales)
@@ -284,21 +372,40 @@ export async function getSale(db: Db, id: string, user?: SessionUser) {
   return { ...sale, lines };
 }
 
+/** Every void by a non-admin needs approval (a kasir voids only their own sales). */
+async function voidRequirement(tx: Db, id: string, actor: Viewer): Promise<Requirement | null> {
+  const sale = await getSale(tx, id, actor);
+  if (actor.role === "admin") return null;
+  return {
+    kind: "void",
+    subject: { saleId: sale.id, number: sale.number, total: sale.total },
+    summary: `Void ${sale.number} · ${formatRupiah(sale.total)}`,
+    message: "Void struk kasir butuh persetujuan admin.",
+    deviceCode: sale.deviceCode,
+  };
+}
+
+export const posVoidApproval = (db: Db, id: string, actor: Viewer) => voidRequirement(db, id, actor);
+
 /**
  * Sets the void columns and writes reversal rows for the stock and the money. The conditional
  * update is the guard: of two concurrent voids only one updates the row and writes reversals.
  */
-export async function voidSale(db: Db, id: string, reason: string, userId: string) {
+export async function voidSale(db: Db, id: string, { reason, approval }: z.output<typeof posVoidInput>, actor: Actor) {
+  const pinAdmin = await pinApprover(db, actor, approval);
   return db.transaction(async (tx) => {
+    const requirement = await voidRequirement(tx, id, actor);
     const [voided] = await tx
       .update(posSales)
-      .set({ voidedAt: new Date(), voidedBy: userId, voidReason: reason })
+      .set({ voidedAt: new Date(), voidedBy: actor.id, voidReason: reason })
       .where(and(eq(posSales.id, id), isNull(posSales.voidedAt)))
       .returning({ id: posSales.id });
     const sale = await getSale(tx, id);
     if (!voided) throw new DomainError("conflict", "Struk sudah di-void");
+    const approvalId = await authorize(tx, actor, requirement, approval, pinAdmin);
     const date = businessDate();
     const note = `Void ${sale.number}: ${reason}`;
+    const userId = actor.id;
 
     const lines = await tx
       .select({ productId: posLines.productId, qty: posLines.qty, unitCost: posLines.unitCost })
@@ -330,6 +437,16 @@ export async function voidSale(db: Db, id: string, reason: string, userId: strin
         createdBy: userId,
       });
     }
+    await audit(tx, actor, {
+      action: "pos.sale.void",
+      entityId: id,
+      summary: `Void ${sale.number} ${formatRupiah(sale.total)}`,
+      before: { voidedAt: null },
+      after: { voidedAt: new Date().toISOString(), total: sale.total },
+      reason,
+      approvalId,
+      deviceCode: sale.deviceCode,
+    });
     return getSale(tx, id);
   });
 }

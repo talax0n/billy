@@ -31,14 +31,14 @@ export const purchaseRoutes = new Hono<AppEnv>()
   )
   .get("/", validate("query", purchaseListQuery), async (c) => c.json(await listPurchases(c.var.db, c.req.valid("query"))))
   .post("/", validate("json", purchaseInput), async (c) =>
-    c.json(await createPurchase(c.var.db, c.req.valid("json"), c.var.user.id), 201),
+    c.json(await createPurchase(c.var.db, c.req.valid("json"), c.var.actor), 201),
   )
   .get("/:id", validate("param", idParam), async (c) => c.json(await getPurchase(c.var.db, c.req.valid("param").id)))
   .post("/:id/void", validate("param", idParam), validate("json", voidInput), async (c) =>
-    c.json(await voidPurchase(c.var.db, c.req.valid("param").id, c.req.valid("json").reason, c.var.user.id)),
+    c.json(await voidPurchase(c.var.db, c.req.valid("param").id, c.req.valid("json").reason, c.var.actor)),
   )
   .post("/:id/payments", validate("param", idParam), validate("json", purchasePaymentInput), async (c) =>
-    c.json(await payPurchase(c.var.db, c.req.valid("param").id, c.req.valid("json"), c.var.user.id), 201),
+    c.json(await payPurchase(c.var.db, c.req.valid("param").id, c.req.valid("json"), c.var.actor), 201),
   )
   .post(
     "/:id/payments/:paymentId/void",
@@ -46,6 +46,6 @@ export const purchaseRoutes = new Hono<AppEnv>()
     validate("json", voidInput),
     async (c) => {
       const { id, paymentId } = c.req.valid("param");
-      return c.json(await voidPayment(c.var.db, id, paymentId, c.req.valid("json").reason, c.var.user.id));
+      return c.json(await voidPayment(c.var.db, id, paymentId, c.req.valid("json").reason, c.var.actor));
     },
   );

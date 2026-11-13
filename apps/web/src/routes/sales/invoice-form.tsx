@@ -9,6 +9,7 @@ import {
   formatRupiah,
   rupiah,
   salesInvoiceInput,
+  type SalesInvoiceInput,
   type Totals,
 } from "@billy/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -17,6 +18,7 @@ import { type FormEvent, type KeyboardEvent, type ReactNode, useState } from "re
 import { Button } from "../../components/ui/button.tsx";
 import { Combobox } from "../../components/ui/combobox.tsx";
 import { controlClass, DateInput, Field, Input, MoneyInput, Select } from "../../components/ui/field.tsx";
+import { ApprovalDialog } from "../../components/approval-dialog.tsx";
 import { toast } from "../../components/ui/toast.tsx";
 import { api, ApiError, unwrap } from "../../lib/api.ts";
 import { lineTable } from "../../components/ui/line-table.ts";
@@ -87,6 +89,8 @@ export function InvoiceForm({ onSaved }: { onSaved: (id: string) => void }) {
   const [payment, setPayment] = useState<PaymentValues | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
+  /** Refused for a discount over the cap until an admin approves. */
+  const [blocked, setBlocked] = useState<{ invoice: SalesInvoiceInput; message: string } | null>(null);
 
   const filled = lines.filter((l) => l.product);
   const discountValue = discountKind === "percent" ? parsePercent(discountText) : discountKind === "amount" ? discountAmount : 0;
@@ -128,18 +132,25 @@ export function InvoiceForm({ onSaved }: { onSaved: (id: string) => void }) {
     setErrors({});
     setSubmitting(true);
     try {
-      const saved = await unwrap(api.sales.$post({ json: parsed.data }));
-      await queryClient.invalidateQueries({ queryKey: ["sales"] });
-      await queryClient.invalidateQueries({ queryKey: ["products"] });
-      toast(`${saved.number} disimpan`, "up");
-      onSaved(saved.id);
+      await save(parsed.data);
     } catch (err) {
       if (!(err instanceof ApiError)) throw err;
-      setErrors(err.fields);
-      toast(err.message, "down");
+      if (err.approval) setBlocked({ invoice: parsed.data, message: err.message });
+      else {
+        setErrors(err.fields);
+        toast(err.message, "down");
+      }
     } finally {
       setSubmitting(false);
     }
+  }
+
+  async function save(invoice: SalesInvoiceInput) {
+    const saved = await unwrap(api.sales.$post({ json: invoice }));
+    await queryClient.invalidateQueries({ queryKey: ["sales"] });
+    await queryClient.invalidateQueries({ queryKey: ["products"] });
+    toast(`${saved.number} disimpan`, "up");
+    onSaved(saved.id);
   }
 
   return (
@@ -298,6 +309,14 @@ export function InvoiceForm({ onSaved }: { onSaved: (id: string) => void }) {
           Simpan faktur
         </Button>
       </div>
+      {blocked && (
+        <ApprovalDialog
+          message={blocked.message}
+          request={{ action: "sales.invoice", invoice: blocked.invoice }}
+          submit={(approval) => save({ ...blocked.invoice, approval })}
+          onClose={() => setBlocked(null)}
+        />
+      )}
     </form>
   );
 }

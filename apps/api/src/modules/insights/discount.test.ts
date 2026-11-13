@@ -11,7 +11,7 @@ const date = "2026-11-13";
 const query = `from=${date}&to=${date}`;
 
 beforeAll(async () => {
-  ({ cookie } = await signIn("staff"));
+  ({ cookie } = await signIn("admin"));
   await db.insert(settings).values({ shopName: "Toko Uji", receiptFooter: "", posDeviceCode: "K1" });
   const [{ id: accountId }] = (await db.insert(accounts).values({ code: "KAS", name: "Kas", kind: "cash" }).returning({ id: accounts.id })) as [{ id: string }];
   const [{ id: customerId }] = (await db

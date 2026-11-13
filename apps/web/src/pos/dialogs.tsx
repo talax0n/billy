@@ -15,6 +15,7 @@ import { dismissProblem, retryProblem } from "./outbox.ts";
 import { accountFor, type PosPreferences } from "./preferences.ts";
 import { methodLabels, type ReceiptData, receiptFromSale } from "./receipt.tsx";
 import { productLabel } from "./search.tsx";
+import { VoidSaleDialog } from "./void-sale.tsx";
 import { money } from "./ui.tsx";
 
 function DialogForm({ onSubmit, children, submitLabel }: { onSubmit: () => void; children: ReactNode; submitLabel: string }) {
@@ -270,6 +271,7 @@ export function HistoryDialog({
     queryFn: () => unwrap(api.pos.sales.$get({ query: { pageSize: "30" } })),
     networkMode: "always",
   });
+  const [voiding, setVoiding] = useState<{ id: string; number: string } | null>(null);
   const reprint = async (id: string) => {
     try {
       onReprint(receiptFromSale(await unwrap(api.pos.sales[":id"].$get({ param: { id } }))));
@@ -278,6 +280,7 @@ export function HistoryDialog({
     }
   };
   const row = "grid grid-cols-[1fr_auto_auto] items-center gap-3 border-b border-line-2 py-2 last:border-b-0";
+  if (voiding) return <VoidSaleDialog sale={voiding} onClose={() => setVoiding(null)} />;
   return (
     <Dialog open onClose={onClose} title="Riwayat kasir" className="max-w-xl">
       <div className="flex flex-col">
@@ -308,9 +311,16 @@ export function HistoryDialog({
               {s.voidedAt && <Badge>Void</Badge>}
               {money(s.total)}
             </span>
-            <Button size="sm" onClick={() => void reprint(s.id)}>
-              Cetak ulang
-            </Button>
+            <span className="flex gap-1.5">
+              <Button size="sm" onClick={() => void reprint(s.id)}>
+                Cetak ulang
+              </Button>
+              {!s.voidedAt && (
+                <Button size="sm" variant="danger" onClick={() => setVoiding(s)} aria-label={`Void ${s.number}`}>
+                  Void
+                </Button>
+              )}
+            </span>
           </div>
         ))}
         {sales.isPending && <p className="py-6 text-center text-muted">Memuat…</p>}

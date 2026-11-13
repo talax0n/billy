@@ -6,6 +6,7 @@ import { createTestApp } from "../../testing.ts";
 
 const { call, signIn, db } = await createTestApp();
 let staff: string;
+let admin: string;
 let kasir: string;
 let kasirId: string;
 let otherKasir: string;
@@ -26,11 +27,13 @@ async function createProduct(code: string, name: string, sellPrice: number, cost
 
 beforeAll(async () => {
   ({ cookie: staff } = await signIn("staff"));
+  ({ cookie: admin } = await signIn("admin"));
   const k = await signIn("kasir");
   kasir = k.cookie;
   kasirId = k.user.id;
   ({ cookie: otherKasir } = await signIn("kasir", "kasir2"));
-  await db.insert(settings).values({ shopName: "Toko Uji", receiptFooter: "Terima kasih", posDeviceCode: "K1" });
+  // These tests cover totals and side effects; the discount cap has its own tests in approvals.test.ts.
+  await db.insert(settings).values({ shopName: "Toko Uji", receiptFooter: "Terima kasih", posDeviceCode: "K1", kasirMaxDiscountBp: 10_000 });
   [{ id: cashAccount }] = (await db
     .insert(accounts)
     .values([
@@ -242,7 +245,7 @@ describe("history, reprint and void", () => {
     expect([created, replayed, fetched].flatMap((sale) => sale.lines.map((line) => "unitCost" in line))).toEqual([
       false, false, false, false, false, false,
     ]);
-    await call(`/api/pos/sales/${fresh.id}/void`, { method: "POST", cookie: staff, body: { reason: "Uji" } });
+    await call(`/api/pos/sales/${fresh.id}/void`, { method: "POST", cookie: admin, body: { reason: "Uji" } });
   });
 
   it("returns a sale with its lines for reprint", async () => {
@@ -258,13 +261,20 @@ describe("history, reprint and void", () => {
     });
   });
 
-  it("forbids a kasir from voiding", async () => {
-    const res = await call(`/api/pos/sales/${own.id}/void`, { method: "POST", cookie: kasir, body: { reason: "Salah input" } });
-    expect(res.status).toBe(403);
+  it("refuses a kasir's or staff's void without an admin's approval", async () => {
+    for (const cookie of [kasir, staff]) {
+      const res = await call(`/api/pos/sales/${own.id}/void`, { method: "POST", cookie, body: { reason: "Salah input" } });
+      expect([res.status, await res.json()]).toEqual([
+        403,
+        { error: "Void struk kasir butuh persetujuan admin. Minta persetujuan admin.", approval: { kind: "void" } },
+      ]);
+    }
+    const foreign = await call(`/api/pos/sales/${other.id}/void`, { method: "POST", cookie: kasir, body: { reason: "Salah input" } });
+    expect(foreign.status).toBe(404);
   });
 
   it("voids with reversal stock movements and a reversal cash entry, once", async () => {
-    const res = await call(`/api/pos/sales/${own.id}/void`, { method: "POST", cookie: staff, body: { reason: "Salah input" } });
+    const res = await call(`/api/pos/sales/${own.id}/void`, { method: "POST", cookie: admin, body: { reason: "Salah input" } });
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ voidReason: "Salah input", voidedAt: expect.any(String) });
 
@@ -280,14 +290,14 @@ describe("history, reprint and void", () => {
       { direction: "out", amount: 221_400, category: "reversal" },
     ]);
 
-    const again = await call(`/api/pos/sales/${own.id}/void`, { method: "POST", cookie: staff, body: { reason: "Lagi" } });
+    const again = await call(`/api/pos/sales/${own.id}/void`, { method: "POST", cookie: admin, body: { reason: "Lagi" } });
     expect([again.status, await again.json()]).toEqual([409, { error: "Struk sudah di-void" }]);
   });
 });
 
 describe("sales queued offline by another cashier", () => {
   const voidAll = (ids: string[]) =>
-    Promise.all(ids.map((id) => call(`/api/pos/sales/${id}/void`, { method: "POST", cookie: staff, body: { reason: "Uji" } })));
+    Promise.all(ids.map((id) => call(`/api/pos/sales/${id}/void`, { method: "POST", cookie: admin, body: { reason: "Uji" } })));
 
   it("records a sale uploaded by staff under the cashier who made it", async () => {
     const queued = saleBody({ number: "K1-261113-0020", cashierId: kasirId });
@@ -344,6 +354,7 @@ describe("GET /api/pos/catalog", () => {
       customers: [{ id: expect.any(String), code: "P-001", name: "CV Bangun Jaya" }],
       shop: { shopName: "Toko Uji", receiptFooter: "Terima kasih", deviceCode: "K9" },
       lastNumber: `K9-${period}-0007`,
+      limits: { kasirMaxDiscountBp: 10_000, allowBelowCost: false },
     });
   });
 

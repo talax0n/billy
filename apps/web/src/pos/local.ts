@@ -86,24 +86,24 @@ function nextNumber(deviceCode: string, serverLast: string | null, local: Counte
   return nextPosNumber(deviceCode, businessDate(), last);
 }
 
-/** The number the next sale will get, for the top bar. */
+/** The number the next sale will get (`K1-261113-0042`), for the top bar and the sale itself. */
 export async function peekNumber(deviceCode: string, serverLast: string | null): Promise<string> {
   return nextNumber(deviceCode, serverLast, await read("counter")).number;
 }
 
 /**
- * Allocates the next receipt number of this device (`K1-261113-0042`). The counter lives on
- * the device so a receipt prints offline; `serverLast` (from the catalog) lets a device whose
- * storage was wiped continue after the numbers the server already holds.
+ * Moves the device counter to a number taken from `peekNumber` once its sale happened, so a
+ * sale refused for approval leaves no gap. The counter lives on the device so a receipt prints
+ * offline; `serverLast` in `peekNumber` lets a wiped device continue after the server's numbers.
  */
-export async function allocateNumber(deviceCode: string, serverLast: string | null): Promise<string> {
-  let number = "";
-  await change("counter", (local) => {
-    const next = nextNumber(deviceCode, serverLast, local);
-    number = next.number;
-    return { deviceCode, period: next.period, value: next.value };
-  });
-  return number;
+export async function commitNumber(number: string): Promise<void> {
+  const used = parsePosNumber(number);
+  if (!used) return;
+  await change("counter", (local) =>
+    local?.deviceCode === used.deviceCode && (local.period > used.period || (local.period === used.period && local.value >= used.value))
+      ? local
+      : used,
+  );
 }
 
 /**
