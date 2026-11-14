@@ -191,7 +191,14 @@ describe("lists", () => {
     const res = await call(`/api/sales?status=open&from=${today}&to=${today}`, { cookie });
     const body = (await res.json()) as Json;
     expect(body.total).toBe(2);
-    expect(body.summary).toEqual({ count: 2, total: 1_575_200, paid: 0, outstanding: 1_575_200, overdue: 0 });
+    expect(body.summary).toEqual({
+      count: 2,
+      total: 1_575_200,
+      paid: 0,
+      outstanding: 1_575_200,
+      overdue: 0,
+      counts: { overdue: 0, open: 2, paid: 1, void: 1 },
+    });
     expect(body.rows.map((r: Json) => r.state.status)).toEqual(["unpaid", "unpaid"]);
 
     const all = (await (await call("/api/sales?q=bangun", { cookie })).json()) as Json;
@@ -236,6 +243,36 @@ describe("lists", () => {
       void: ["void"],
     });
     expect(late.status).toBe(201);
+  });
+});
+
+describe("priority order", () => {
+  it("lists Telat first, then Belum lunas, Lunas and Void, and counts each chip", async () => {
+    const [customer] = await db.insert(contacts).values({ code: "P-ORD", name: "Toko Urut", kind: "customer" }).returning();
+    const make = async (date: string, termsDays: number) =>
+      (await post("/api/sales", invoiceBody({ customerId: customer!.id, date, termsDays, discountKind: "none", discountValue: 0 }))).body;
+    const paid = await make(addDays(today, -1), 30);
+    await post(`/api/sales/${paid.id}/payments`, { accountId, amount: paid.total, method: "cash", date: today });
+    const unpaid = await make(addDays(today, -3), 30);
+    const overdue = await make(addDays(today, -50), 30);
+    const olderOverdue = await make(addDays(today, -60), 30);
+    const voided = await make(today, 30);
+    await post(`/api/sales/${voided.id}/void`, { reason: "Salah input" });
+
+    const body = (await (await call(`/api/sales?customerId=${customer!.id}`, { cookie })).json()) as Json;
+    expect(body.rows.map((r: Json) => r.number)).toEqual([olderOverdue.number, overdue.number, unpaid.number, paid.number, voided.number]);
+    expect(body.rows.map((r: Json) => (r.state.overdue ? "overdue" : r.state.status))).toEqual(["overdue", "overdue", "unpaid", "paid", "void"]);
+    expect(body.summary.counts).toEqual({ overdue: 2, open: 3, paid: 1, void: 1 });
+
+    const filtered = (await (await call(`/api/sales?customerId=${customer!.id}&status=paid`, { cookie })).json()) as Json;
+    expect(filtered.total).toBe(1);
+    expect(filtered.summary.counts).toEqual({ overdue: 2, open: 3, paid: 1, void: 1 });
+  });
+
+  it("sums overdue invoices across all time", async () => {
+    const body = (await (await call("/api/sales/overdue-summary", { cookie })).json()) as Json;
+    // 775.200 overdue from the lists suite, 2 × 816.000 here
+    expect(body).toEqual({ count: 3, outstanding: 2_407_200 });
   });
 });
 

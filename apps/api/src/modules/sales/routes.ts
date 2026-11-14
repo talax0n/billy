@@ -12,6 +12,7 @@ import {
   getInvoice,
   listInvoices,
   listReceivables,
+  overdueSummary,
   recordPayment,
   voidInvoice,
   voidPayment,
@@ -22,6 +23,7 @@ const paymentParam = z.object({ id: z.uuid(), paymentId: z.uuid() });
 export const salesRoutes = new Hono<AppEnv>()
   .use(backOffice())
   .get("/receivables", async (c) => c.json(await listReceivables(c.var.db)))
+  .get("/overdue-summary", async (c) => c.json(await overdueSummary(c.var.db)))
   .get("/", validate("query", salesListQuery), async (c) => c.json(await listInvoices(c.var.db, c.req.valid("query"))))
   .get("/export.xlsx", validate("query", salesListQuery), async (c) => {
     const query = c.req.valid("query");
