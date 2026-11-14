@@ -1,4 +1,4 @@
-import { BASIS_POINTS, type Discount, entryKey, type PosMethod, posMethods, rupiah, type Rupiah } from "@billy/core";
+import { BASIS_POINTS, type Discount, entryKey, type PosMethod, posMethods, type Rupiah } from "@billy/core";
 import { useQuery } from "@tanstack/react-query";
 import { type FormEvent, type ReactNode, useState } from "react";
 import { Badge } from "../components/ui/badge.tsx";
@@ -235,12 +235,7 @@ export function ParkedDialog({
   );
 }
 
-const problemLabel = (p: SyncProblem) =>
-  "sale" in p
-    ? { title: p.sale.number, detail: `Rp ${money(p.receipt.total)}`, lost: "Transaksi ini" }
-    : p.shift.event === "open"
-      ? { title: "Buka shift", detail: `Modal Rp ${money(p.shift.openingFloat)}`, lost: "Pembukaan shift ini" }
-      : { title: "Tutup shift", detail: time.format(new Date(p.shift.closedAt)), lost: "Penutupan shift ini" };
+const problemLabel = (p: SyncProblem) => ({ title: p.sale.number, detail: `Rp ${money(p.receipt.total)}`, lost: "Transaksi ini" });
 
 /** Entries the server refused, with its reason. Nothing leaves this list without a person deciding. */
 export function ProblemsDialog({ problems, onClose }: { problems: SyncProblem[]; onClose: () => void }) {
@@ -429,71 +424,6 @@ export function CustomerDialog({
         </ul>
         {terms.length > 0 && matches.length === 0 && <p className="text-muted">Tidak ada pelanggan yang cocok.</p>}
       </div>
-    </Dialog>
-  );
-}
-
-/** Before the first sale: the cash put in the drawer to give change. Selling waits until it is set. */
-export function OpenShiftDialog({
-  drawer,
-  deviceCode,
-  onOpen,
-  onLogout,
-}: {
-  drawer: { name: string } | undefined;
-  deviceCode: string;
-  onOpen: (openingFloat: Rupiah) => void;
-  onLogout: () => void;
-}) {
-  const [float, setFloat] = useState(rupiah(0));
-  return (
-    <Dialog open onClose={() => {}} title="Buka shift" description={drawer ? `Laci ${drawer.name} · ${deviceCode}` : undefined}>
-      <DialogForm submitLabel="Buka shift" onSubmit={() => drawer && onOpen(float)}>
-        <Field label="Modal awal di laci" hint="Uang kembalian yang ada di laci sebelum transaksi pertama." error={drawer ? undefined : "Belum ada akun tunai. Buat dulu di Kas & Bank."}>
-          {(p) => <MoneyInput {...p} autoFocus value={float} onChange={setFloat} />}
-        </Field>
-        <Button variant="ghost" onClick={onLogout}>
-          Keluar
-        </Button>
-      </DialogForm>
-    </Dialog>
-  );
-}
-
-/**
- * The blind count: the cashier counts the drawer and types what is there. The amount the system
- * expects is never shown; the server compares the two and only the admin sees the difference.
- */
-export function CloseShiftDialog({
-  openDrafts,
-  onSave,
-  onClose,
-}: {
-  /** Open nota sementara this cashier made; `null` when the server cannot be reached to check. */
-  openDrafts: { id: string; number: string; total: number }[] | null;
-  onSave: (countedCash: Rupiah, note: string) => void;
-  onClose: () => void;
-}) {
-  const [counted, setCounted] = useState(rupiah(0));
-  const [note, setNote] = useState("");
-  return (
-    <Dialog open onClose={onClose} title="Tutup shift" description="Hitung semua uang tunai di laci, termasuk modal awal.">
-      <DialogForm submitLabel="Tutup shift" onSubmit={() => onSave(counted, note)}>
-        {openDrafts && openDrafts.length > 0 && (
-          <div role="alert" className="rounded-lg bg-warn-bg px-3 py-2 text-warn">
-            Masih ada {openDrafts.length} nota sementara terbuka yang Anda buat. Shift tetap bisa ditutup; nota ini tetap terbuka untuk kasir lain.
-            <ul className="mt-1 tabular-nums">
-              {openDrafts.map((d) => (
-                <li key={d.id}>
-                  {d.number} · Rp {money(d.total)}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-        <Field label="Uang tunai di laci">{(p) => <MoneyInput {...p} autoFocus value={counted} onChange={setCounted} />}</Field>
-        <Field label="Catatan">{(p) => <Input {...p} maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} />}</Field>
-      </DialogForm>
     </Dialog>
   );
 }

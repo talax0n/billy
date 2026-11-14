@@ -6,9 +6,7 @@ import {
   businessDate,
   dayStart,
   formatBp,
-  formatRupiah,
   median,
-  type Rupiah,
   rupiah,
   WATCHDOG,
   type WatchdogFlag,
@@ -16,7 +14,6 @@ import {
 } from "@billy/core";
 import {
   auditEvents,
-  cashShifts,
   type Db,
   posDrafts,
   posLines,
@@ -42,12 +39,11 @@ interface Range {
 export async function getWatchdogSettings(db: Db): Promise<WatchdogSettings> {
   const [row] = await db
     .select({
-      cashDifferenceThreshold: settings.cashDifferenceThreshold,
       openTime: sql<string>`to_char(${settings.openTime}, 'HH24:MI')`,
       closeTime: sql<string>`to_char(${settings.closeTime}, 'HH24:MI')`,
     })
     .from(settings);
-  return row ?? { cashDifferenceThreshold: rupiah(10_000), openTime: "07:00", closeTime: "17:00" };
+  return row ?? { openTime: "07:00", closeTime: "17:00" };
 }
 
 /** Instants inside the business days of the range, as an index-friendly bound on a timestamptz. */
@@ -56,7 +52,6 @@ const localDay = (at: PgColumn) => sql<string>`to_char(${at} at time zone 'Asia/
 
 const stamp = new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Jakarta" });
 const clock = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Asia/Jakarta" });
-const signed = (value: Rupiah) => `${value > 0 ? "+" : ""}${formatRupiah(value)}`;
 const person = (id: string | null, name: string | null) => (name ? { id, name } : null);
 
 const spikeNoun = { voids: "void", revisi: "revisi", refunds: "refund" } as const;
@@ -105,34 +100,6 @@ async function spikes(db: Db, { from, to }: Range): Promise<WatchdogFlag[]> {
     }
   }
   return flags;
-}
-
-async function shiftDifferences(db: Db, { from, to }: Range, threshold: Rupiah): Promise<WatchdogFlag[]> {
-  const rows = await db
-    .select({
-      id: cashShifts.id,
-      cashierId: cashShifts.cashierId,
-      name: users.name,
-      deviceCode: cashShifts.deviceCode,
-      day: localDay(cashShifts.openedAt),
-      closedAt: cashShifts.closedAt,
-      expectedCash: cashShifts.expectedCash,
-      countedCash: cashShifts.countedCash,
-      difference: cashShifts.difference,
-    })
-    .from(cashShifts)
-    .innerJoin(users, eq(users.id, cashShifts.cashierId))
-    .where(and(within(cashShifts.openedAt, from, to), isNotNull(cashShifts.closedAt), sql`abs(${cashShifts.difference}) >= ${threshold}`));
-  return rows.map((r) => ({
-    id: `shift_difference:${r.id}`,
-    type: "shift_difference",
-    severity: r.difference! < 0 ? "high" : "medium",
-    who: person(r.cashierId, r.name),
-    at: r.closedAt!.toISOString(),
-    date: r.day,
-    message: `Selisih kas shift ${r.deviceCode} ${signed(r.difference!)}: seharusnya ${formatRupiah(r.expectedCash!)}, dihitung ${formatRupiah(r.countedCash!)}`,
-    target: { type: "shift", cashierId: r.cashierId, date: r.day },
-  }));
 }
 
 /** Discount in basis points of the gross, rounded up like `combinedDiscountBp`. */
@@ -350,46 +317,26 @@ async function logins(db: Db, { from, to }: Range): Promise<WatchdogFlag[]> {
 }
 
 /**
- * Signs of a device clock set wrong on purpose: a Kasir sale or shift timed more than 5
- * minutes after the server received it (the server never receives the future), and a shift
- * opened before the same cashier's previous shift on that device closed. One cashier's
- * events leave a device in order, so their receive order is their real order.
+ * Signs of a device clock set wrong on purpose: a Kasir sale timed more than 5 minutes after
+ * the server received it (the server never receives the future).
  */
 async function clockTampering(db: Db, { from, to }: Range): Promise<WatchdogFlag[]> {
   const ahead = sql`make_interval(secs => ${WATCHDOG.clockAheadMs / 1000})`;
-  const [sales, shifts] = await Promise.all([
-    db
-      .select({
-        id: posSales.id,
-        number: posSales.number,
-        deviceCode: posSales.deviceCode,
-        soldAt: posSales.soldAt,
-        createdAt: posSales.createdAt,
-        whoId: users.id,
-        name: users.name,
-      })
-      .from(posSales)
-      .innerJoin(users, eq(users.id, posSales.cashierId))
-      // A sale dated ahead has a business date on or after the day it arrived.
-      .where(and(gte(posSales.date, from), within(posSales.createdAt, from, to), sql`${posSales.soldAt} > ${posSales.createdAt} + ${ahead}`)),
-    db
-      .select({
-        id: cashShifts.id,
-        cashierId: cashShifts.cashierId,
-        name: users.name,
-        deviceCode: cashShifts.deviceCode,
-        openedAt: cashShifts.openedAt,
-        closedAt: cashShifts.closedAt,
-        receivedAt: auditEvents.at,
-      })
-      .from(auditEvents)
-      .innerJoin(cashShifts, sql`${cashShifts.id}::text = ${auditEvents.entityId}`)
-      .innerJoin(users, eq(users.id, cashShifts.cashierId))
-      .where(and(eq(auditEvents.action, "shift.open"), within(auditEvents.at, addDays(from, -WATCHDOG.spikeHistoryDays), to)))
-      .orderBy(auditEvents.at),
-  ]);
-
-  const flags: WatchdogFlag[] = sales.map((s) => {
+  const sales = await db
+    .select({
+      id: posSales.id,
+      number: posSales.number,
+      deviceCode: posSales.deviceCode,
+      soldAt: posSales.soldAt,
+      createdAt: posSales.createdAt,
+      whoId: users.id,
+      name: users.name,
+    })
+    .from(posSales)
+    .innerJoin(users, eq(users.id, posSales.cashierId))
+    // A sale dated ahead has a business date on or after the day it arrived.
+    .where(and(gte(posSales.date, from), within(posSales.createdAt, from, to), sql`${posSales.soldAt} > ${posSales.createdAt} + ${ahead}`));
+  return sales.map((s) => {
     const date = businessDate(s.createdAt);
     return {
       id: `clock_tampering:${s.id}`,
@@ -402,31 +349,6 @@ async function clockTampering(db: Db, { from, to }: Range): Promise<WatchdogFlag
       target: { type: "pos_sale", id: s.id },
     };
   });
-  const [start, end] = [dayStart(from), dayStart(addDays(to, 1))];
-  const previous = new Map<string, (typeof shifts)[number]>();
-  for (const s of shifts) {
-    const key = `${s.cashierId}|${s.deviceCode}`;
-    const prev = previous.get(key);
-    previous.set(key, s);
-    if (s.receivedAt < start || s.receivedAt >= end) continue;
-    const date = businessDate(s.receivedAt);
-    const flag = (message: string): WatchdogFlag => ({
-      id: `clock_tampering:${s.id}`,
-      type: "clock_tampering",
-      severity: "high",
-      who: person(s.cashierId, s.name),
-      at: s.receivedAt.toISOString(),
-      date,
-      message,
-      target: { type: "shift", cashierId: s.cashierId, date },
-    });
-    if (s.openedAt.getTime() - s.receivedAt.getTime() > WATCHDOG.clockAheadMs) {
-      flags.push(flag(`Shift ${s.deviceCode} dibuka ${stamp.format(s.openedAt)}, diterima server ${stamp.format(s.receivedAt)}: jam perangkat terlalu cepat`));
-    } else if (prev?.closedAt && s.openedAt < prev.closedAt) {
-      flags.push(flag(`Shift ${s.deviceCode} dibuka ${stamp.format(s.openedAt)}, sebelum shift sebelumnya ditutup ${stamp.format(prev.closedAt)}: jam perangkat mundur`));
-    }
-  }
-  return flags;
 }
 
 /** Posted opnames whose differences add up to Rp 100.000 or more at cost, ignoring sign. */
@@ -467,7 +389,6 @@ export async function watchdogFlags(db: Db, range: Range, now = new Date()): Pro
   const [limits, watch] = await Promise.all([getLimits(db), getWatchdogSettings(db)]);
   const groups = await Promise.all([
     spikes(db, range),
-    shiftDifferences(db, range, watch.cashDifferenceThreshold),
     pricing(db, range, limits.kasirMaxDiscountBp),
     drafts(db, range, watch.closeTime, now),
     outsideHours(db, range, watch),
@@ -483,14 +404,14 @@ const total = (value: SQL, where?: SQL) =>
 
 /**
  * Ringkasan harian: the day's flags and, per person, the day's voids, revisi, refunds,
- * discounts given and shift cash differences.
+ * and discounts given.
  */
 export async function dailySummary(db: Db, date: BusinessDate) {
   const posDiscount = sql`${posSales.discountAmount} + coalesce((select sum(${posLines.discountAmount}) from ${posLines} where ${posLines.saleId} = ${posSales.id}), 0)`;
   const invoiceDiscount = sql`${salesInvoices.discountAmount} + coalesce((select sum(${salesLines.discountAmount}) from ${salesLines} where ${salesLines.invoiceId} = ${salesInvoices.id}), 0)`;
   const isVoid = sql`${auditEvents.action} = 'pos.sale.void'`;
   const isRefund = sql`(${auditEvents.action} = 'pos.sale.revise' and (${auditEvents.after}->>'difference')::bigint < 0)`;
-  const [flags, events, pos, invoices, shifts] = await Promise.all([
+  const [flags, events, pos, invoices] = await Promise.all([
     watchdogFlags(db, { from: date, to: date }),
     db
       .select({
@@ -514,11 +435,6 @@ export async function dailySummary(db: Db, date: BusinessDate) {
       .from(salesInvoices)
       .where(and(eq(salesInvoices.date, date), isNull(salesInvoices.voidedAt)))
       .groupBy(salesInvoices.createdBy),
-    db
-      .select({ userId: cashShifts.cashierId, shifts: count(), shiftDifference: total(sql`${cashShifts.difference}`) })
-      .from(cashShifts)
-      .where(and(within(cashShifts.openedAt, date, date), isNotNull(cashShifts.closedAt)))
-      .groupBy(cashShifts.cashierId),
   ]);
 
   const empty = {
@@ -528,8 +444,6 @@ export async function dailySummary(db: Db, date: BusinessDate) {
     refunds: 0,
     refundAmount: rupiah(0),
     discountAmount: rupiah(0),
-    shifts: 0,
-    shiftDifference: rupiah(0),
   };
   const byUser = new Map<string, typeof empty>();
   const merge = (userId: string | null, values: Partial<typeof empty>) => {
@@ -538,14 +452,14 @@ export async function dailySummary(db: Db, date: BusinessDate) {
     for (const [key, value] of Object.entries(values) as [keyof typeof empty, number][]) row[key] = (row[key] + value) as never;
     byUser.set(userId, row);
   };
-  for (const { userId, ...values } of [...events, ...pos, ...invoices, ...shifts]) merge(userId, values);
+  for (const { userId, ...values } of [...events, ...pos, ...invoices]) merge(userId, values);
 
   const people = byUser.size
     ? await db.select({ id: users.id, name: users.name, role: users.role }).from(users).where(inArray(users.id, [...byUser.keys()]))
     : [];
   const rows = people
     .map((p) => ({ ...p, ...byUser.get(p.id)! }))
-    .filter((r) => r.voids || r.revisi || r.refunds || r.discountAmount || r.shifts)
+    .filter((r) => r.voids || r.revisi || r.refunds || r.discountAmount)
     .sort((a, b) => a.name.localeCompare(b.name));
   return { date, flags, rows, total: rows.length };
 }

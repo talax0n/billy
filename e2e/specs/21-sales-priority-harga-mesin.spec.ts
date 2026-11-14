@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { ADMIN, KASIR, login, openShift, rp } from "../helpers.ts";
+import { ADMIN, KASIR, login, rp } from "../helpers.ts";
 
 const daysAgo = (days: number) =>
   new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(new Date(Date.now() - days * 86_400_000));
@@ -60,9 +60,6 @@ test("kasir types the tinting machine price with H, the line keeps its own row a
   });
   await login(page, KASIR);
   await page.goto("/kasir");
-  const open = page.getByRole("dialog", { name: "Buka shift" });
-  await expect(open.or(page.getByRole("button", { name: /Shift sejak/ }))).toBeVisible();
-  if (await open.isVisible()) await openShift(page, 0);
   await expect(page.getByTestId("sync-state")).toHaveText("Online");
 
   const search = page.getByLabel("Cari produk atau scan barcode");
@@ -72,7 +69,7 @@ test("kasir types the tinting machine price with H, the line keeps its own row a
     await search.press("Enter");
   };
   await addEnamel();
-  await expect(page.getByRole("button", { name: "Ubah harga H" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Ubah harga" })).toBeVisible();
   await search.press("ArrowUp");
   await search.press("h");
 

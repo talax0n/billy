@@ -128,8 +128,6 @@ export const settings = pgTable(
     /** Every non-admin: line and document discounts combined, basis points of the gross. */
     kasirMaxDiscountBp: integer().notNull().default(500),
     allowBelowCost: boolean().notNull().default(false),
-    /** Watchdog: a closed shift whose cash difference, either way, reaches this is flagged. */
-    cashDifferenceThreshold: money().notNull().default(10_000 as Rupiah),
     /** Watchdog: opening hours, Asia/Jakarta wall-clock time. */
     openTime: time().notNull().default("07:00"),
     closeTime: time().notNull().default("17:00"),
@@ -480,8 +478,6 @@ export const posSales = pgTable(
       .references(() => accounts.id),
     tendered: money().notNull(),
     change: money().notNull(),
-    /** Null only for sales made before shifts existed. */
-    shiftId: uuid().references(() => cashShifts.id),
     /** Set on a revisi: the nota it replaced, which is voided in the same transaction. */
     revisionOf: uuid().references((): AnyPgColumn => posSales.id),
     /** Prints so far; the receipt printed at checkout is the first. Every later one says SALINAN. */
@@ -490,7 +486,7 @@ export const posSales = pgTable(
     createdAt: createdAt(),
     ...voidColumns(),
   },
-  (t) => [index().on(t.date), index().on(t.cashierId), index().on(t.shiftId), uniqueIndex().on(t.revisionOf)],
+  (t) => [index().on(t.date), index().on(t.cashierId), uniqueIndex().on(t.revisionOf)],
 );
 
 /**
@@ -521,38 +517,6 @@ export const posDrafts = pgTable(
     cancelReason: text(),
   },
   (t) => [index().on(t.status)],
-);
-
-/**
- * One cashier's session at one Kasir device, from the opening float to the blind cash count.
- * `id` and `opened_at` come from the device, so a shift opened offline syncs idempotently.
- * The close fields are set together when the shift closes; `expected_cash` is computed by the
- * server and never sent to a kasir.
- */
-export const cashShifts = pgTable(
-  "cash_shifts",
-  {
-    id: uuid().primaryKey(),
-    cashierId: userRef().notNull(),
-    deviceCode: text().notNull(),
-    /** The cash drawer: the account the Kasir's cash sales pay into. */
-    accountId: uuid()
-      .notNull()
-      .references(() => accounts.id),
-    openedAt: timestamp({ withTimezone: true }).notNull(),
-    openingFloat: money().notNull(),
-    closedAt: timestamp({ withTimezone: true }),
-    countedCash: money(),
-    expectedCash: money(),
-    /** Counted minus expected: negative when cash is missing. */
-    difference: money(),
-    closeNote: text(),
-  },
-  (t) => [
-    index().on(t.openedAt),
-    uniqueIndex("cash_shifts_one_open").on(t.cashierId, t.deviceCode).where(sql`${t.closedAt} is null`),
-    check("cash_shifts_float_non_negative", sql`${t.openingFloat} >= 0`),
-  ],
 );
 
 /**

@@ -4,7 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 import { createTestApp } from "../../testing.ts";
 
-const { call, signIn, shiftFor, db } = await createTestApp();
+const { call, signIn, db } = await createTestApp();
 let admin: string;
 let adminId: string;
 let staff: string;
@@ -62,12 +62,10 @@ describe("stok opname", () => {
     expect((await lines(opname.id, "uncounted")).map((l) => l.name)).toEqual(["Kuas", "Roll"]);
 
     // Two cans sell while the count goes on: posting compares the count with 8, not 10.
-    const shiftId = await shiftFor(admin);
     const sale = {
       id: uuidv7(),
       number: "K1-261113-0001",
       soldAt: new Date().toISOString(),
-      shiftId,
       lines: [{ productId: paint, qty: 2, unitPrice: 100_000 }],
       discount: { kind: "none", value: 0 },
       method: "cash",

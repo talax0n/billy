@@ -6,14 +6,6 @@ const idr = new Intl.NumberFormat("id-ID");
 /** `2432000` → `2.432.000`: POS money without the `Rp`, which the layout prints separately. */
 export const money = (value: number) => idr.format(value);
 
-export function Kbd({ children, className }: { children: ReactNode; className?: string }) {
-  return (
-    <kbd className={cx("rounded-[5px] border border-line bg-panel px-1.5 py-px font-sans text-xs text-muted", className)}>
-      {children}
-    </kbd>
-  );
-}
-
 /** The pill used across the POS top bar. */
 export function Chip({ children, className, ...props }: { children: ReactNode; className?: string; onClick?: () => void; title?: string | undefined }) {
   const Tag = props.onClick ? "button" : "span";

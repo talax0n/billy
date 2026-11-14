@@ -42,7 +42,7 @@ export function DailySummaryPage() {
         <DataTable
           paged={paged}
           search={false}
-          empty={<EmptyState title="Tidak ada pembatalan, revisi, diskon atau shift" />}
+          empty={<EmptyState title="Tidak ada pembatalan, revisi atau diskon" />}
           columns={[
             {
               header: "Orang",

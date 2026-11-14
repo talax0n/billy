@@ -2,9 +2,7 @@ import { type CartTotals, type DeliveryDetailsInput, type Discount, type PosMeth
 import type { Ref } from "react";
 import { cx } from "../lib/cx.ts";
 import { methodLabels } from "./receipt.tsx";
-import { Kbd, money } from "./ui.tsx";
-
-const methodKeys: Record<PosMethod, string> = { cash: "F5", qris: "F6", transfer: "F7" };
+import { money } from "./ui.tsx";
 
 export function discountLabel(discount: Discount) {
   if (discount.kind === "percent") return `${(discount.value / 100).toLocaleString("id-ID")}%`;
@@ -72,7 +70,6 @@ export function PayPanel({
           <button type="button" onClick={onTxDiscount} className="text-ink underline decoration-faint underline-offset-[3px]">
             {discount.kind === "none" ? "+ Diskon transaksi" : `Diskon transaksi ${discountLabel(discount)}`}
           </button>
-          <Kbd>F4</Kbd>
         </span>
         <span className="tabular-nums">{totals.discountAmount ? `−${money(totals.discountAmount)}` : 0}</span>
       </div>
@@ -105,11 +102,11 @@ export function PayPanel({
               aria-checked={m === method}
               onClick={() => onMethod(m)}
               className={cx(
-                "flex items-center justify-between rounded-[9px] border px-2.5 py-2.5",
+                "rounded-[9px] border px-2.5 py-2.5",
                 m === method ? "border-[1.5px] border-ink font-medium" : "border-line text-ink-2",
               )}
             >
-              {methodLabels[m]} <Kbd>{methodKeys[m]}</Kbd>
+              {methodLabels[m]}
             </button>
           ))}
         </div>
@@ -178,10 +175,9 @@ export function PayPanel({
         type="button"
         disabled={!canPay}
         onClick={onPay}
-        className="sticky bottom-0 mt-auto flex items-center justify-between rounded-[11px] bg-ink px-4 py-3.5 shadow-[0_-8px_16px_var(--panel)] text-[15px] font-semibold text-panel disabled:opacity-40"
+        className="sticky bottom-0 mt-auto rounded-[11px] bg-ink px-4 py-3.5 shadow-[0_-8px_16px_var(--panel)] text-[15px] font-semibold text-panel disabled:opacity-40"
       >
         {paidBefore === undefined ? "Bayar & cetak struk" : "Simpan revisi & cetak struk"}
-        <kbd className="rounded-[5px] border border-panel/35 px-1.5 py-px font-sans text-xs font-normal">Enter</kbd>
       </button>
     </div>
   );

@@ -2,7 +2,7 @@ import { approvalPinInput, BASIS_POINTS, formatBp, type Limits, watchdogSettings
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
 import { Button } from "../../components/ui/button.tsx";
-import { Field, Input, MoneyInput } from "../../components/ui/field.tsx";
+import { Field, Input } from "../../components/ui/field.tsx";
 import { PageBody } from "../../components/ui/page.tsx";
 import { toast } from "../../components/ui/toast.tsx";
 import { api, ApiError, unwrap } from "../../lib/api.ts";
@@ -103,9 +103,6 @@ function WatchdogForm({ initial }: { initial: WatchdogSettings }) {
 
   return (
     <form onSubmit={submit} noValidate className="grid grid-cols-3 gap-x-3 gap-y-4 max-md:grid-cols-2">
-      <Field label="Selisih kas shift" hint="Lebih atau kurang, mulai jumlah ini." error={form.errors.cashDifferenceThreshold} className="col-span-3 max-w-56 max-md:col-span-2">
-        {(p) => <MoneyInput {...p} value={form.values.cashDifferenceThreshold} onChange={(v) => form.set("cashDifferenceThreshold", v)} />}
-      </Field>
       <Field label="Jam buka" error={form.errors.openTime}>
         {(p) => <Input {...p} type="time" value={form.values.openTime} onChange={(e) => form.set("openTime", e.target.value)} />}
       </Field>

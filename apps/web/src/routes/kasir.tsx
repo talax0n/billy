@@ -14,7 +14,7 @@ import {
 } from "@billy/core";
 import { useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Contrast, LayoutDashboard, LogOut, Settings2, Truck } from "lucide-react";
+import { Contrast, History, LayoutDashboard, LogOut, Pause, Printer, Settings2, Truck } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useEffect, useEffectEvent, useReducer, useRef, useState } from "react";
 import { ApprovalDialog } from "../components/approval-dialog.tsx";
 import { EmptyState, Loading } from "../components/ui/page.tsx";
@@ -26,13 +26,11 @@ import { setTheme } from "../lib/theme.ts";
 import { cartReducer, emptyCart, plainLineOf } from "../pos/cart.ts";
 import { CartTable } from "../pos/cart-table.tsx";
 import {
-  CloseShiftDialog,
   CustomerDialog,
   HistoryDialog,
   LineDiscountDialog,
   NoteDialog,
   PriceDialog,
-  OpenShiftDialog,
   ParkedDialog,
   PreferencesDialog,
   ProblemsDialog,
@@ -45,17 +43,14 @@ import {
   change,
   commitNumber,
   deductSold,
-  type LocalShift,
   type ParkedCart,
   peekNumber,
   type QueuedSale,
   read,
-  saveShift,
   write,
 } from "../pos/local.ts";
 import { cartFromDraft, cartFromSale, type DraftDetail, DraftsDialog, openDraftsQuery, RevisiDialog } from "../pos/drafts.tsx";
 import {
-  flush,
   onFlushed,
   type OutboxSnapshot,
   queue,
@@ -71,9 +66,9 @@ import { accountFor, usePosPreferences } from "../pos/preferences.ts";
 import { countedReprint, printReceipt, type ReceiptData, ReceiptPrinter } from "../pos/receipt.tsx";
 import { exactMatch, SearchBox, searchProducts } from "../pos/search.tsx";
 import { cacheAppShell } from "../pos/shell.ts";
-import { Chip, Kbd } from "../pos/ui.tsx";
+import { Chip } from "../pos/ui.tsx";
 
-type DialogName = "customer" | "lineDiscount" | "price" | "note" | "txDiscount" | "parked" | "history" | "problems" | "prefs" | "closeShift" | "drafts" | "revisi";
+type DialogName = "customer" | "lineDiscount" | "price" | "note" | "txDiscount" | "parked" | "history" | "problems" | "prefs" | "drafts" | "revisi";
 
 type SaleDetail = Awaited<ReturnType<typeof fetchSale>>;
 const fetchSale = (id: string) => unwrap(api.pos.sales[":id"].$get({ param: { id } }));
@@ -146,9 +141,6 @@ function Register({ catalog }: { catalog: Catalog }) {
   /** "Diantar ke alamat" for this sale; null while off. */
   const [delivery, setDelivery] = useState<Required<DeliveryDetailsInput> | null>(null);
   const drafts = useQuery(openDraftsQuery);
-  /** This cashier's open shift on the device; `undefined` while it loads, `null` when none is open. */
-  const [shift, setShift] = useState<LocalShift | null | undefined>(undefined);
-  const logout = useLogout();
   const paying = useRef(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const tenderRef = useRef<HTMLInputElement>(null);
@@ -164,54 +156,12 @@ function Register({ catalog }: { catalog: Catalog }) {
   const due = rupiah(Math.max(totals.total - (revising?.original.total ?? 0), 0));
   const short = method === "cash" && tendered > 0 && tendered < due;
   const drawer = accountFor("cash", prefs, catalog.accounts);
-  const canPay = cart.lines.length > 0 && computed.ok && !short && account !== undefined && Boolean(shift) && (!delivery || delivery.address.trim() !== "");
+  const canPay = cart.lines.length > 0 && computed.ok && !short && account !== undefined && (!delivery || delivery.address.trim() !== "");
   const line = cart.lines[cart.selected];
 
   useEffect(() => {
     void read("parked").then((list) => setParked(list ?? []));
   }, []);
-  // The device's own record first. Without one, the server's open shift for this cashier here,
-  // e.g. after the browser storage was cleared, unless its close is still waiting in the outbox.
-  const meId = me?.id;
-  useEffect(() => {
-    if (!meId) return;
-    let live = true;
-    void (async () => {
-      let mine: LocalShift | null = (await read("shifts"))?.[meId] ?? null;
-      if (!mine) {
-        const query = { query: { deviceCode: shop.deviceCode } };
-        const server = await unwrap(api.pos.shifts.current.$get(query, { init: { signal: AbortSignal.timeout(5_000) } })).catch(() => null);
-        const closing = (await read("outbox"))?.some((e) => "shift" in e && e.shift.event === "close" && e.shift.id === server?.shift?.id);
-        if (server?.shift && !closing) {
-          mine = server.shift;
-          await saveShift(meId, mine);
-        }
-      }
-      if (live) setShift(mine);
-    })();
-    return () => {
-      live = false;
-    };
-  }, [meId, shop.deviceCode]);
-
-  async function openShift(openingFloat: Rupiah) {
-    if (!me || !drawer) return;
-    const opened: LocalShift = { id: uuidv7(), deviceCode: shop.deviceCode, accountId: drawer.id, openedAt: new Date().toISOString(), openingFloat };
-    await saveShift(me.id, opened);
-    setShift(opened);
-    await queue({ shift: { event: "open", cashierId: me.id, ...opened } });
-    focusSearch();
-  }
-
-  async function closeShift(countedCash: Rupiah, note: string) {
-    if (!me || !shift) return;
-    await queue({ shift: { event: "close", id: shift.id, cashierId: me.id, closedAt: new Date().toISOString(), countedCash, note } });
-    await saveShift(me.id, null);
-    setShift(null);
-    setDialog(null);
-    toast("Shift ditutup", "up");
-  }
-
   useEffect(() => {
     void peekNumber(shop.deviceCode, catalog.lastNumber).then(setNextNumber);
   }, [shop.deviceCode, catalog.lastNumber, outbox.pending.length]);
@@ -249,12 +199,10 @@ function Register({ catalog }: { catalog: Catalog }) {
    * is over the discount cap is blocked instead, since approval needs the server.
    */
   async function pay() {
-    if (!canPay || !account || !shift || paying.current) return;
+    if (!canPay || !account || paying.current) return;
     paying.current = true;
     try {
-      // The shift's open must reach the server before a sale sent straight to it.
-      if (outbox.pending.some((e) => "shift" in e && e.shift.id === shift.id)) await flush();
-      const item = buildSale(account, shift.id, await peekNumber(shop.deviceCode, catalog.lastNumber));
+      const item = buildSale(account, await peekNumber(shop.deviceCode, catalog.lastNumber));
       if (activeDraft || revising) return await payOnline(item);
       const limits = catalog.limits ?? { kasirMaxDiscountBp: 500, allowBelowCost: false };
       const breaches = me?.role === "admin" ? [] : saleLimitBreaches(cart.lines, cart.discount, limits);
@@ -302,7 +250,7 @@ function Register({ catalog }: { catalog: Catalog }) {
     else toast(result.status === 0 ? `${revising ? "Revisi" : "Nota sementara"} hanya bisa disimpan saat online` : result.error, "down");
   }
 
-  function buildSale(account: { id: string; name: string }, shiftId: string, number: string): QueuedSale {
+  function buildSale(account: { id: string; name: string }, number: string): QueuedSale {
     // A revisi collects or refunds only the difference; a refund is always cash from the drawer.
     const difference = totals.total - (revising?.original.total ?? 0);
     const saleMethod = difference < 0 ? "cash" : method;
@@ -320,7 +268,6 @@ function Register({ catalog }: { catalog: Catalog }) {
       tendered: paid,
       total: totals.total,
       cashierId: me?.id,
-      shiftId,
       ...(delivery && !revising && { delivery }),
     };
     const receipt: ReceiptData = {
@@ -431,8 +378,13 @@ function Register({ catalog }: { catalog: Catalog }) {
     reprint(last.saleId ? await countedReprint(last.saleId).catch(() => ({ ...last, copy: true })) : { ...last, copy: true });
   }
 
+  function cancelSale() {
+    if (cart.lines.length && window.confirm("Batalkan transaksi ini?")) reset();
+    focusSearch();
+  }
+
   const onGlobalKey = useEffectEvent((e: globalThis.KeyboardEvent) => {
-    if (dialog || blocked || !shift) return;
+    if (dialog || blocked) return;
     if (e.key === "F2") focusSearch();
     else if (e.key === "F3") setDialog("customer");
     else if (e.key === "F4") setDialog("txDiscount");
@@ -444,10 +396,8 @@ function Register({ catalog }: { catalog: Catalog }) {
     else if (e.key === "F8") park();
     else if (e.key === "F9") setDialog("history");
     else if (e.key === "F10") void reprintLast();
-    else if (e.key === "Delete" && e.ctrlKey) {
-      if (cart.lines.length && window.confirm("Batalkan transaksi ini?")) reset();
-      focusSearch();
-    } else return;
+    else if (e.key === "Delete" && e.ctrlKey) cancelSale();
+    else return;
     e.preventDefault();
   });
 
@@ -503,7 +453,10 @@ function Register({ catalog }: { catalog: Catalog }) {
         backOffice={me?.role !== "kasir"}
         onProblems={() => setDialog("problems")}
         onPrefs={() => setDialog("prefs")}
-        shift={shift ?? null}
+        parkedCount={parked.length}
+        onPark={park}
+        onHistory={() => setDialog("history")}
+        onReprint={() => void reprintLast()}
         draftCount={drafts.data?.total ?? null}
         onDrafts={() => setDialog("drafts")}
         mode={
@@ -519,10 +472,6 @@ function Register({ catalog }: { catalog: Catalog }) {
             )
           )
         }
-        onCloseShift={() => {
-          if (cart.lines.length) toast("Selesaikan atau tahan transaksi ini dulu", "down");
-          else setDialog("closeShift");
-        }}
       />
       <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_380px] gap-2.5 px-2.5 pb-2.5 max-md:grid-cols-1">
         <section className="flex min-h-0 flex-col rounded-[14px] border border-line bg-panel max-md:min-h-[45dvh]">
@@ -553,6 +502,9 @@ function Register({ catalog }: { catalog: Catalog }) {
             lineTotals={computed.ok ? totals.lineTotals : []}
             dispatch={dispatch}
             onPrice={() => setDialog("price")}
+            onDiscount={() => setDialog("lineDiscount")}
+            onNote={() => setDialog("note")}
+            onCancel={cancelSale}
             qtyEdit={qtyEdit}
             onQtyEditDone={() => {
               setQtyEdit(null);
@@ -582,27 +534,6 @@ function Register({ catalog }: { catalog: Catalog }) {
           />
         </aside>
       </div>
-      <div className="flex gap-4 px-4 pb-2.5 text-xs text-muted max-md:hidden">
-        {(
-          [
-            ["F2", "cari"],
-            ["F3", "pelanggan"],
-            ["F4", "diskon"],
-            ["F8", parked.length ? `tahan transaksi (${parked.length} ditahan)` : "tahan transaksi"],
-            ["F9", "riwayat"],
-            ["F10", "cetak ulang"],
-          ] as const
-        ).map(([key, label]) => (
-          <span key={key} className="flex items-center gap-1.5">
-            <Kbd>{key}</Kbd> {label}
-          </span>
-        ))}
-        <span className="flex-1" />
-        <span className="flex items-center gap-1.5">
-          <Kbd>Ctrl</Kbd>+<Kbd>Del</Kbd> batalkan
-        </span>
-      </div>
-
       {dialog === "customer" && (
         <CustomerDialog
           // A catalog cached by an older version of the app has no customers yet.
@@ -668,14 +599,6 @@ function Register({ catalog }: { catalog: Catalog }) {
           }}
         />
       )}
-      {shift === null && <OpenShiftDialog drawer={drawer} deviceCode={shop.deviceCode} onOpen={(f) => void openShift(f)} onLogout={logout} />}
-      {dialog === "closeShift" && (
-        <CloseShiftDialog
-          openDrafts={drafts.isError ? null : (drafts.data?.rows.filter((d) => d.createdBy === me?.id) ?? null)}
-          onClose={focusSearch}
-          onSave={(counted, note) => void closeShift(counted, note)}
-        />
-      )}
       {dialog === "drafts" && (
         <DraftsDialog
           cartHasLines={cart.lines.length > 0 && !revising}
@@ -717,11 +640,13 @@ function TopBar({
   backOffice,
   onProblems,
   onPrefs,
-  shift,
+  parkedCount,
+  onPark,
+  onHistory,
+  onReprint,
   draftCount,
   onDrafts,
   mode,
-  onCloseShift,
 }: {
   catalog: Catalog;
   nextNumber: string;
@@ -732,13 +657,15 @@ function TopBar({
   backOffice: boolean;
   onProblems: () => void;
   onPrefs: () => void;
-  shift: LocalShift | null;
+  parkedCount: number;
+  onPark: () => void;
+  onHistory: () => void;
+  onReprint: () => void;
   /** Open nota sementara on the server; null offline. */
   draftCount: number | null;
   onDrafts: () => void;
   /** What the cart holds besides a new sale: a loaded nota sementara or a revisi. */
   mode: ReactNode;
-  onCloseShift: () => void;
 }) {
   const logout = useLogout();
   const initials = catalog.shop.shopName
@@ -758,20 +685,31 @@ function TopBar({
   return (
     <header className="flex flex-wrap items-center gap-2.5 px-4 py-2.5 max-md:gap-2 max-md:px-2.5">
       <div className="grid size-[26px] place-items-center rounded-[7px] bg-ink text-xs font-semibold text-panel">{initials || "B"}</div>
-      <b className="text-[15px] font-semibold">Kasir</b>
       <Chip>
         No. <strong className="font-medium text-ink tabular-nums">{nextNumber}</strong>
       </Chip>
-      <Chip onClick={onCustomer} title="Ganti pelanggan (F3)">
+      <Chip onClick={onCustomer} title="Ganti pelanggan">
         Pelanggan <strong className="font-medium text-ink">{customerName}</strong>
       </Chip>
       <Chip onClick={onDrafts} title="Nota sementara">
-        Nota sementara{draftCount !== null && <strong className="font-medium text-ink">{draftCount} terbuka</strong>}
+        Nota sementara{draftCount ? <strong className="font-medium text-ink">{draftCount}</strong> : null}
       </Chip>
       <Link to="/kasir/antar" title="Antrian Antar" aria-label="Antrian Antar" className="flex items-center gap-1.5 rounded-full border border-line bg-panel px-2.5 py-1 text-ink-2 hover:text-ink">
         <Truck className="size-3.5" />
         Antar
       </Link>
+      <Chip onClick={onPark} title="Tahan transaksi ini, atau buka yang ditahan">
+        <Pause className="size-3.5" />
+        Tahan{parkedCount > 0 && <strong className="font-medium text-ink">{parkedCount}</strong>}
+      </Chip>
+      <Chip onClick={onHistory} title="Riwayat transaksi">
+        <History className="size-3.5" />
+        Riwayat
+      </Chip>
+      <Chip onClick={onReprint} title="Cetak ulang struk terakhir">
+        <Printer className="size-3.5" />
+        Cetak ulang
+      </Chip>
       {mode}
       <span className="flex-1" />
       <SyncChip outbox={outbox} />
@@ -779,14 +717,6 @@ function TopBar({
         <Chip onClick={onProblems} className="border-transparent bg-down/10 text-down">
           <span className="size-[7px] rounded-full bg-current" />
           <strong className="font-medium">{outbox.problems.length} masalah sinkron</strong>
-        </Chip>
-      )}
-      <Chip className="max-md:hidden">
-        Kasir <strong className="font-medium text-ink">{cashierName}</strong> · {catalog.shop.deviceCode}
-      </Chip>
-      {shift && (
-        <Chip onClick={onCloseShift} title="Tutup shift">
-          Shift sejak <strong className="font-medium text-ink tabular-nums">{shiftTime.format(new Date(shift.openedAt))}</strong>
         </Chip>
       )}
       <Chip onClick={onPrefs} title="Pengaturan kasir" className="px-2">
@@ -801,14 +731,13 @@ function TopBar({
           Kantor
         </Link>
       )}
-      <Chip onClick={logout} title="Keluar" className="px-2">
+      <Chip onClick={logout} title="Keluar">
         <LogOut className="size-3.5" />
+        <strong className="font-medium text-ink">{cashierName}</strong>
       </Chip>
     </header>
   );
 }
-
-const shiftTime = new Intl.DateTimeFormat("id-ID", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Jakarta" });
 
 /** Online, offline with the queue size, or uploading. Server unreachable counts as offline for the cashier. */
 function SyncChip({ outbox }: { outbox: OutboxSnapshot }) {

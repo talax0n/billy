@@ -39,8 +39,6 @@ export const posSaleInput = z.object({
    * admin and staff may upload any cashier's queued sales, recorded under that cashier.
    */
   cashierId: z.uuid().optional(),
-  /** The cashier's open shift on this device; a sale needs one. */
-  shiftId: z.uuid({ error: "Buka shift dulu sebelum berjualan" }),
   /** Only when the sale breaks a limit; never stored on the device, since it may hold the admin's PIN. */
   approval: approvalInput.optional(),
   /** "Diantar ke alamat": queues the goods in Antrian Antar with the sale. */

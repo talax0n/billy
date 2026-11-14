@@ -70,8 +70,6 @@ export const auditActions = {
   "quotation.create": { entity: "quotation", label: "Penawaran dibuat" },
   "quotation.status": { entity: "quotation", label: "Status penawaran diubah" },
   "quotation.convert": { entity: "quotation", label: "Penawaran jadi faktur" },
-  "shift.open": { entity: "cash_shift", label: "Buka shift" },
-  "shift.close": { entity: "cash_shift", label: "Tutup shift" },
   "approval.request": { entity: "approval", label: "Minta persetujuan" },
   "approval.approve": { entity: "approval", label: "Persetujuan diberikan" },
   "approval.reject": { entity: "approval", label: "Persetujuan ditolak" },

@@ -1,5 +1,4 @@
 import {
-  currentShiftQuery,
   idParam,
   paginationQuery,
   posDraftCancelInput,
@@ -7,21 +6,17 @@ import {
   posRevisionInput,
   posSaleInput,
   posVoidInput,
-  shiftCloseInput,
-  shiftOpenInput,
 } from "@billy/core";
 import { Hono } from "hono";
 import { requireRole } from "../../auth/require-role.ts";
 import type { AppEnv } from "../../env.ts";
 import { validate } from "../../lib/validate.ts";
-import { closeShift, currentShift, openShift } from "../shifts/service.ts";
 import { cancelDraft, createDraft, getDraft, listOpenDrafts, printDraft, updateDraft } from "./drafts.ts";
 import { getCatalog, getSale, listSales, printSale, recordSale, reviseSale, voidSale } from "./service.ts";
 
 /**
  * The cashier. Every role sells and voids, but a non-admin's void and any sale over a limit
- * need an admin's approval. A kasir sees and voids only their own sales. Selling needs an open
- * shift; closing one answers without the expected cash (the admin reads it in Log Aktivitas).
+ * need an admin's approval. A kasir sees and voids only their own sales.
  * Nota sementara (drafts) and revisi are online only, so they are never queued on the device.
  */
 export const posRoutes = new Hono<AppEnv>()
@@ -40,16 +35,6 @@ export const posRoutes = new Hono<AppEnv>()
   })
   .get("/sales/:id", validate("param", idParam), async (c) =>
     c.json(await getSale(c.var.db, c.req.valid("param").id, c.var.user)),
-  )
-  .get("/shifts/current", validate("query", currentShiftQuery), async (c) =>
-    c.json(await currentShift(c.var.db, c.var.user, c.req.valid("query"))),
-  )
-  .post("/shifts", validate("json", shiftOpenInput), async (c) => {
-    const { created, shift } = await openShift(c.var.db, c.req.valid("json"), c.var.actor);
-    return c.json(shift, created ? 201 : 200);
-  })
-  .post("/shifts/:id/close", validate("param", idParam), validate("json", shiftCloseInput), async (c) =>
-    c.json(await closeShift(c.var.db, c.req.valid("param").id, c.req.valid("json"), c.var.actor)),
   )
   .post("/sales/:id/void", validate("param", idParam), validate("json", posVoidInput), async (c) =>
     c.json(await voidSale(c.var.db, c.req.valid("param").id, c.req.valid("json"), c.var.actor)),

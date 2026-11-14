@@ -1,5 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
-import { ADMIN, KASIR, login, openShift, rp } from "../helpers.ts";
+import { ADMIN, KASIR, login } from "../helpers.ts";
 
 const PIN = "135790";
 
@@ -22,13 +22,12 @@ async function startRevisi(page: Page, number: string, reason: string) {
   await expect(page.getByRole("button", { name: `Revisi ${number} · batal` })).toBeVisible();
 }
 
-test("a paid nota is revised up and down; the drawer and the shift close stay true", async ({ browser }) => {
+test("a paid nota is revised up and down", async ({ browser }) => {
   const kasir = await (await browser.newContext()).newPage();
   await kasir.addInitScript(() => {
     window.print = () => {};
   });
   await login(kasir, KASIR);
-  await openShift(kasir, 100_000);
   await expect(kasir.getByTestId("sync-state")).toHaveText("Online");
 
   const original = await nextNumber(kasir);
@@ -68,20 +67,11 @@ test("a paid nota is revised up and down; the drawer and the shift close stay tr
   await expect(kasir.getByTestId("receipt")).toContainText("SALINAN");
   await kasir.keyboard.press("Escape");
 
-  // 100.000 float + 32.000 + 32.000 − 32.000.
-  await kasir.getByRole("button", { name: /Shift sejak/ }).click();
-  const close = kasir.getByRole("dialog", { name: "Tutup shift" });
-  await close.getByLabel("Uang tunai di laci").fill("132000");
-  await close.getByRole("button", { name: "Tutup shift" }).click();
-  await expect(kasir.getByText("Shift ditutup")).toBeVisible();
   await expect(kasir.getByTestId("sync-pending")).toHaveText("");
   await kasir.context().close();
 
   const admin = await (await browser.newContext()).newPage();
   await login(admin, ADMIN);
-  await admin.goto("/log-aktivitas");
-  await admin.getByLabel("Aksi").selectOption({ label: "Tutup shift" });
-  await expect(admin.getByRole("row", { name: new RegExp(`Tutup shift K1 · selisih ${rp(0)}`) }).first()).toBeVisible();
   await admin.goto("/riwayat-kasir");
   await expect(admin.getByRole("row", { name: new RegExp(`${original}.*Direvisi`) })).toBeVisible();
   await expect(admin.getByRole("row", { name: new RegExp(`${lower}.*revisi dari ${higher}`) })).toBeVisible();

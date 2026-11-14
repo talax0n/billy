@@ -70,12 +70,6 @@ describe("moves between the outbox and the problem list", () => {
     expect(requeueProblem(lists, "a")).toEqual({ outbox: [b, a], problems: [] });
     expect(requeueProblem(lists, "x")).toBe(lists);
   });
-
-  it("keeps a shift's open and close apart though they share the shift id", () => {
-    const open = { shift: { event: "open" as const, id: "s", cashierId: "k" } };
-    const close = { shift: { event: "close" as const, id: "s", cashierId: "k" } };
-    expect(settleEntry({ outbox: [open, close], problems: [] }, open, null)).toEqual({ outbox: [close], problems: [] });
-  });
 });
 
 describe("who uploads a queued sale", () => {
@@ -88,7 +82,6 @@ describe("who uploads a queued sale", () => {
       mayUpload(byA, { id: "staff-1", role: "staff" }),
       mayUpload(byA, { id: "admin-1", role: "admin" }),
       mayUpload(legacy, { id: "kasir-b", role: "kasir" }),
-      mayUpload({ shift: { event: "close", id: "s", cashierId: "kasir-a" } }, { id: "kasir-b", role: "kasir" }),
-    ]).toEqual([true, false, true, true, true, false]);
+    ]).toEqual([true, false, true, true, true]);
   });
 });

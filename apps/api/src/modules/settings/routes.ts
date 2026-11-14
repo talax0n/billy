@@ -1,4 +1,4 @@
-import { announcementInput, changedFields, DomainError, formatBp, formatRupiah, limitsInput, settingsInput, watchdogSettingsInput } from "@billy/core";
+import { announcementInput, changedFields, DomainError, formatBp, limitsInput, settingsInput, watchdogSettingsInput } from "@billy/core";
 import { settings } from "@billy/db";
 import { getTableColumns } from "drizzle-orm";
 import { Hono } from "hono";
@@ -13,7 +13,6 @@ const {
   id: _id,
   kasirMaxDiscountBp: _max,
   allowBelowCost: _below,
-  cashDifferenceThreshold: _threshold,
   openTime: _open,
   closeTime: _close,
   ...columns
@@ -105,7 +104,7 @@ export const settingsRoutes = new Hono<AppEnv>()
         await audit(tx, c.var.actor, {
           action: "settings.watchdog.update",
           entityId: "1",
-          summary: `Pengawasan: selisih kas ${formatRupiah(after.cashDifferenceThreshold)}, jam buka ${after.openTime}–${after.closeTime}`,
+          summary: `Pengawasan: jam buka ${after.openTime}–${after.closeTime}`,
           ...diff,
         });
       }

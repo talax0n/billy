@@ -1,5 +1,5 @@
 import { addDays, businessDate, docPeriod, rupiah, uuidv7 } from "@billy/core";
-import { accounts, approvals, auditEvents, cashEntries, cashShifts, posDrafts, posSales, products, settings, stockMovements } from "@billy/db";
+import { accounts, approvals, auditEvents, cashEntries, posDrafts, posSales, products, settings, stockMovements } from "@billy/db";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 import { createTestApp } from "../../testing.ts";
@@ -38,24 +38,13 @@ beforeAll(async () => {
 const json = async (res: Response) => [res.status, await res.json()] as const;
 const post = (path: string, cookie: string, body: unknown = {}) => call(path, { method: "POST", cookie, body });
 
-async function openShift(cookie: string, openingFloat: number) {
-  const id = uuidv7();
-  const res = await post("/api/pos/shifts", cookie, { id, deviceCode: "K1", accountId: kas, openedAt: new Date().toISOString(), openingFloat });
-  expect(res.status).toBe(201);
-  return id;
-}
-const closeShift = async (cookie: string, id: string) => {
-  expect((await post(`/api/pos/shifts/${id}/close`, cookie, { closedAt: new Date().toISOString(), countedCash: 0, note: "" })).status).toBe(200);
-  return (await db.select().from(cashShifts).where(eq(cashShifts.id, id)))[0]!.expectedCash;
-};
 
 const nextNumber = () => `K1-261113-${String(++n).padStart(4, "0")}`;
 /** `qty` × Rp 10.000, paid in full. */
-const sale = (shiftId: string, qty: number, method = "cash", accountId = kas) => ({
+const sale = (qty: number, method = "cash", accountId = kas) => ({
   id: uuidv7(),
   number: nextNumber(),
   soldAt: new Date().toISOString(),
-  shiftId,
   lines: [{ productId: cat, qty, unitPrice: 10_000 }],
   discount: { kind: "none", value: 0 },
   method,
@@ -70,10 +59,9 @@ async function sell(cookie: string, body: ReturnType<typeof sale>) {
 }
 
 /** The new nota for a revisi to `qty` × Rp 10.000; `tendered` defaults to the difference collected. */
-const revision = (shiftId: string, qty: number, extra: Record<string, unknown> = {}) => ({
+const revision = (qty: number, extra: Record<string, unknown> = {}) => ({
   id: uuidv7(),
   number: nextNumber(),
-  shiftId,
   lines: [{ productId: cat, qty, unitPrice: 10_000 }],
   discount: { kind: "none", value: 0 },
   method: "cash",
@@ -95,17 +83,16 @@ const cashOf = async (sourceIds: string[]) =>
 const audits = (entityId: string, action: string) => db.select().from(auditEvents).where(and(eq(auditEvents.entityId, entityId), eq(auditEvents.action, action)));
 
 describe("revisi nota kasir", () => {
-  it("cash → cash, up then down: only the difference moves and the shift tally matches the drawer", async () => {
-    const shift = await openShift(kasir, 100_000);
+  it("cash → cash, up then down: only the difference moves", async () => {
     const stockBefore = await stockOf();
-    const first = await sell(kasir, sale(shift, 3));
+    const first = await sell(kasir, sale(3));
 
-    const up = revision(shift, 5, { tendered: 50_000 });
+    const up = revision(5, { tendered: 50_000 });
     expect((await revise(kasir, first, up)).status).toBe(201);
     expect(await getSale(first)).toMatchObject({ voidReason: "Revisi " + up.number + ": Salah jumlah", revisedById: up.id, revisedByNumber: up.number });
     expect(await getSale(up.id)).toMatchObject({ revisionOf: first, total: 50_000, tendered: 50_000, change: 30_000, method: "cash" });
 
-    const down = revision(shift, 2);
+    const down = revision(2);
     expect(await json(await revise(kasir, up.id, down))).toEqual([
       403,
       { error: "Revisi yang menurunkan total butuh persetujuan admin. Minta persetujuan admin.", approval: { kind: "revisi_lower" } },
@@ -113,14 +100,13 @@ describe("revisi nota kasir", () => {
     expect((await revise(kasir, up.id, { ...down, approval: { pin: PIN } })).status).toBe(201);
     expect(await getSale(down.id)).toMatchObject({ revisionOfNumber: up.number, total: 20_000, change: 30_000 });
 
-    // 30.000 in, 20.000 more in, 30.000 back out: the drawer holds 100.000 + 20.000.
+    // 30.000 in, 20.000 more in, 30.000 back out.
     expect(await cashOf([first, up.id, down.id])).toEqual([
       { accountId: kas, direction: "in", amount: 30_000 },
       { accountId: kas, direction: "in", amount: 20_000 },
       { accountId: kas, direction: "out", amount: 30_000 },
     ]);
     expect(await stockOf()).toBe(stockBefore - 2);
-    expect(await closeShift(kasir, shift)).toBe(120_000);
 
     const [event] = await audits(down.id, "pos.sale.revise");
     expect(event).toMatchObject({ reason: "Salah jumlah", before: expect.objectContaining({ total: 50_000 }), after: expect.objectContaining({ total: 20_000, difference: -30_000 }) });
@@ -128,12 +114,13 @@ describe("revisi nota kasir", () => {
   });
 
   it("a QRIS original: the difference is collected as chosen, a refund always comes out of the drawer in cash", async () => {
-    const shift = await openShift(kasir, 50_000);
-    const first = await sell(kasir, sale(shift, 4, "qris", qris));
+    const first = await sell(kasir, sale(4, "qris", qris));
 
-    const up = revision(shift, 5, { tendered: 10_000 });
+    const up = revision(5, { tendered: 10_000 });
     expect((await revise(kasir, first, up)).status).toBe(201);
-    const down = revision(shift, 3, { method: "qris", accountId: qris, approval: { pin: PIN } });
+    const toQris = revision(3, { method: "qris", accountId: qris, approval: { pin: PIN } });
+    expect(await json(await revise(kasir, up.id, toQris))).toEqual([422, { error: "Pengembalian revisi harus dari akun tunai" }]);
+    const down = revision(3, { method: "qris", approval: { pin: PIN } });
     expect((await revise(kasir, up.id, down)).status).toBe(201);
     expect(await getSale(down.id)).toMatchObject({ method: "cash", accountId: kas, change: 20_000 });
 
@@ -143,19 +130,17 @@ describe("revisi nota kasir", () => {
       { accountId: kas, direction: "in", amount: 10_000 },
       { accountId: kas, direction: "out", amount: 20_000 },
     ]);
-    expect(await closeShift(kasir, shift)).toBe(40_000);
   });
 
   it("binds a remote approval to the original and the new total, and spends it once", async () => {
-    const shift = await openShift(kasir, 0);
-    const first = await sell(kasir, sale(shift, 3));
-    const second = await sell(kasir, sale(shift, 3));
-    const lower = revision(shift, 1);
+    const first = await sell(kasir, sale(3));
+    const second = await sell(kasir, sale(3));
+    const lower = revision(1);
     const asked = (await (await post("/api/approvals", kasir, { action: "pos.revise", originalId: first, revision: lower })).json()) as { id: string; summary: string };
     expect(asked.summary).toContain("Revisi K1-");
     expect((await post(`/api/approvals/${asked.id}/approve`, admin)).status).toBe(200);
 
-    expect(await json(await revise(kasir, first, { ...revision(shift, 2), approval: { id: asked.id } }))).toEqual([
+    expect(await json(await revise(kasir, first, { ...revision(2), approval: { id: asked.id } }))).toEqual([
       403,
       { error: "Persetujuan ini untuk transaksi lain. Minta persetujuan baru.", approval: { kind: "revisi_lower" } },
     ]);
@@ -165,42 +150,35 @@ describe("revisi nota kasir", () => {
     ]);
     expect((await revise(kasir, first, { ...lower, approval: { id: asked.id } })).status).toBe(201);
     expect((await db.select().from(approvals).where(eq(approvals.id, asked.id)))[0]!.status).toBe("used");
-    expect(await json(await revise(kasir, second, { ...revision(shift, 1), approval: { id: asked.id } }))).toEqual([
+    expect(await json(await revise(kasir, second, { ...revision(1), approval: { id: asked.id } }))).toEqual([
       403,
       { error: "Persetujuan ini sudah dipakai.", approval: { kind: "revisi_lower" } },
     ]);
-    expect(await json(await revise(kasir, first, revision(shift, 3)))).toEqual([409, { error: "Struk ini sudah dibatalkan atau direvisi" }]);
-    await closeShift(kasir, shift);
+    expect(await json(await revise(kasir, first, revision(3)))).toEqual([409, { error: "Struk ini sudah dibatalkan atau direvisi" }]);
   });
 
   it("needs approval for another cashier's nota or a past day's, but not from the admin", async () => {
-    const shift = await openShift(kasir, 0);
-    const shift2 = await openShift(kasir2, 0);
-    const adminShift = await openShift(admin, 0);
-    const mine = await sell(kasir, sale(shift, 2));
-    const yesterday = await sell(kasir, sale(shift, 2));
+    const mine = await sell(kasir, sale(2));
+    const yesterday = await sell(kasir, sale(2));
     await db.update(posSales).set({ date: addDays(businessDate(), -1) }).where(eq(posSales.id, yesterday));
 
-    const foreign = await json(await revise(kasir2, mine, revision(shift2, 3, { tendered: 10_000 })));
+    const foreign = await json(await revise(kasir2, mine, revision(3, { tendered: 10_000 })));
     expect(foreign).toEqual([
       403,
       { error: "Revisi nota kasir lain atau nota hari sebelumnya butuh persetujuan admin. Minta persetujuan admin.", approval: { kind: "foreign_or_past_revisi" } },
     ]);
-    expect((await revise(kasir, yesterday, revision(shift, 3, { tendered: 10_000 }))).status).toBe(403);
-    expect((await revise(kasir, yesterday, revision(shift, 3, { tendered: 10_000, approval: { pin: PIN } }))).status).toBe(201);
+    expect((await revise(kasir, yesterday, revision(3, { tendered: 10_000 }))).status).toBe(403);
+    expect((await revise(kasir, yesterday, revision(3, { tendered: 10_000, approval: { pin: PIN } }))).status).toBe(201);
 
-    expect((await revise(admin, mine, revision(adminShift, 1))).status).toBe(201);
-    for (const [cookie, id] of [[kasir, shift], [kasir2, shift2], [admin, adminShift]] as const) await closeShift(cookie, id);
+    expect((await revise(admin, mine, revision(1))).status).toBe(201);
   });
 
   it("counts every reprint, and a kasir reprints only their own", async () => {
-    const shift = await openShift(kasir, 0);
-    const id = await sell(kasir, sale(shift, 1));
+    const id = await sell(kasir, sale(1));
     expect(await getSale(id)).toMatchObject({ printCount: 1 });
     expect(await json(await post(`/api/pos/sales/${id}/print`, kasir))).toEqual([200, expect.objectContaining({ printCount: 2 })]);
     expect((await post(`/api/pos/sales/${id}/print`, kasir2)).status).toBe(404);
     expect(await audits(id, "pos.sale.print")).toHaveLength(1);
-    await closeShift(kasir, shift);
   });
 });
 
@@ -264,33 +242,31 @@ describe("nota sementara", () => {
     ]);
   });
 
-  it("is paid as a normal sale under the payer's shift and limits, and turns paid once", async () => {
+  it("is paid as a normal sale under the payer's limits, and turns paid once", async () => {
     const draft = await createDraft(kasir, 2);
-    const shift2 = await openShift(kasir2, 0);
     const stockBefore = await stockOf();
 
-    const overCap = { ...sale(shift2, 2), discount: { kind: "percent", value: 1_000 }, total: 18_000, tendered: 18_000 };
+    const overCap = { ...sale(2), discount: { kind: "percent", value: 1_000 }, total: 18_000, tendered: 18_000 };
     expect(await json(await post(`/api/pos/drafts/${draft.id}/pay`, kasir2, overCap))).toEqual([
       403,
       { error: "Diskon 10% melebihi batas kasir 5% per nota. Minta persetujuan admin.", approval: { kind: "discount" } },
     ]);
 
-    const paid = sale(shift2, 4);
+    const paid = sale(4);
     expect((await post(`/api/pos/drafts/${draft.id}/pay`, kasir2, paid)).status).toBe(201);
     expect(await json(await call(`/api/pos/drafts/${draft.id}`, { cookie: kasir }))).toEqual([
       200,
       expect.objectContaining({ status: "paid", saleId: paid.id, saleNumber: paid.number, total: 40_000 }),
     ]);
-    expect(await getSale(paid.id)).toMatchObject({ draftNumber: draft.number, shiftId: shift2 });
+    expect(await getSale(paid.id)).toMatchObject({ draftNumber: draft.number });
     expect(await stockOf()).toBe(stockBefore - 4);
     expect(await audits(draft.id, "pos.draft.update")).toHaveLength(1);
     expect(await audits(draft.id, "pos.draft.pay")).toHaveLength(1);
 
-    const again = sale(shift2, 4);
+    const again = sale(4);
     expect(await json(await post(`/api/pos/drafts/${draft.id}/pay`, kasir2, again))).toEqual([409, { error: `Nota sementara ${draft.number} sudah dibayar` }]);
     expect(await db.select().from(posSales).where(eq(posSales.id, again.id))).toEqual([]);
     expect((await db.select().from(posDrafts).where(eq(posDrafts.id, draft.id)))[0]!.status).toBe("paid");
     expect((await post(`/api/pos/drafts/${draft.id}/cancel`, kasir, { reason: "x" })).status).toBe(409);
-    await closeShift(kasir2, shift2);
   });
 });

@@ -1,5 +1,5 @@
 import { type Browser, expect, type Page, test } from "@playwright/test";
-import { ADMIN, docNumber, KASIR, login, openShift } from "../helpers.ts";
+import { ADMIN, docNumber, KASIR, login } from "../helpers.ts";
 
 const PIN = "135790";
 
@@ -10,9 +10,6 @@ async function atKasir(browser: Browser, user: typeof ADMIN) {
   });
   await login(page, user);
   await page.goto("/kasir");
-  const open = page.getByRole("dialog", { name: "Buka shift" });
-  await expect(open.or(page.getByRole("button", { name: /Shift sejak/ }))).toBeVisible();
-  if (await open.isVisible()) await openShift(page, 0);
   await expect(page.getByTestId("sync-state")).toHaveText("Online");
   return page;
 }
@@ -40,7 +37,7 @@ test("a nota sementara is saved on one device, printed, opened and paid on anoth
   const kasir = await atKasir(browser, KASIR);
   const first = docNumber("S", 1);
   await saveDraft(kasir, first);
-  await expect(kasir.getByRole("button", { name: /^Nota sementara/ }).first()).toContainText("1 terbuka");
+  await expect(kasir.getByRole("button", { name: /^Nota sementara/ }).first()).toHaveText("Nota sementara1");
 
   let dialog = await draftsDialog(kasir);
   await dialog.getByRole("button", { name: `Cetak ${first}` }).click();
@@ -57,7 +54,7 @@ test("a nota sementara is saved on one device, printed, opened and paid on anoth
   await admin.getByRole("button", { name: "Uang pas" }).click();
   await admin.getByRole("button", { name: /Bayar & cetak struk/ }).click();
   await expect(admin.getByText("Keranjang kosong")).toBeVisible();
-  await expect(admin.getByRole("button", { name: /^Nota sementara/ }).first()).toContainText("0 terbuka");
+  await expect(admin.getByRole("button", { name: /^Nota sementara/ }).first()).toHaveText("Nota sementara");
 
   await admin.goto("/riwayat-kasir");
   await admin.getByRole("row").nth(1).click();
@@ -66,7 +63,7 @@ test("a nota sementara is saved on one device, printed, opened and paid on anoth
   await kasir.context().close();
 });
 
-test("cancelling a printed nota sementara needs the admin, and closing the shift lists the open ones", async ({ browser }) => {
+test("cancelling a printed nota sementara needs the admin", async ({ browser }) => {
   const kasir = await atKasir(browser, KASIR);
   const printed = docNumber("S", 2);
   await saveDraft(kasir, printed);
@@ -87,12 +84,5 @@ test("cancelling a printed nota sementara needs the admin, and closing the shift
 
   const open = docNumber("S", 3);
   await saveDraft(kasir, open);
-  await kasir.getByRole("button", { name: /Shift sejak/ }).click();
-  dialog = kasir.getByRole("dialog", { name: "Tutup shift" });
-  await expect(dialog.getByRole("alert")).toContainText("Masih ada 1 nota sementara terbuka yang Anda buat");
-  await expect(dialog.getByRole("alert")).toContainText(open);
-  await dialog.getByLabel("Uang tunai di laci").fill("0");
-  await dialog.getByRole("button", { name: "Tutup shift" }).click();
-  await expect(kasir.getByText("Shift ditutup")).toBeVisible();
   await kasir.context().close();
 });

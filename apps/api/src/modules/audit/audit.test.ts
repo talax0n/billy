@@ -6,7 +6,7 @@ import { systemActor } from "../../lib/audit.ts";
 import { createTestApp } from "../../testing.ts";
 import { createExpense } from "../expenses/service.ts";
 
-const { call, signIn, db, shiftFor } = await createTestApp();
+const { call, signIn, db } = await createTestApp();
 let admin: string;
 let adminId: string;
 let staff: string;
@@ -179,10 +179,8 @@ describe("every data-changing action writes one audit event", () => {
   });
 
   it("logs a Kasir sale as kasir, and one synced long after it was made as kasir_offline", async () => {
-    const shiftId = await shiftFor(kasir);
     const sale = (soldAt: Date, number: string) => ({
       id: uuidv7(),
-      shiftId,
       number,
       soldAt: soldAt.toISOString(),
       lines: [{ productId: product, qty: 1, unitPrice: 80_000 }],

@@ -2,17 +2,13 @@ import { retryDelay, type SyncEvent, type SyncState, uploadOutcome } from "./pos
 import type { Role } from "./schemas/users.ts";
 
 /**
- * A sale, or a shift opening or closing, waiting in the POS outbox. They share one queue so the
- * server sees a shift's open, then its sales, then its close. Extra fields (the printed
- * receipt, the counted cash) ride along untouched.
+ * A sale waiting in the POS outbox. Extra fields (the printed receipt) ride along untouched.
+ * `cashierId`: who made the sale; absent on sales queued before it was recorded.
  */
-export type OutboxEntry =
-  /** `cashierId`: who made the sale; absent on sales queued before it was recorded. */
-  | { sale: { id: string; cashierId?: string | undefined } }
-  | { shift: { event: "open" | "close"; id: string; cashierId: string } };
+export type OutboxEntry = { sale: { id: string; cashierId?: string | undefined } };
 
-/** An entry's identity in the queue: a shift's open and close share the shift id. */
-export const entryKey = (entry: OutboxEntry) => ("sale" in entry ? entry.sale.id : `${entry.shift.event}:${entry.shift.id}`);
+/** An entry's identity in the queue. */
+export const entryKey = (entry: OutboxEntry) => entry.sale.id;
 
 /**
  * Whether `user`, signed in on this device, uploads this queued entry. A kasir uploads only
@@ -20,7 +16,7 @@ export const entryKey = (entry: OutboxEntry) => ("sale" in entry ? entry.sale.id
  * upload every entry, and the server records it under the cashier who made it.
  */
 export function mayUpload(entry: OutboxEntry, user: { id: string; role: Role }) {
-  const cashierId = "sale" in entry ? entry.sale.cashierId : entry.shift.cashierId;
+  const { cashierId } = entry.sale;
   return user.role !== "kasir" || cashierId === undefined || cashierId === user.id;
 }
 

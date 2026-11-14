@@ -1,5 +1,5 @@
-import { type Browser, expect, type Page, test } from "@playwright/test";
-import { ADMIN, KASIR, login, openShift, rp } from "../helpers.ts";
+import { type Browser, expect, test } from "@playwright/test";
+import { ADMIN, login } from "../helpers.ts";
 
 async function signedIn(browser: Browser, user: typeof ADMIN) {
   const page = await (await browser.newContext()).newPage();
@@ -9,44 +9,6 @@ async function signedIn(browser: Browser, user: typeof ADMIN) {
   await login(page, user);
   return page;
 }
-
-async function closeShift(kasir: Page, counted: number) {
-  await kasir.getByRole("button", { name: /Shift sejak/ }).click();
-  const dialog = kasir.getByRole("dialog", { name: "Tutup shift" });
-  await dialog.getByLabel("Uang tunai di laci").fill(String(counted));
-  await dialog.getByRole("button", { name: "Tutup shift" }).click();
-  await expect(kasir.getByText("Shift ditutup")).toBeVisible();
-  await expect(kasir.getByRole("dialog", { name: "Buka shift" })).toBeVisible();
-}
-
-test("a shift short of cash is a red flag on the Overview and in Ringkasan harian", async ({ browser }) => {
-  const kasir = await signedIn(browser, KASIR);
-  const open = kasir.getByRole("dialog", { name: "Buka shift" });
-  await expect(open.or(kasir.getByRole("button", { name: /Shift sejak/ }))).toBeVisible();
-  if (!(await open.isVisible())) await closeShift(kasir, 0);
-  await openShift(kasir, 100_000);
-  await expect(kasir.getByTestId("sync-state")).toHaveText("Online");
-  await closeShift(kasir, 63_000);
-  await expect(kasir.getByTestId("sync-pending")).toHaveText("");
-  expect((await kasir.request.get("/api/watchdog?from=2026-01-01&to=2026-01-02")).status()).toBe(403);
-  await kasir.context().close();
-
-  const flag = `Selisih kas shift K1 −${rp(37_000)}: seharusnya ${rp(100_000)}, dihitung ${rp(63_000)}`;
-  const admin = await signedIn(browser, ADMIN);
-  await admin.goto("/");
-  const card = admin.getByRole("region", { name: "Peringatan" });
-  await expect(card.getByRole("link", { name: new RegExp(flag) })).toBeVisible();
-  await card.getByRole("link", { name: /dalam 7 hari/ }).click();
-
-  await expect(admin).toHaveURL(/\/ringkasan-harian$/);
-  await expect(admin.getByRole("region", { name: "Peringatan" }).getByRole("link", { name: new RegExp(flag) })).toBeVisible();
-  await expect(admin.getByRole("row", { name: /^Kasir Satu Kasir/ })).toBeVisible();
-
-  await admin.getByRole("region", { name: "Peringatan" }).getByRole("link", { name: new RegExp(flag) }).click();
-  await expect(admin).toHaveURL(/\/log-aktivitas\?/);
-  await expect(admin.getByRole("row", { name: new RegExp(`Tutup shift K1 · selisih −${rp(37_000)}`) })).toBeVisible();
-  await admin.context().close();
-});
 
 test("an opname is counted, saved, posted, and the stock follows the count", async ({ browser }) => {
   const admin = await signedIn(browser, ADMIN);

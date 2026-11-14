@@ -3,7 +3,7 @@ import { Search } from "lucide-react";
 import type { KeyboardEvent, Ref } from "react";
 import { cx } from "../lib/cx.ts";
 import type { CatalogProduct } from "./local.ts";
-import { Kbd, money } from "./ui.tsx";
+import { money } from "./ui.tsx";
 
 const MAX_RESULTS = 8;
 
@@ -56,7 +56,6 @@ export function SearchBox({
           spellCheck={false}
           className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-faint"
         />
-        <Kbd>scan / ketik</Kbd>
       </label>
       {query.trim() && (
         <div className="absolute inset-x-4 top-[62px] z-10 overflow-hidden rounded-[10px] border border-line bg-panel shadow-[0_12px_32px_rgb(0_0_0/0.12)]">
@@ -93,12 +92,6 @@ export function SearchBox({
               })}
             </ul>
           )}
-          <div className="flex gap-3.5 border-t border-line-2 px-3 py-1.5 text-xs text-muted">
-            <span>↑↓ pilih</span>
-            <span>Enter tambah</span>
-            <span>Shift+Enter tambah + qty</span>
-            <span>Esc tutup</span>
-          </div>
         </div>
       )}
     </div>

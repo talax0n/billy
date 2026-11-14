@@ -4,7 +4,7 @@
  *
  * - Cashier receipts whose printed total the app's arithmetic cannot reproduce: the legacy total
  *   stands, and the gap becomes one "Selisih impor (data lama)" line that moves no stock. Written
- *   directly, like a sale from before shifts existed (no shift), since `recordSale` refuses both.
+ *   directly, since `recordSale` refuses a total it cannot reproduce.
  * - Tukar faktur bundles the import matched to the wrong invoice (legacy invoice numbers repeat):
  *   each number is resolved to the one customer every invoice in the bundle shares.
  * - Stock: the legacy count already includes the receipts, so a "Penyesuaian migrasi" per product
@@ -154,7 +154,6 @@ for (const d of candidates) {
         accountId,
         tendered: tendered as Rupiah,
         change: (tendered - receipt.total) as Rupiah,
-        shiftId: null,
       });
       const saleLines = lines.map((l, position) => ({
         saleId: id,

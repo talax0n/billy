@@ -20,7 +20,6 @@ import {
 import {
   accounts,
   cashEntries,
-  cashShifts,
   categories,
   contacts,
   type Db,
@@ -200,7 +199,7 @@ export async function recordSale(db: Db, input: PosSale, actor: Actor, draftId?:
     if (existing) return replay(tx);
 
     const cashierId = await cashierOf(tx, input.cashierId, actor);
-    await assertSellable(tx, input, cashierId);
+    await assertSellable(tx, input);
 
     // Cost as of the day the sale happened, so an offline sale synced after a newer purchase
     // keeps the cost that applied when it was sold.
@@ -228,7 +227,6 @@ export async function recordSale(db: Db, input: PosSale, actor: Actor, draftId?:
       accountId: input.accountId,
       tendered: input.tendered,
       change: rupiah(input.tendered - totals.total),
-      shiftId: input.shiftId,
     });
     if (!inserted) return replay(tx);
     // A fully discounted sale moves no money; cash entry amounts must be positive.
@@ -276,21 +274,15 @@ export async function recordSale(db: Db, input: PosSale, actor: Actor, draftId?:
   });
 }
 
-/** The cashier's open shift, a receipt number no other sale holds, an active account and a real customer. */
-async function assertSellable(tx: Db, input: Pick<PosSale, "id" | "number" | "shiftId" | "accountId" | "customerId">, cashierId: string) {
-  const [shift] = await tx
-    .select({ cashierId: cashShifts.cashierId, closedAt: cashShifts.closedAt, accountId: cashShifts.accountId })
-    .from(cashShifts)
-    .where(eq(cashShifts.id, input.shiftId));
-  if (shift?.cashierId !== cashierId) throw new DomainError("invalid", "Shift kasir tidak ditemukan. Buka shift dulu sebelum berjualan.");
-  if (shift.closedAt) throw new DomainError("conflict", "Shift untuk transaksi ini sudah ditutup");
+/** A receipt number no other sale holds, an active account and a real customer. */
+async function assertSellable(tx: Db, input: Pick<PosSale, "id" | "number" | "accountId" | "customerId">) {
   const [taken] = await tx
     .select({ id: posSales.id })
     .from(posSales)
     .where(and(eq(posSales.number, input.number), ne(posSales.id, input.id)));
   if (taken) throw new DomainError("conflict", `Nomor struk ${input.number} sudah dipakai transaksi lain`);
 
-  const [account] = await tx.select({ active: accounts.active }).from(accounts).where(eq(accounts.id, input.accountId));
+  const [account] = await tx.select({ active: accounts.active, kind: accounts.kind }).from(accounts).where(eq(accounts.id, input.accountId));
   if (!account?.active) throw new DomainError("invalid", "Akun pembayaran tidak ditemukan atau nonaktif");
 
   if (input.customerId) {
@@ -298,7 +290,7 @@ async function assertSellable(tx: Db, input: Pick<PosSale, "id" | "number" | "sh
     const [customer] = await tx.select({ kind: contacts.kind }).from(contacts).where(eq(contacts.id, input.customerId));
     if (customer?.kind !== "customer") throw new DomainError("invalid", "Pelanggan tidak ditemukan");
   }
-  return shift;
+  return account;
 }
 
 type PricedLines = Awaited<ReturnType<typeof priceLines>>;
@@ -569,9 +561,9 @@ export async function posRevisionApproval(db: Db, originalId: string, input: Pos
 
 /**
  * Revisi after payment, online only: voids the original and records the new nota linked to it
- * (`revision_of`) under the reviser's open shift, in one transaction. Only the difference changes
+ * (`revision_of`), in one transaction. Only the difference changes
  * hands, so only the difference is a cash entry: collected on the chosen account when the total
- * goes up, refunded in cash from the reviser's drawer when it goes down. The original keeps its
+ * goes up, refunded in cash from the drawer the device sends when it goes down. The original keeps its
  * money where it was paid. Stock is put back for the original lines and taken for the new ones.
  * Idempotent by the new nota's id.
  */
@@ -584,7 +576,7 @@ export async function reviseSale(db: Db, originalId: string, input: PosRevision,
       return getSale(tx, input.id);
     }
     const sale = await findOriginal(tx, originalId, true);
-    const shift = await assertSellable(tx, input, actor.id);
+    const account = await assertSellable(tx, input);
     const soldAt = new Date();
     const date = businessDate(soldAt);
     const lines = await priceLines(tx, { soldAt: soldAt.toISOString(), lines: input.lines });
@@ -593,7 +585,8 @@ export async function reviseSale(db: Db, originalId: string, input: PosRevision,
     if (input.tendered < difference) throw new DomainError("invalid", "Uang diterima kurang dari selisih revisi");
     const refund = difference < 0;
     const method = refund ? "cash" : input.method;
-    const accountId = refund ? shift.accountId : input.accountId;
+    if (refund && account.kind !== "cash") throw new DomainError("invalid", "Pengembalian revisi harus dari akun tunai");
+    const accountId = input.accountId;
     const approvalId = await authorize(tx, actor, await revisionRequirement(tx, sale, input, lines, actor), input.approval, pinAdmin);
 
     await tx
@@ -616,7 +609,6 @@ export async function reviseSale(db: Db, originalId: string, input: PosRevision,
       accountId,
       tendered: input.tendered,
       change: rupiah(input.tendered - difference),
-      shiftId: input.shiftId,
       revisionOf: sale.id,
     });
     if (difference !== 0) {

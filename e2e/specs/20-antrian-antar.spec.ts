@@ -1,5 +1,5 @@
 import { type Browser, expect, type Page, test } from "@playwright/test";
-import { ADMIN, login, openShift } from "../helpers.ts";
+import { ADMIN, login } from "../helpers.ts";
 
 const KASIR_ANTAR = { username: "kasirantar", password: "kasir12345" };
 const shots = process.env.E2E_SCREENSHOTS;
@@ -69,7 +69,6 @@ test("a kasir sale marked Diantar lands in Antrian Antar and drivers take turns"
   // Kasir: pay with "Diantar ke alamat".
   const kasir = await fresh(browser);
   await login(kasir, KASIR_ANTAR);
-  await openShift(kasir, 50_000);
   await kasir.getByLabel("Cari produk atau scan barcode").fill("kilau enamel hitam");
   await kasir.getByLabel("Cari produk atau scan barcode").press("Enter");
   await kasir.getByLabel("Diantar ke alamat").check();

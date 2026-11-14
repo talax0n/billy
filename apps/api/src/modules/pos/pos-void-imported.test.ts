@@ -27,7 +27,7 @@ it("voiding an imported receipt restores its goods and moves no stock on its Sel
   await db.insert(posSales).values({
     id, number: "C-230101-0001", deviceCode: "C", soldAt: new Date(), date, cashierId: user.id,
     subtotal: rupiah(25_000), discountAmount: rupiah(0), total: rupiah(25_000), method: "cash", accountId: kas,
-    tendered: rupiah(25_000), change: rupiah(0), shiftId: null,
+    tendered: rupiah(25_000), change: rupiah(0),
   });
   await db.insert(posLines).values([
     { saleId: id, position: 0, productId: cat, qty: 2, unitPrice: rupiah(10_000), lineTotal: rupiah(20_000), unitCost: rupiah(0) },

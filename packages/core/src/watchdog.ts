@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { AuditAction } from "./audit.ts";
 import type { BusinessDate } from "./dates.ts";
-import { businessDateInput, rupiahInput } from "./schemas/common.ts";
+import { businessDateInput } from "./schemas/common.ts";
 
 /** Every threshold the watchdog uses besides the ones the admin sets in Pengaturan. */
 export const WATCHDOG = {
@@ -12,7 +12,7 @@ export const WATCHDOG = {
   failedLoginsPerDay: 3,
   /** A discount at or within this many basis points (0,5%) of the cap. */
   discountNearCapBp: 50,
-  /** A sale or shift timed this far after the server received it means the device clock runs ahead. */
+  /** A sale timed this far after the server received it means the device clock runs ahead. */
   clockAheadMs: 5 * 60_000,
   /** A posted opname whose differences, at cost and ignoring sign, add up to at least this. */
   opnameDifferenceValue: 100_000,
@@ -22,7 +22,6 @@ export const watchdogFlagTypes = [
   "voids",
   "revisi",
   "refunds",
-  "shift_difference",
   "below_cost",
   "discount_near_cap",
   "draft_open_after_close",
@@ -39,7 +38,6 @@ export const watchdogFlagLabels: Record<WatchdogFlagType, string> = {
   voids: "Pembatalan di atas normal",
   revisi: "Revisi di atas normal",
   refunds: "Refund di atas normal",
-  shift_difference: "Selisih kas shift",
   below_cost: "Di bawah modal",
   discount_near_cap: "Diskon di batas",
   draft_open_after_close: "Nota sementara belum selesai",
@@ -51,10 +49,9 @@ export const watchdogFlagLabels: Record<WatchdogFlagType, string> = {
   opname_difference: "Selisih stok opname",
 };
 
-/** What a flag opens: a document, the Shift report, or Log Aktivitas filtered to the person and day. */
+/** What a flag opens: a document, or Log Aktivitas filtered to the person and day. */
 export type WatchdogTarget =
   | { type: "pos_sale" | "sales_invoice" | "opname"; id: string }
-  | { type: "shift"; cashierId: string; date: BusinessDate }
   | { type: "audit"; actorId: string | null; action: AuditAction | null; date: BusinessDate };
 
 export interface WatchdogFlag {
@@ -82,8 +79,6 @@ const clock = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Format jam HH:MM, m
 
 export const watchdogSettingsInput = z
   .object({
-    /** A closed shift whose cash difference, either way, reaches this is flagged. */
-    cashDifferenceThreshold: rupiahInput,
     openTime: clock,
     closeTime: clock,
   })

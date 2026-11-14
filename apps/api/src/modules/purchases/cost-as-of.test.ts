@@ -10,7 +10,7 @@ import { createTestApp } from "../../testing.ts";
  * Cat Tembok: master cost 50.000, bought 1 Nov at 55.000 and 10 Nov at 2 × 60.000 − 2.000 line
  * discount (59.000 net).
  */
-const { db, call, signIn, shiftFor } = await createTestApp();
+const { db, call, signIn } = await createTestApp();
 let staff: string;
 let product: string;
 let untouched: string;
@@ -86,7 +86,6 @@ const posSaleAt = async (soldAt: string, productId: string) => {
     body: {
       id,
       number: `K1-261105-${String(++n).padStart(4, "0")}`,
-      shiftId: await shiftFor(staff),
       soldAt,
       lines: [{ productId, qty: 1, unitPrice: 80_000 }],
       discount: { kind: "none", value: 0 },

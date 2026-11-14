@@ -22,7 +22,6 @@ export * from "./pos.ts";
 export * from "./schemas/pos.ts";
 export * from "./schemas/quotations.ts";
 export * from "./schemas/settings.ts";
-export * from "./schemas/shifts.ts";
 export * from "./schemas/stock.ts";
 export * from "./schemas/users.ts";
 export * from "./status.ts";

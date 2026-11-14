@@ -5,8 +5,6 @@ import {
   type OutboxProblem,
   parsePosNumber,
   type PosSaleInput,
-  type ShiftCloseInput,
-  type ShiftOpenInput,
 } from "@billy/core";
 import { queryOptions } from "@tanstack/react-query";
 import type { InferResponseType } from "hono/client";
@@ -25,23 +23,7 @@ export interface QueuedSale {
   receipt: ReceiptData;
 }
 
-/** The open shift of one cashier on this device: what the Kasir needs to sell and to close it. */
-export interface LocalShift {
-  id: string;
-  deviceCode: string;
-  accountId: string;
-  openedAt: string;
-  openingFloat: number;
-}
-
-/** A shift opening or closing waiting for upload, in the same queue as the shift's sales. */
-export interface QueuedShift {
-  shift:
-    | (ShiftOpenInput & { event: "open"; cashierId: string })
-    | (ShiftCloseInput & { event: "close"; id: string; cashierId: string });
-}
-
-export type OutboxItem = QueuedSale | QueuedShift;
+export type OutboxItem = QueuedSale;
 
 /** An entry the server refused (4xx). Kept until someone retries or removes it. */
 export type SyncProblem = OutboxProblem<OutboxItem>;
@@ -66,8 +48,6 @@ interface Schema {
   catalog: Catalog;
   outbox: OutboxItem[];
   problems: SyncProblem[];
-  /** By cashier id: each cashier signed in on this device has their own shift. */
-  shifts: Record<string, LocalShift>;
   counter: Counter;
   parked: ParkedCart[];
   lastReceipt: ReceiptData;
@@ -171,10 +151,3 @@ export const catalogQuery = queryOptions({
     }
   },
 });
-
-/** Stores the cashier's open shift on this device, or forgets it with `null`. */
-export const saveShift = (cashierId: string, shift: LocalShift | null) =>
-  change("shifts", (all = {}) => {
-    const { [cashierId]: _closed, ...others } = all;
-    return shift ? { ...others, [cashierId]: shift } : others;
-  });

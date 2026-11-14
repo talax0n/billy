@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 import { createTestApp } from "../../testing.ts";
 
-const { call, signIn, db, shiftFor } = await createTestApp();
+const { call, signIn, db } = await createTestApp();
 let staff: string;
 let staffId: string;
 let kasir: string;
@@ -128,7 +128,6 @@ describe("POS sale with Diantar ke alamat", () => {
       accountId: cashAccount,
       tendered: 156_000,
       total: 156_000,
-      shiftId: await shiftFor(kasir),
       delivery: { address: "Jl. Merdeka 5", phone: "0812", note: "Pagar hijau" },
     };
     const send = () => call("/api/pos/sales", { method: "POST", cookie: kasir, body: sale });
@@ -160,7 +159,6 @@ describe("POS sale with Diantar ke alamat", () => {
         accountId: cashAccount,
         tendered: 78_000,
         total: 78_000,
-        shiftId: await shiftFor(kasir),
       },
     });
     expect(res.status).toBe(201);

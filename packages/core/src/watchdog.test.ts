@@ -17,7 +17,7 @@ it("calls a day above normal past max(3, 2 × the median)", () => {
 });
 
 it("needs the shop to close after it opens", () => {
-  expect(watchdogSettingsInput.safeParse({ cashDifferenceThreshold: 10_000, openTime: "07:00", closeTime: "17:00" }).success).toBe(true);
-  expect(watchdogSettingsInput.safeParse({ cashDifferenceThreshold: 10_000, openTime: "17:00", closeTime: "07:00" }).success).toBe(false);
-  expect(watchdogSettingsInput.safeParse({ cashDifferenceThreshold: 10_000, openTime: "7:00", closeTime: "17:00" }).success).toBe(false);
+  expect(watchdogSettingsInput.safeParse({ openTime: "07:00", closeTime: "17:00" }).success).toBe(true);
+  expect(watchdogSettingsInput.safeParse({ openTime: "17:00", closeTime: "07:00" }).success).toBe(false);
+  expect(watchdogSettingsInput.safeParse({ openTime: "7:00", closeTime: "17:00" }).success).toBe(false);
 });

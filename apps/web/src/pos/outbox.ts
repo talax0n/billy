@@ -14,13 +14,12 @@ import {
 } from "@billy/core";
 import { useSyncExternalStore } from "react";
 import { api } from "../lib/api.ts";
-import { change, changeQueue, type OutboxItem, type QueuedShift, read, type SyncProblem } from "./local.ts";
+import { change, changeQueue, type OutboxItem, read, type SyncProblem } from "./local.ts";
 
 /**
  * The offline outbox. Online, the Kasir sends a sale straight to the server with `sendSale`, so
  * a limit that needs an admin's approval is caught at the counter. Offline, or when that send
- * fails to reach the server, the sale is queued here. A shift's open and close are always
- * queued here, so the server sees open, then sales, then close. This loop uploads the queue
+ * fails to reach the server, the sale is queued here. This loop uploads the queue
  * in order, one at a time, skipping another cashier's entries when a
  * kasir is signed in. A sale leaves the outbox only when the
  * server answers 2xx; a 4xx moves it to the visible problem list; anything else backs off
@@ -93,21 +92,11 @@ export const sendDraftPayment = (draftId: string, sale: PosSaleInput) =>
 export const sendRevision = (originalId: string, revision: PosRevisionInput) =>
   send((init) => api.pos.sales[":id"].revise.$post({ param: { id: originalId }, json: revision }, init), 15_000);
 
-function sendShift({ shift }: QueuedShift) {
-  if (shift.event === "open") {
-    const { event: _, ...open } = shift;
-    return send((init) => api.pos.shifts.$post({ json: open }, init), 15_000);
-  }
-  const { event: _, id, cashierId: _cashier, ...close } = shift;
-  return send((init) => api.pos.shifts[":id"].close.$post({ param: { id }, json: close }, init), 15_000);
-}
-
-const upload = (item: OutboxItem) => ("sale" in item ? sendSale(item.sale) : sendShift(item));
 
 /** Uploads the queue head-first until it is empty or the server cannot be reached. One loop at a time. */
 export const flush = createFlush<OutboxItem>({
   next: async () => (await read("outbox"))?.find(mine),
-  upload,
+  upload: (item) => sendSale(item.sale),
   settle: async (entry, problem) => {
     await changeQueue((lists) => settleEntry(lists, entry, problem));
     await reload();
@@ -123,7 +112,7 @@ export const flush = createFlush<OutboxItem>({
   },
 });
 
-/** Queues a sale or a shift event for upload. Resolves once it is stored on the device, never waits for the network. */
+/** Queues a sale for upload. Resolves once it is stored on the device, never waits for the network. */
 export async function queue(item: OutboxItem) {
   await change("outbox", (list = []) => [...list, item]);
   await reload();

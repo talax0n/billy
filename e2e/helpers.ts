@@ -45,11 +45,3 @@ export const docPeriod = () =>
 /** `SO-261113-0001` for the n-th document of today. */
 export const docNumber = (prefix: string, n: number) => `${prefix}-${docPeriod()}-${String(n).padStart(4, "0")}`;
 
-/** On the Kasir screen without an open shift: opens one with `float` in the drawer. */
-export async function openShift(page: Page, float: number) {
-  const dialog = page.getByRole("dialog", { name: "Buka shift" });
-  await dialog.getByLabel("Modal awal di laci").fill(String(float));
-  await dialog.getByRole("button", { name: "Buka shift" }).click();
-  await expect(dialog).toBeHidden();
-  await expect(page.getByRole("button", { name: /Shift sejak/ })).toBeVisible();
-}

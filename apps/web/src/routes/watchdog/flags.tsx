@@ -24,8 +24,6 @@ export function flagLink(target: WatchdogTarget): { to: string; search: Record<s
       return { to: "/penjualan", search: { id: target.id } };
     case "opname":
       return { to: "/stok-opname", search: { id: target.id } };
-    case "shift":
-      return { to: "/log-aktivitas", search: { actorId: target.cashierId, action: "shift.close", from: target.date, to: target.date } };
     case "audit":
       return {
         to: "/log-aktivitas",

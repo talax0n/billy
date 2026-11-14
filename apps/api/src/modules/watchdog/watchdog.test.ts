@@ -40,25 +40,15 @@ async function flags(type: WatchdogFlagType, from: string, to = from): Promise<W
 }
 const whose = (list: WatchdogFlag[], userId: string) => list.filter((f) => f.who?.id === userId);
 
-async function openShift(cookie: string, openedAt = new Date(), openingFloat = 100_000) {
-  const id = uuidv7();
-  const res = await post("/api/pos/shifts", cookie, { id, deviceCode: "K1", accountId: kas, openedAt: openedAt.toISOString(), openingFloat });
-  expect(res.status).toBe(201);
-  return id;
-}
-async function closeShift(cookie: string, id: string, countedCash: number, closedAt = new Date()) {
-  expect((await post(`/api/pos/shifts/${id}/close`, cookie, { closedAt: closedAt.toISOString(), countedCash, note: "" })).status).toBe(200);
-}
 
 /** One line of `qty` × `unitPrice`, paid in cash. */
-const sale = (shiftId: string, { unitPrice = 10_000, qty = 1, discountBp = 0, soldAt = new Date(), approval }: Record<string, unknown> = {}) => {
+const sale = ({ unitPrice = 10_000, qty = 1, discountBp = 0, soldAt = new Date(), approval }: Record<string, unknown> = {}) => {
   const gross = (qty as number) * (unitPrice as number);
   const total = gross - Math.round((gross * (discountBp as number)) / 10_000);
   return {
     id: uuidv7(),
     number: `K1-261113-${String(++n).padStart(4, "0")}`,
     soldAt: (soldAt as Date).toISOString(),
-    shiftId,
     lines: [{ productId: cat, qty, unitPrice }],
     discount: discountBp ? { kind: "percent", value: discountBp } : { kind: "none", value: 0 },
     method: "cash",
@@ -106,10 +96,8 @@ describe("access", () => {
 
   it("keeps the watchdog settings away from the Kasir catalog and the shop header", async () => {
     const shop = (await (await call("/api/settings", { cookie: staff })).json()) as Record<string, unknown>;
-    expect(shop).not.toHaveProperty("cashDifferenceThreshold");
     expect(shop).not.toHaveProperty("openTime");
     expect(await (await call("/api/settings/watchdog", { cookie: admin })).json()).toEqual({
-      cashDifferenceThreshold: 10_000,
       openTime: "07:00",
       closeTime: "17:00",
     });
@@ -144,35 +132,11 @@ describe("voids, revisi and refunds above normal", () => {
   });
 });
 
-describe("shift cash differences", () => {
-  it("flags a closed shift whose difference reaches the threshold in Pengaturan", async () => {
-    const { cookie, user } = await signIn("kasir", "kasir-shift");
-    await closeShift(cookie, await openShift(cookie), 85_000);
-    await closeShift(cookie, await openShift(cookie), 95_000);
-
-    expect(whose(await flags("shift_difference", today), user.id)).toEqual([
-      expect.objectContaining({
-        severity: "high",
-        message: "Selisih kas shift K1 −Rp 15.000: seharusnya Rp 100.000, dihitung Rp 85.000",
-        target: { type: "shift", cashierId: user.id, date: today },
-      }),
-    ]);
-    const daily = (await (await call(`/api/watchdog/daily?date=${today}`, { cookie: admin })).json()) as { rows: { id: string; shifts: number; shiftDifference: number }[] };
-    expect(daily.rows.find((r) => r.id === user.id)).toMatchObject({ shifts: 2, shiftDifference: -20_000 });
-
-    const raise = { cashDifferenceThreshold: 20_000, openTime: "07:00", closeTime: "17:00" };
-    expect((await call("/api/settings/watchdog", { method: "PUT", cookie: admin, body: raise })).status).toBe(200);
-    expect(whose(await flags("shift_difference", today), user.id)).toEqual([]);
-    expect((await call("/api/settings/watchdog", { method: "PUT", cookie: admin, body: { ...raise, cashDifferenceThreshold: 10_000 } })).status).toBe(200);
-  });
-});
-
 describe("pricing", () => {
   it("flags an approved sale below cost, not one at the normal price", async () => {
     const { cookie, user } = await signIn("kasir", "kasir-modal");
-    const shift = await openShift(cookie);
-    const below = await sell(cookie, sale(shift, { unitPrice: 5_000, approval: { pin: PIN } }));
-    await sell(cookie, sale(shift));
+    const below = await sell(cookie, sale({ unitPrice: 5_000, approval: { pin: PIN } }));
+    await sell(cookie, sale());
     expect(whose(await flags("below_cost", today), user.id)).toEqual([
       expect.objectContaining({ severity: "high", target: { type: "pos_sale", id: below }, message: expect.stringMatching(/di bawah modal \(1 baris\)$/) }),
     ]);
@@ -180,9 +144,8 @@ describe("pricing", () => {
 
   it("flags a discount at the cap, not one 1% under it", async () => {
     const { cookie, user } = await signIn("kasir", "kasir-diskon");
-    const shift = await openShift(cookie);
-    const atCap = await sell(cookie, sale(shift, { discountBp: 500 }));
-    await sell(cookie, sale(shift, { discountBp: 400 }));
+    const atCap = await sell(cookie, sale({ discountBp: 500 }));
+    await sell(cookie, sale({ discountBp: 400 }));
     expect(whose(await flags("discount_near_cap", today), user.id)).toEqual([
       expect.objectContaining({ severity: "medium", target: { type: "pos_sale", id: atCap }, message: expect.stringMatching(/diskon 5%, batas 5%$/) }),
     ]);
@@ -248,9 +211,8 @@ describe("logins and PIN", () => {
   it("flags a PIN lockout, not a single wrong PIN", async () => {
     const { cookie: locked, user: lockedUser } = await signIn("kasir", "kasir-kunci");
     const { cookie: once, user: onceUser } = await signIn("kasir", "kasir-salah");
-    const lockedShift = await openShift(locked);
-    for (let i = 0; i < 5; i++) expect((await post("/api/pos/sales", locked, sale(lockedShift, { unitPrice: 5_000, approval: { pin: "000000" } }))).status).toBe(403);
-    expect((await post("/api/pos/sales", once, sale(await openShift(once), { unitPrice: 5_000, approval: { pin: "000000" } }))).status).toBe(403);
+    for (let i = 0; i < 5; i++) expect((await post("/api/pos/sales", locked, sale({ unitPrice: 5_000, approval: { pin: "000000" } }))).status).toBe(403);
+    expect((await post("/api/pos/sales", once, sale({ unitPrice: 5_000, approval: { pin: "000000" } }))).status).toBe(403);
     expect(whose(await flags("pin_lockout", today), lockedUser.id)).toEqual([expect.objectContaining({ severity: "high" })]);
     expect(whose(await flags("pin_lockout", today), onceUser.id)).toEqual([]);
   });
@@ -259,24 +221,10 @@ describe("logins and PIN", () => {
 describe("device clock", () => {
   it("flags a sale timed an hour after the server received it, not one a minute late", async () => {
     const { cookie, user } = await signIn("kasir", "kasir-jam");
-    const shift = await openShift(cookie);
-    const ahead = await sell(cookie, sale(shift, { soldAt: new Date(Date.now() + 60 * 60_000) }));
-    await sell(cookie, sale(shift, { soldAt: new Date(Date.now() - 60_000) }));
+    const ahead = await sell(cookie, sale({ soldAt: new Date(Date.now() + 60 * 60_000) }));
+    await sell(cookie, sale({ soldAt: new Date(Date.now() - 60_000) }));
     expect(whose(await flags("clock_tampering", today, addDays(today, 1)), user.id)).toEqual([
       expect.objectContaining({ target: { type: "pos_sale", id: ahead }, message: expect.stringMatching(/jam K1 terlalu cepat$/) }),
-    ]);
-  });
-
-  it("flags a shift opened before the cashier's previous shift on the device closed", async () => {
-    const { cookie, user } = await signIn("kasir", "kasir-mundur");
-    const minutesAgo = (m: number) => new Date(Date.now() - m * 60_000);
-    await closeShift(cookie, await openShift(cookie, minutesAgo(60)), 100_000, minutesAgo(40));
-    await closeShift(cookie, await openShift(cookie, minutesAgo(30)), 100_000, minutesAgo(20));
-    expect(whose(await flags("clock_tampering", today), user.id)).toEqual([]);
-
-    await openShift(cookie, minutesAgo(50));
-    expect(whose(await flags("clock_tampering", today), user.id)).toEqual([
-      expect.objectContaining({ target: { type: "shift", cashierId: user.id, date: today }, message: expect.stringMatching(/jam perangkat mundur$/) }),
     ]);
   });
 });

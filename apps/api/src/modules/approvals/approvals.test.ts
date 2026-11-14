@@ -4,7 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 import { createTestApp } from "../../testing.ts";
 
-const { call, signIn, db, shiftFor } = await createTestApp();
+const { call, signIn, db } = await createTestApp();
 let admin: string;
 let adminId: string;
 let staff: string;
@@ -61,11 +61,10 @@ function sale(bp: number, overrides: Record<string, unknown> = {}) {
   };
 }
 
-const post = async (cookie: string, body: object) => call("/api/pos/sales", { method: "POST", cookie, body: { shiftId: await shiftFor(cookie), ...body } });
+const post = async (cookie: string, body: object) => call("/api/pos/sales", { method: "POST", cookie, body });
 const json = async (res: Response) => [res.status, await res.json()] as const;
 const requestRemote = async (cookie: string, body: { action: string; sale?: object; saleId?: string }) => {
-  const sale = body.sale && { shiftId: await shiftFor(cookie), ...body.sale };
-  return (await (await call("/api/approvals", { method: "POST", cookie, body: { ...body, sale } })).json()) as { id: string; status: string };
+  return (await (await call("/api/approvals", { method: "POST", cookie, body })).json()) as { id: string; status: string };
 };
 const decide = (id: string, decision: "approve" | "reject", cookie = admin) => call(`/api/approvals/${id}/${decision}`, { method: "POST", cookie });
 const approvalRow = async (id: string) => (await db.select().from(approvals).where(eq(approvals.id, id)))[0]!;
@@ -277,7 +276,7 @@ describe("remote approval", () => {
   });
 
   it("refuses a request for a sale that needs no approval", async () => {
-    const res = await call("/api/approvals", { method: "POST", cookie: kasir, body: { action: "pos.sale", sale: { ...sale(500), shiftId: await shiftFor(kasir) } } });
+    const res = await call("/api/approvals", { method: "POST", cookie: kasir, body: { action: "pos.sale", sale: sale(500) } });
     expect(await json(res)).toEqual([422, { error: "Transaksi ini tidak butuh persetujuan admin" }]);
   });
 });
