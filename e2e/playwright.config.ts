@@ -1,5 +1,3 @@
-import { homedir } from "node:os";
-import { join } from "node:path";
 import { defineConfig } from "@playwright/test";
 
 /** Run through `pnpm e2e`, which starts the servers and sets E2E_BASE_URL. */
@@ -24,10 +22,6 @@ export default defineConfig({
     timezoneId: "Asia/Jakarta",
     viewport: { width: 1366, height: 860 },
     trace: "retain-on-failure",
-    launchOptions: {
-      executablePath:
-        process.env.CHROMIUM_PATH ??
-        join(homedir(), "Library/Caches/ms-playwright/chromium-1252/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing"),
-    },
+    ...(process.env.CHROMIUM_PATH && { launchOptions: { executablePath: process.env.CHROMIUM_PATH } }),
   },
 });
