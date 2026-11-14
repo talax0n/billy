@@ -149,8 +149,8 @@ function ShopName() {
     .toUpperCase();
   return (
     <div className="flex min-w-0 items-center gap-2.5 text-[15px] font-semibold">
-      <div className="grid size-[26px] shrink-0 place-items-center rounded-[7px] bg-ink text-xs text-panel">{initials || "B"}</div>
-      <span className="truncate max-md:overflow-visible max-md:whitespace-nowrap group-data-[collapsed=true]/sb:hidden">{shopName || "Billy"}</span>
+      <div className="grid size-[26px] shrink-0 place-items-center rounded-[7px] bg-ink text-xs text-panel">{initials || "SK"}</div>
+      <span className="truncate max-md:overflow-visible max-md:whitespace-nowrap group-data-[collapsed=true]/sb:hidden">{shopName || "Toko Cat Sumber Karya"}</span>
     </div>
   );
 }
