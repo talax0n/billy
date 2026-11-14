@@ -8,8 +8,26 @@ export async function login(page: Page, user: { username: string; password: stri
   await page.goto("/login");
   await page.getByLabel("Nama pengguna").fill(user.username);
   await page.getByLabel("Kata sandi").fill(user.password);
+  const attention = page.waitForResponse((r) => r.url().includes("/api/insights/attention"), { timeout: 15_000 }).catch(() => null);
   await page.getByRole("button", { name: "Masuk" }).click();
   await expect(page).not.toHaveURL(/\/login/);
+  if (!/\/kasir/.test(page.url()) && (await attention)) await dismissLoginNotice(page);
+}
+
+/**
+ * The back office greets each sign-in with "Perlu perhatian hari ini" (the sample data always has
+ * low stock). Specs that are not about it close it, like staff would.
+ */
+export async function dismissLoginNotice(page: Page) {
+  const notice = page.getByRole("dialog", { name: /Selamat datang/ });
+  const shown = await notice.waitFor({ timeout: 3_000 }).then(
+    () => true,
+    () => false,
+  );
+  if (shown) {
+    await notice.getByRole("button", { name: "Mengerti" }).click();
+    await expect(notice).toBeHidden();
+  }
 }
 
 /** `Rp 1.234.567` as the app prints it (Indonesian grouping, no decimals). */
