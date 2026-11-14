@@ -94,7 +94,10 @@ const pageRoutes = navItems.map((item) =>
 
 const routeTree = rootRoute.addChildren([loginRoute, authedRoute.addChildren([kasirRoute, kasirDeliveriesRoute, printRoute.addChildren(printRoutes), shellRoute.addChildren(pageRoutes)])]);
 
-export const router = createRouter({ routeTree, context: { queryClient }, defaultPreload: "intent",
+export const router = createRouter({
+  routeTree,
+  context: { queryClient },
+  defaultPreload: "intent",
   defaultPendingComponent: RoutePending,
   defaultErrorComponent: RouteError,
 });
