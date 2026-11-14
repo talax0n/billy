@@ -5,10 +5,9 @@ import {
   rupiah,
   type shiftCloseInput,
   type shiftOpenInput,
-  type shiftQuery,
 } from "@billy/core";
-import { accounts, cashEntries, cashShifts, type Db, posSales, users } from "@billy/db";
-import { and, count, desc, eq, gte, isNull, lte, ne, notExists, type SQL, sql } from "drizzle-orm";
+import { accounts, cashEntries, cashShifts, type Db, posSales } from "@billy/db";
+import { and, eq, gte, isNull, lte, ne, notExists, type SQL, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { z } from "zod";
 import type { Actor, SessionUser } from "../../env.ts";
@@ -160,41 +159,4 @@ export async function currentShift(db: Db, user: SessionUser, { deviceCode }: z.
     .from(cashShifts)
     .where(and(eq(cashShifts.cashierId, user.id), eq(cashShifts.deviceCode, deviceCode), isNull(cashShifts.closedAt)));
   return { shift: shift ? openView(shift) : null };
-}
-
-const day = sql`(${cashShifts.openedAt} at time zone 'Asia/Jakarta')::date`;
-
-/** The admin's Shift report: newest first, with the expected and counted cash and the difference. */
-export async function listShifts(db: Db, query: z.output<typeof shiftQuery>) {
-  const where = and(
-    query.cashierId ? eq(cashShifts.cashierId, query.cashierId) : undefined,
-    query.from ? sql`${day} >= ${query.from}` : undefined,
-    query.to ? sql`${day} <= ${query.to}` : undefined,
-  );
-  const [rows, [counted]] = await Promise.all([
-    db
-      .select({
-        id: cashShifts.id,
-        cashierId: cashShifts.cashierId,
-        cashierName: users.name,
-        deviceCode: cashShifts.deviceCode,
-        accountName: accounts.name,
-        openedAt: cashShifts.openedAt,
-        openingFloat: cashShifts.openingFloat,
-        closedAt: cashShifts.closedAt,
-        expectedCash: cashShifts.expectedCash,
-        countedCash: cashShifts.countedCash,
-        difference: cashShifts.difference,
-        closeNote: cashShifts.closeNote,
-      })
-      .from(cashShifts)
-      .innerJoin(users, eq(users.id, cashShifts.cashierId))
-      .innerJoin(accounts, eq(accounts.id, cashShifts.accountId))
-      .where(where)
-      .orderBy(desc(cashShifts.openedAt), desc(cashShifts.id))
-      .limit(query.pageSize)
-      .offset((query.page - 1) * query.pageSize),
-    db.select({ total: count() }).from(cashShifts).where(where),
-  ]);
-  return { rows, total: counted!.total };
 }

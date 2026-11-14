@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { businessDateInput, paginationQuery, rupiahInput, text } from "./common.ts";
+import { rupiahInput, text } from "./common.ts";
 
 /**
  * A shift as the Kasir device opens it. `id` (UUIDv7) and `openedAt` come from the device, so
@@ -26,9 +26,3 @@ export const shiftCloseInput = z.object({
 export type ShiftCloseInput = z.input<typeof shiftCloseInput>;
 
 export const currentShiftQuery = z.object({ deviceCode: shiftOpenInput.shape.deviceCode });
-
-export const shiftQuery = paginationQuery.extend({
-  cashierId: z.uuid().optional(),
-  from: businessDateInput.optional(),
-  to: businessDateInput.optional(),
-});

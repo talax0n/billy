@@ -5,7 +5,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import { cx } from "../../lib/cx.ts";
 import { Button } from "./button.tsx";
 import { SearchInput } from "./field.tsx";
-import { EmptyState } from "./page.tsx";
+import { EmptyState, Loading } from "./page.tsx";
 
 export interface PageParams {
   q: string;
@@ -134,7 +134,7 @@ export function DataTable<Row extends { id: string }>({
             ))}
           </tbody>
         </table>
-        {isPending && <p className="px-4 py-10 text-center text-muted">Memuat…</p>}
+        {isPending && <Loading />}
         {isError && <p className="px-4 py-10 text-center text-down">{error.message}</p>}
         {data?.rows.length === 0 && (paged.q ? <EmptyState title="Tidak ada yang cocok" description={`Tidak ada hasil untuk “${paged.q}”.`} /> : empty)}
       </div>

@@ -161,15 +161,3 @@ describe("the blind cash count", () => {
     });
   });
 });
-
-describe("the Shift report", () => {
-  it("is admin only, with the expected and counted cash and the difference", async () => {
-    expect((await call("/api/shifts", { cookie: kasir })).status).toBe(403);
-    expect((await call("/api/shifts", { cookie: staff })).status).toBe(403);
-    const report = (await (await call(`/api/shifts?cashierId=${kasirId}&from=${businessDate()}`, { cookie: admin })).json()) as {
-      rows: { cashierId: string; deviceCode: string; expectedCash: number | null; difference: number | null }[];
-    };
-    expect(report.rows.every((r) => r.cashierId === kasirId)).toBe(true);
-    expect(report.rows.find((r) => r.deviceCode === "K4")).toMatchObject({ expectedCash: 130_000, difference: -5_000 });
-  });
-});

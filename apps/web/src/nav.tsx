@@ -3,7 +3,6 @@ import {
   ArrowLeftRight,
   BellDot,
   Boxes,
-  ClipboardCheck,
   ClipboardList,
   FileSpreadsheet,
   FileStack,
@@ -24,29 +23,29 @@ import {
   Wallet,
   WalletCards,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { lazyRouteComponent, type RouteComponent } from "@tanstack/react-router";
 import type { Attention } from "./lib/attention.ts";
-import { AuditPage } from "./routes/audit/audit-page.tsx";
-import { BundlesPage } from "./routes/invoice-bundles/bundles-page.tsx";
-import { CashPage } from "./routes/cash/cash-page.tsx";
-import { CashReportPage } from "./routes/cash-report/cash-report-page.tsx";
-import { ContactsPage } from "./routes/contacts/contacts-page.tsx";
-import { DeliveriesPage } from "./routes/deliveries/deliveries-page.tsx";
-import { ExpensesPage } from "./routes/expenses/expenses-page.tsx";
-import { ActionsPage } from "./routes/insights/actions.tsx";
-import { DashboardPage } from "./routes/insights/dashboard.tsx";
-import { ProductsPage } from "./routes/products/products-page.tsx";
-import { ReceivablesPage } from "./routes/receivables/receivables-page.tsx";
-import { SalesPage } from "./routes/sales/sales-page.tsx";
-import { PayablesPage } from "./routes/payables/payables-page.tsx";
-import { PurchasesPage } from "./routes/purchases/purchases-page.tsx";
-import { QuotationsPage } from "./routes/quotations/quotations-page.tsx";
-import { RiwayatKasirPage } from "./routes/riwayat-kasir/riwayat-kasir-page.tsx";
-import { SettingsPage } from "./routes/settings/settings-page.tsx";
-import { OpnamePage } from "./routes/opname/opname-page.tsx";
-import { ShiftsPage } from "./routes/shifts/shifts-page.tsx";
-import { StockAlertsPage, StockPage } from "./routes/stock/stock-page.tsx";
-import { DailySummaryPage } from "./routes/watchdog/daily-page.tsx";
+const AuditPage = lazyRouteComponent(() => import("./routes/audit/audit-page.tsx"), "AuditPage");
+const BundlesPage = lazyRouteComponent(() => import("./routes/invoice-bundles/bundles-page.tsx"), "BundlesPage");
+const CashPage = lazyRouteComponent(() => import("./routes/cash/cash-page.tsx"), "CashPage");
+const CashReportPage = lazyRouteComponent(() => import("./routes/cash-report/cash-report-page.tsx"), "CashReportPage");
+const ContactsPage = lazyRouteComponent(() => import("./routes/contacts/contacts-page.tsx"), "ContactsPage");
+const DeliveriesPage = lazyRouteComponent(() => import("./routes/deliveries/deliveries-page.tsx"), "DeliveriesPage");
+const ExpensesPage = lazyRouteComponent(() => import("./routes/expenses/expenses-page.tsx"), "ExpensesPage");
+const ActionsPage = lazyRouteComponent(() => import("./routes/insights/actions.tsx"), "ActionsPage");
+const DashboardPage = lazyRouteComponent(() => import("./routes/insights/dashboard.tsx"), "DashboardPage");
+const ProductsPage = lazyRouteComponent(() => import("./routes/products/products-page.tsx"), "ProductsPage");
+const ReceivablesPage = lazyRouteComponent(() => import("./routes/receivables/receivables-page.tsx"), "ReceivablesPage");
+const SalesPage = lazyRouteComponent(() => import("./routes/sales/sales-page.tsx"), "SalesPage");
+const PayablesPage = lazyRouteComponent(() => import("./routes/payables/payables-page.tsx"), "PayablesPage");
+const PurchasesPage = lazyRouteComponent(() => import("./routes/purchases/purchases-page.tsx"), "PurchasesPage");
+const QuotationsPage = lazyRouteComponent(() => import("./routes/quotations/quotations-page.tsx"), "QuotationsPage");
+const RiwayatKasirPage = lazyRouteComponent(() => import("./routes/riwayat-kasir/riwayat-kasir-page.tsx"), "RiwayatKasirPage");
+const SettingsPage = lazyRouteComponent(() => import("./routes/settings/settings-page.tsx"), "SettingsPage");
+const OpnamePage = lazyRouteComponent(() => import("./routes/opname/opname-page.tsx"), "OpnamePage");
+const StockAlertsPage = lazyRouteComponent(() => import("./routes/stock/stock-page.tsx"), "StockAlertsPage");
+const StockPage = lazyRouteComponent(() => import("./routes/stock/stock-page.tsx"), "StockPage");
+const DailySummaryPage = lazyRouteComponent(() => import("./routes/watchdog/daily-page.tsx"), "DailySummaryPage");
 
 export const navGroups = ["Umum", "Transaksi", "Keuangan", "Persediaan"] as const;
 
@@ -57,7 +56,7 @@ export interface NavItem {
   /** Sidebar group; `"hidden"` is a route with no sidebar link of its own. */
   group: (typeof navGroups)[number] | "hidden";
   /** The page. Without one the route shows "Segera hadir". */
-  page?: () => ReactNode;
+  page?: RouteComponent;
   /** Roles that may open it. Default: admin and staff (kasir never sees the shell). */
   roles?: Role[];
   /** Shown as a tab of this sidebar entry's page instead of its own sidebar link. */
@@ -86,7 +85,6 @@ export const navItems: NavItem[] = [
   { group: "Keuangan", path: "/kas-bank", label: "Kas & Biaya", tab: "Kas & Bank", icon: Wallet, page: CashPage },
   { group: "hidden", section: "/kas-bank", path: "/biaya", label: "Biaya", icon: WalletCards, page: ExpensesPage },
   { group: "hidden", section: "/kas-bank", path: "/laporan-kas", label: "Laporan Kas", icon: FileSpreadsheet, page: CashReportPage, roles: ["admin", "staff"] },
-  { group: "hidden", section: "/kas-bank", path: "/laporan-shift", label: "Laporan Shift", icon: ClipboardCheck, page: ShiftsPage, roles: ["admin"] },
   { group: "Keuangan", path: "/piutang", label: "Piutang & Hutang", tab: "Piutang", icon: HandCoins, page: ReceivablesPage },
   { group: "hidden", section: "/piutang", path: "/hutang", label: "Hutang", icon: ArrowLeftRight, page: PayablesPage },
   { group: "Persediaan", path: "/produk", label: "Produk & Stok", tab: "Produk", icon: Package, page: ProductsPage, badge: (a) => a.negativeStock + a.lowStock },

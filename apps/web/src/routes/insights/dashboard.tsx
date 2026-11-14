@@ -14,7 +14,7 @@ import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { Button } from "../../components/ui/button.tsx";
 import { type ChartConfig, ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent } from "../../components/ui/chart.tsx";
 import { DateInput, Select } from "../../components/ui/field.tsx";
-import { FilterRow, PageBody, PageHeader } from "../../components/ui/page.tsx";
+import { FilterRow, Loading, PageBody, PageHeader } from "../../components/ui/page.tsx";
 import { Tooltip } from "../../components/ui/tooltip.tsx";
 import { YearlyOverview } from "./yearly-overview.tsx";
 import { WatchdogCard } from "../watchdog/flags.tsx";
@@ -178,9 +178,7 @@ export function DashboardPage() {
             </Button>
           </p>
         )}
-        {result.isPending && !invalid && (
-          <p className="py-12 text-center text-muted">Memuat ringkasan…</p>
-        )}
+        {result.isPending && !invalid && <Loading label="Memuat ringkasan…" className="py-12" />}
         {data && !invalid && (
           <>
             <div className="grid grid-cols-5 gap-px overflow-hidden rounded-xl border border-line bg-line max-[900px]:grid-cols-2">

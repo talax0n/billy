@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router";
+import { Loader2 } from "lucide-react";
 import { createContext, type ReactNode, useContext } from "react";
 import { cx } from "../../lib/cx.ts";
 import { NotificationBell } from "../shell/notification-bell.tsx";
@@ -98,6 +99,16 @@ export function EmptyState({ title, description, action }: { title: string; desc
       <p className="font-medium">{title}</p>
       {description && <p className="max-w-sm text-muted">{description}</p>}
       {action && <div className="mt-3">{action}</div>}
+    </div>
+  );
+}
+
+/** A centred spinner with a label, for a page or panel whose data is still on its way. */
+export function Loading({ label = "Memuat…", className }: { label?: string; className?: string }) {
+  return (
+    <div role="status" className={cx("flex items-center justify-center gap-2 px-4 py-10 text-muted", className)}>
+      <Loader2 aria-hidden className="size-4 animate-spin" />
+      {label}
     </div>
   );
 }

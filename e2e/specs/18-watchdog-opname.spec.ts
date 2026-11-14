@@ -43,8 +43,8 @@ test("a shift short of cash is a red flag on the Overview and in Ringkasan haria
   await expect(admin.getByRole("row", { name: /^Kasir Satu Kasir/ })).toBeVisible();
 
   await admin.getByRole("region", { name: "Peringatan" }).getByRole("link", { name: new RegExp(flag) }).click();
-  await expect(admin).toHaveURL(/\/laporan-shift\?/);
-  await expect(admin.getByRole("row", { name: new RegExp(`Kasir Satu.*${rp(63_000)}.*−${rp(37_000)}`) })).toBeVisible();
+  await expect(admin).toHaveURL(/\/log-aktivitas\?/);
+  await expect(admin.getByRole("row", { name: new RegExp(`Tutup shift K1 · selisih −${rp(37_000)}`) })).toBeVisible();
   await admin.context().close();
 });
 

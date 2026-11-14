@@ -1,12 +1,12 @@
 import { QueryCache, QueryClient } from "@tanstack/react-query";
 import { createRootRouteWithContext, createRoute, createRouter, Outlet, redirect } from "@tanstack/react-router";
 import { AppShell } from "./components/shell/app-shell.tsx";
-import { EmptyState } from "./components/ui/page.tsx";
 import { Toaster } from "./components/ui/toast.tsx";
 import { ApiError } from "./lib/api.ts";
 import { meQuery } from "./lib/auth.ts";
 import { navItems } from "./nav.tsx";
 import { ComingSoon } from "./routes/coming-soon.tsx";
+import { NotFoundPage, RouteError, RoutePending } from "./routes/fallbacks.tsx";
 import { KasirDeliveriesPage } from "./routes/deliveries/deliveries-page.tsx";
 import { KasirPage } from "./routes/kasir.tsx";
 import { LoginPage } from "./routes/login.tsx";
@@ -32,7 +32,7 @@ const rootRoute = createRootRouteWithContext<{ queryClient: QueryClient }>()({
       <Toaster />
     </>
   ),
-  notFoundComponent: () => <EmptyState title="Halaman tidak ditemukan" />,
+  notFoundComponent: NotFoundPage,
 });
 
 const loginRoute = createRoute({
@@ -94,4 +94,7 @@ const pageRoutes = navItems.map((item) =>
 
 const routeTree = rootRoute.addChildren([loginRoute, authedRoute.addChildren([kasirRoute, kasirDeliveriesRoute, printRoute.addChildren(printRoutes), shellRoute.addChildren(pageRoutes)])]);
 
-export const router = createRouter({ routeTree, context: { queryClient }, defaultPreload: "intent" });
+export const router = createRouter({ routeTree, context: { queryClient }, defaultPreload: "intent",
+  defaultPendingComponent: RoutePending,
+  defaultErrorComponent: RouteError,
+});

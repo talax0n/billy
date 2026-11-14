@@ -17,7 +17,7 @@ import { Link } from "@tanstack/react-router";
 import { Contrast, LayoutDashboard, LogOut, Settings2, Truck } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useEffect, useEffectEvent, useReducer, useRef, useState } from "react";
 import { ApprovalDialog } from "../components/approval-dialog.tsx";
-import { EmptyState } from "../components/ui/page.tsx";
+import { EmptyState, Loading } from "../components/ui/page.tsx";
 import { toast } from "../components/ui/toast.tsx";
 import { api, ApiError, unwrap } from "../lib/api.ts";
 import { meQuery, useLogout } from "../lib/auth.ts";
@@ -104,7 +104,7 @@ export function KasirPage() {
     };
   }, [queryClient, userId, role]);
 
-  if (catalog.isPending) return <p className="grid min-h-dvh place-items-center text-muted">Memuat katalog…</p>;
+  if (catalog.isPending) return <Loading label="Memuat katalog…" className="min-h-dvh" />;
   if (catalog.isError) {
     return (
       <div className="grid min-h-dvh place-items-center">

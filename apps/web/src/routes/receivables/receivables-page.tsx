@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { StatusTag } from "../../components/ui/badge.tsx";
 import { Sheet } from "../../components/ui/dialog.tsx";
-import { EmptyState, PageBody, PageHeader, StatTile } from "../../components/ui/page.tsx";
+import { EmptyState, Loading, PageBody, PageHeader, StatTile } from "../../components/ui/page.tsx";
 import { api, unwrap } from "../../lib/api.ts";
 import { cx } from "../../lib/cx.ts";
 import { InvoiceSheet } from "../sales/invoice-sheet.tsx";
@@ -94,7 +94,7 @@ export function ReceivablesPage() {
               ))}
             </tbody>
           </table>
-          {receivables.isPending && <p className="px-4 py-10 text-center text-muted">Memuat…</p>}
+          {receivables.isPending && <Loading />}
           {receivables.isError && <p className="px-4 py-10 text-center text-down">{receivables.error.message}</p>}
           {data?.rows.length === 0 && <EmptyState title="Tidak ada piutang" description="Semua faktur sudah lunas." />}
         </div>

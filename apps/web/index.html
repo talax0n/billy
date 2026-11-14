@@ -4,6 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Toko Cat Sumber Karya</title>
+    <meta name="description" content="Kasir, penjualan, stok, dan keuangan Toko Cat Sumber Karya." />
+    <meta name="theme-color" content="#f4f4f5" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0b0b0c" media="(prefers-color-scheme: dark)" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <script>
       try {
         const t = localStorage.getItem("theme");
@@ -12,7 +16,13 @@
     </script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- Shown until React mounts; createRoot replaces it. -->
+      <div role="status" aria-label="Memuat" style="display:grid;place-items:center;min-height:100dvh;color:var(--muted,#71717a)">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.22-8.56"><animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="0.8s" repeatCount="indefinite"/></path></svg>
+      </div>
+    </div>
+    <noscript>Aplikasi ini membutuhkan JavaScript.</noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -5,6 +5,7 @@ import { Badge } from "../components/ui/badge.tsx";
 import { Button } from "../components/ui/button.tsx";
 import { Dialog } from "../components/ui/dialog.tsx";
 import { Field, Input, MoneyInput, Select } from "../components/ui/field.tsx";
+import { Loading } from "../components/ui/page.tsx";
 import { toast } from "../components/ui/toast.tsx";
 import { api, unwrap } from "../lib/api.ts";
 import { cx } from "../lib/cx.ts";
@@ -362,7 +363,7 @@ export function HistoryDialog({
             </span>
           </div>
         ))}
-        {sales.isPending && <p className="py-6 text-center text-muted">Memuat…</p>}
+        {sales.isPending && <Loading className="py-6" />}
         {sales.isError && <p className="py-6 text-center text-muted">Riwayat server tidak bisa dimuat saat offline.</p>}
         {sales.data?.rows.length === 0 && pending.length === 0 && <p className="py-6 text-center text-muted">Belum ada transaksi.</p>}
       </div>

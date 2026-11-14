@@ -7,7 +7,7 @@ import { Badge, StatusTag } from "../../components/ui/badge.tsx";
 import { Button } from "../../components/ui/button.tsx";
 import { DataTable, usePagedQuery } from "../../components/ui/data-table.tsx";
 import { Sheet } from "../../components/ui/dialog.tsx";
-import { EmptyState, FilterRow, PageBody, PageHeader, StatTile } from "../../components/ui/page.tsx";
+import { EmptyState, FilterRow, Loading, PageBody, PageHeader, StatTile } from "../../components/ui/page.tsx";
 import { api, unwrap } from "../../lib/api.ts";
 import { Amount, timeOfDay } from "../purchases/bits.tsx";
 import { type PayableInvoice, PaymentDialog } from "../purchases/payment-dialog.tsx";
@@ -82,7 +82,7 @@ function SupplierPayablesSheet({ supplier, onClose }: { supplier: SupplierRow; o
 
   return (
     <Sheet open onClose={onClose} className="max-w-3xl" title={supplier.supplierName} description={`Hutang terbuka ${formatRupiah(open)}`}>
-      {invoices.isPending && <p className="text-muted">Memuat…</p>}
+      {invoices.isPending && <Loading />}
       {invoices.data && rows.length === 0 && <EmptyState title="Semua faktur pemasok ini sudah lunas" />}
       <ul className="flex flex-col">
         {rows.map((invoice) => (

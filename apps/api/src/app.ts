@@ -19,7 +19,6 @@ import { salesRoutes } from "./modules/sales/routes.ts";
 import { purchaseRoutes } from "./modules/purchases/routes.ts";
 import { quotationRoutes } from "./modules/quotations/routes.ts";
 import { settingsRoutes } from "./modules/settings/routes.ts";
-import { shiftRoutes } from "./modules/shifts/routes.ts";
 import { stockRoutes } from "./modules/stock/routes.ts";
 import { userRoutes } from "./modules/users/routes.ts";
 import { watchdogRoutes } from "./modules/watchdog/routes.ts";
@@ -57,7 +56,6 @@ export function createApp(db: Db) {
     .route("/deliveries", deliveryRoutes)
     .route("/approvals", approvalRoutes)
     .route("/audit", auditRoutes)
-    .route("/shifts", shiftRoutes)
     .route("/watchdog", watchdogRoutes)
     .route("/", insightRoutes);
 }

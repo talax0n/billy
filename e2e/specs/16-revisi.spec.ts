@@ -22,7 +22,7 @@ async function startRevisi(page: Page, number: string, reason: string) {
   await expect(page.getByRole("button", { name: `Revisi ${number} · batal` })).toBeVisible();
 }
 
-test("a paid nota is revised up and down; the drawer and the shift report stay true", async ({ browser }) => {
+test("a paid nota is revised up and down; the drawer and the shift close stay true", async ({ browser }) => {
   const kasir = await (await browser.newContext()).newPage();
   await kasir.addInitScript(() => {
     window.print = () => {};
@@ -79,8 +79,9 @@ test("a paid nota is revised up and down; the drawer and the shift report stay t
 
   const admin = await (await browser.newContext()).newPage();
   await login(admin, ADMIN);
-  await admin.goto("/laporan-shift");
-  await expect(admin.getByRole("row", { name: new RegExp(`Kasir Satu.*K1 · Kas Toko.*${rp(100_000)}.*${rp(132_000)}.*${rp(132_000)}.*Rp 0`) })).toBeVisible();
+  await admin.goto("/log-aktivitas");
+  await admin.getByLabel("Aksi").selectOption({ label: "Tutup shift" });
+  await expect(admin.getByRole("row", { name: new RegExp(`Tutup shift K1 · selisih ${rp(0)}`) }).first()).toBeVisible();
   await admin.goto("/riwayat-kasir");
   await expect(admin.getByRole("row", { name: new RegExp(`${original}.*Direvisi`) })).toBeVisible();
   await expect(admin.getByRole("row", { name: new RegExp(`${lower}.*revisi dari ${higher}`) })).toBeVisible();

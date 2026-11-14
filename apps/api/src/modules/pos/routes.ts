@@ -21,7 +21,7 @@ import { getCatalog, getSale, listSales, printSale, recordSale, reviseSale, void
 /**
  * The cashier. Every role sells and voids, but a non-admin's void and any sale over a limit
  * need an admin's approval. A kasir sees and voids only their own sales. Selling needs an open
- * shift; closing one answers without the expected cash (the admin reads it in /api/shifts).
+ * shift; closing one answers without the expected cash (the admin reads it in Log Aktivitas).
  * Nota sementara (drafts) and revisi are online only, so they are never queued on the device.
  */
 export const posRoutes = new Hono<AppEnv>()
