@@ -128,19 +128,23 @@ export async function getCatalog(db: Db) {
   };
 }
 
-/** The sale's lines with each product's cost as of the sale date. Refuses an unknown or inactive product. */
+/**
+ * The sale's lines with each product's cost as of the sale date and its current sell price, the
+ * list price the discount cap measures a price cut against; the client's catalog is not trusted.
+ * Refuses an unknown or inactive product.
+ */
 async function priceLines(tx: Db, input: Pick<PosSale, "soldAt" | "lines">) {
   const date = businessDate(new Date(input.soldAt));
   const productIds = [...new Set(input.lines.map((l) => l.productId))];
   const catalog = await tx
-    .select({ id: products.id, active: products.active, costPrice: costAsOf(date) })
+    .select({ id: products.id, active: products.active, costPrice: costAsOf(date), sellPrice: products.sellPrice })
     .from(products)
     .where(inArray(products.id, productIds));
   const byId = new Map(catalog.map((p) => [p.id, p]));
   return input.lines.map((line) => {
     const product = byId.get(line.productId);
     if (!product?.active) throw new DomainError("invalid", "Produk di struk tidak ditemukan atau nonaktif");
-    return { ...line, unitCost: product.costPrice };
+    return { ...line, unitCost: product.costPrice, listPrice: product.sellPrice };
   });
 }
 

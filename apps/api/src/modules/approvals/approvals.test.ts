@@ -89,6 +89,8 @@ describe("discount cap and below-cost lines on POS sales", () => {
   });
 
   it("refuses a line priced below cost, unless the shop allows it", async () => {
+    // 60.000 against the 78.000 catalog price is also a 23% cut; lift the cap to see below cost alone.
+    await db.update(settings).set({ kasirMaxDiscountBp: 10_000 });
     const cheap = sale(0, { lines: [{ productId: enamel, qty: 1, unitPrice: 60_000 }], total: 60_000, tendered: 60_000 });
     expect(await json(await post(kasir, cheap))).toEqual([
       403,
@@ -96,7 +98,18 @@ describe("discount cap and below-cost lines on POS sales", () => {
     ]);
     await db.update(settings).set({ allowBelowCost: true });
     expect((await post(kasir, cheap)).status).toBe(201);
-    await db.update(settings).set({ allowBelowCost: false });
+    await db.update(settings).set({ allowBelowCost: false, kasirMaxDiscountBp: 500 });
+  });
+
+  it("counts a price typed under the catalog price toward the cap, and allows any higher price", async () => {
+    // 2 × 73.000 against the 78.000 catalog price = 10.000 off 156.000 = 6,42%
+    const cut = sale(0, { lines: [{ productId: enamel, qty: 2, unitPrice: 73_000 }], total: 146_000, tendered: 146_000 });
+    expect(await json(await post(kasir, cut))).toEqual([
+      403,
+      { error: "Diskon 6,42% melebihi batas kasir 5% per nota. Minta persetujuan admin.", approval: { kind: "discount" } },
+    ]);
+    const tinted = sale(0, { lines: [{ productId: enamel, qty: 1, unitPrice: 245_500, note: "NW-1023" }], total: 245_500, tendered: 245_500 });
+    expect((await post(kasir, tinted)).status).toBe(201);
   });
 
   it("never limits admin", async () => {

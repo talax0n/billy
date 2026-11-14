@@ -58,13 +58,19 @@ export type Limits = z.output<typeof limitsInput>;
 export interface PricedLine extends LineInput {
   /** Unknown on the cashier device, which never holds cost prices. */
   unitCost?: Rupiah | undefined;
+  /** Catalog sell price. A unit price under it counts as discount, so price cuts cannot bypass the cap. */
+  listPrice?: Rupiah | undefined;
 }
 
 export type LimitBreach = { kind: "discount"; bp: number; maxBp: number } | { kind: "below_cost"; lines: number[] };
 
-/** Line and document discounts together, in basis points of the gross, rounded up. */
-export function combinedDiscountBp(lines: readonly LineInput[], discount: Discount): number {
-  const gross = lines.reduce((sum, l) => sum + l.qty * l.unitPrice, 0);
+/**
+ * Line and document discounts together, in basis points of the gross, rounded up. The gross is
+ * at the catalog price when the line was sold under it, so the price cut adds to the discount;
+ * a price above catalog (a tinted mix) counts at the price charged.
+ */
+export function combinedDiscountBp(lines: readonly PricedLine[], discount: Discount): number {
+  const gross = lines.reduce((sum, l) => sum + l.qty * Math.max(l.unitPrice, l.listPrice ?? 0), 0);
   if (gross === 0) return 0;
   const off = gross - computeTotals(lines, discount).total;
   return Math.ceil((off * BASIS_POINTS) / gross);

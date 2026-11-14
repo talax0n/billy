@@ -23,7 +23,7 @@ import { api, ApiError, unwrap } from "../lib/api.ts";
 import { meQuery, useLogout } from "../lib/auth.ts";
 import { cx } from "../lib/cx.ts";
 import { setTheme } from "../lib/theme.ts";
-import { cartReducer, emptyCart } from "../pos/cart.ts";
+import { cartReducer, emptyCart, plainLineOf } from "../pos/cart.ts";
 import { CartTable } from "../pos/cart-table.tsx";
 import {
   CloseShiftDialog,
@@ -31,6 +31,7 @@ import {
   HistoryDialog,
   LineDiscountDialog,
   NoteDialog,
+  PriceDialog,
   OpenShiftDialog,
   ParkedDialog,
   PreferencesDialog,
@@ -72,7 +73,7 @@ import { exactMatch, SearchBox, searchProducts } from "../pos/search.tsx";
 import { cacheAppShell } from "../pos/shell.ts";
 import { Chip, Kbd } from "../pos/ui.tsx";
 
-type DialogName = "customer" | "lineDiscount" | "note" | "txDiscount" | "parked" | "history" | "problems" | "prefs" | "closeShift" | "drafts" | "revisi";
+type DialogName = "customer" | "lineDiscount" | "price" | "note" | "txDiscount" | "parked" | "history" | "problems" | "prefs" | "closeShift" | "drafts" | "revisi";
 
 type SaleDetail = Awaited<ReturnType<typeof fetchSale>>;
 const fetchSale = (id: string) => unwrap(api.pos.sales[":id"].$get({ param: { id } }));
@@ -234,7 +235,7 @@ function Register({ catalog }: { catalog: Catalog }) {
   const add = (productIndex: number, thenQty: boolean) => {
     const product = exactMatch(catalog.products, query) ?? results[productIndex];
     if (!product) return;
-    const existing = cart.lines.findIndex((l) => l.productId === product.id && !l.note);
+    const existing = plainLineOf(cart.lines, product.id);
     dispatch({ type: "add", product });
     setQuery("");
     setHighlight(0);
@@ -466,6 +467,7 @@ function Register({ catalog }: { catalog: Catalog }) {
     if (rowMode) {
       rowKeys.d = rowKeys.D = () => line && setDialog("lineDiscount");
       rowKeys.n = rowKeys.N = () => line && setDialog("note");
+      rowKeys.h = rowKeys.H = () => line && setDialog("price");
     }
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       const step = e.key === "ArrowDown" ? 1 : -1;
@@ -550,6 +552,7 @@ function Register({ catalog }: { catalog: Catalog }) {
             cart={cart}
             lineTotals={computed.ok ? totals.lineTotals : []}
             dispatch={dispatch}
+            onPrice={() => setDialog("price")}
             qtyEdit={qtyEdit}
             onQtyEditDone={() => {
               setQtyEdit(null);
@@ -618,6 +621,17 @@ function Register({ catalog }: { catalog: Catalog }) {
           onClose={focusSearch}
           onSave={(amount) => {
             dispatch({ type: "discount", index: cart.selected, amount });
+            focusSearch();
+          }}
+        />
+      )}
+      {dialog === "price" && line && (
+        <PriceDialog
+          line={line}
+          onClose={focusSearch}
+          onSave={(unitPrice, note) => {
+            dispatch({ type: "price", index: cart.selected, unitPrice });
+            dispatch({ type: "note", index: cart.selected, note });
             focusSearch();
           }}
         />

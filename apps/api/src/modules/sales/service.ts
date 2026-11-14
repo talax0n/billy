@@ -93,7 +93,22 @@ function invoiceQuery(db: Db) {
       .innerJoin(contacts, eq(contacts.id, salesInvoices.customerId))
       .leftJoin(paidByInvoice, eq(paidByInvoice.invoiceId, salesInvoices.id));
 
-  return { ...state, select, aggregate };
+  /** Rows per status chip; `open` includes overdue, like the `open` filter. */
+  const statusCounts = (today: string) =>
+    db
+      .select({
+        overdue: sql<number>`count(*) filter (where ${state.statusWhere("overdue", today)})`.mapWith(Number),
+        open: sql<number>`count(*) filter (where ${open})`.mapWith(Number),
+        paid: sql<number>`count(*) filter (where ${state.statusWhere("paid", today)})`.mapWith(Number),
+        void: sql<number>`count(*) filter (where ${state.statusWhere("void", today)})`.mapWith(Number),
+      })
+      .from(salesInvoices)
+      .innerJoin(contacts, eq(contacts.id, salesInvoices.customerId))
+      .leftJoin(paidByInvoice, eq(paidByInvoice.invoiceId, salesInvoices.id));
+
+  const listOrder = (today: string) => [...state.priorityOrder(today), desc(salesInvoices.date), desc(salesInvoices.number)];
+
+  return { ...state, select, aggregate, statusCounts, listOrder };
 }
 
 type InvoiceRow = Awaited<ReturnType<ReturnType<typeof invoiceQuery>["select"]>>[number];
@@ -113,26 +128,30 @@ export async function invoicesWithState(db: Db, where: SQL | undefined) {
 type ListFilter = Omit<z.output<typeof salesListQuery>, "page" | "pageSize">;
 
 const listWhere = (invoices: ReturnType<typeof invoiceQuery>, query: ListFilter, today: string) =>
+  and(periodWhere(query), query.status ? invoices.statusWhere(query.status, today) : undefined);
+
+/** Every list filter except status, so the status chips can count each status. */
+const periodWhere = (query: ListFilter) =>
   and(
     query.from ? gte(salesInvoices.date, query.from) : undefined,
     query.to ? lte(salesInvoices.date, query.to) : undefined,
     query.customerId ? eq(salesInvoices.customerId, query.customerId) : undefined,
     matchAllTerms(sql`${salesInvoices.number} || ' ' || ${contacts.name}`, query.q),
-    query.status ? invoices.statusWhere(query.status, today) : undefined,
   );
 
 export async function listInvoices(db: Db, query: z.output<typeof salesListQuery>) {
   const today = businessDate();
   const invoices = invoiceQuery(db);
   const where = listWhere(invoices, query, today);
-  const [rows, [summary]] = await Promise.all([
+  const [rows, [summary], [counts]] = await Promise.all([
     invoices
       .select()
       .where(where)
-      .orderBy(desc(salesInvoices.date), desc(salesInvoices.number))
+      .orderBy(...invoices.listOrder(today))
       .limit(query.pageSize)
       .offset((query.page - 1) * query.pageSize),
     invoices.aggregate(today).where(where),
+    invoices.statusCounts(today).where(periodWhere(query)),
   ]);
   const { rows: total, ...totals } = summary!;
   return {
@@ -144,11 +163,20 @@ export async function listInvoices(db: Db, query: z.output<typeof salesListQuery
       paid: rupiah(totals.paid),
       outstanding: rupiah(totals.outstanding),
       overdue: rupiah(totals.overdue),
+      counts: counts!,
     },
   };
 }
 
-/** Every invoice the Penjualan filters match, oldest first, as an .xlsx with a totals row. */
+/** Overdue invoices across all time, for the Penjualan banner and the sidebar badge. */
+export async function overdueSummary(db: Db) {
+  const today = businessDate();
+  const invoices = invoiceQuery(db);
+  const [summary] = await invoices.aggregate(today).where(invoices.statusWhere("overdue", today));
+  return { count: summary!.count, outstanding: rupiah(summary!.overdue) };
+}
+
+/** Every invoice the Penjualan filters match, in the list's priority order, as an .xlsx with a totals row. */
 export async function exportInvoices(db: Db, query: ListFilter) {
   const today = businessDate();
   const { rows, summary } = await db.transaction(
@@ -157,7 +185,7 @@ export async function exportInvoices(db: Db, query: ListFilter) {
       const where = listWhere(invoices, query, today);
       const [summary] = await invoices.aggregate(today).where(where);
       assertExportable(summary!.rows);
-      const rows = await invoices.select().where(where).orderBy(asc(salesInvoices.date), asc(salesInvoices.number));
+      const rows = await invoices.select().where(where).orderBy(...invoices.listOrder(today));
       return { rows: rows.map((row) => withState(row, today)), summary: summary! };
     },
     { isolationLevel: "repeatable read" },

@@ -1,21 +1,28 @@
 import type { Rupiah } from "@billy/core";
 import { useState } from "react";
+import { Badge } from "../components/ui/badge.tsx";
+import { Button } from "../components/ui/button.tsx";
 import { cx } from "../lib/cx.ts";
-import type { Cart, CartAction } from "./cart.ts";
+import { type Cart, type CartAction, priceChanged } from "./cart.ts";
 import { productLabel } from "./search.tsx";
 import { Kbd, money } from "./ui.tsx";
 
-/** The cart: one row per line, the selected row tinted. `qtyEdit` opens an inline qty field on that row. */
+/**
+ * The cart: one row per line, the selected row tinted. `qtyEdit` opens an inline qty field on that row.
+ * The selected row also shows "Ubah harga" (H), since few cashiers learn the row keys.
+ */
 export function CartTable({
   cart,
   lineTotals,
   dispatch,
+  onPrice,
   qtyEdit,
   onQtyEditDone,
 }: {
   cart: Cart;
   lineTotals: Rupiah[];
   dispatch: (action: CartAction) => void;
+  onPrice: () => void;
   qtyEdit: number | null;
   onQtyEditDone: () => void;
 }) {
@@ -54,8 +61,23 @@ export function CartTable({
                       {line.note} · tidak bisa retur
                     </span>
                   )}
+                  {i === cart.selected && (
+                    <Button className="mt-2 flex" onClick={onPrice}>
+                      Ubah harga <Kbd>H</Kbd>
+                    </Button>
+                  )}
                 </td>
-                <td className="px-2 py-3 text-right tabular-nums">{money(line.unitPrice)}</td>
+                <td className="px-2 py-3 text-right tabular-nums">
+                  {money(line.unitPrice)}
+                  {priceChanged(line) && (
+                    <span className="mt-1 flex flex-col items-end gap-1">
+                      <Badge tone="warn">Harga mesin</Badge>
+                      <s className="text-xs text-faint" aria-label="Harga katalog">
+                        {money(line.listPrice!)}
+                      </s>
+                    </span>
+                  )}
+                </td>
                 <td className="px-2 py-2.5 text-right">
                   {qtyEdit === i ? (
                     <QtyInput
@@ -108,7 +130,7 @@ export function CartTable({
         </span>
         <span className="flex-1" />
         <span className="flex items-center gap-1 max-md:hidden">
-          Baris terpilih (↑↓): <Kbd>+</Kbd> <Kbd>−</Kbd> qty · <Kbd>D</Kbd> diskon · <Kbd>N</Kbd> catatan · <Kbd>Del</Kbd> hapus
+          Baris terpilih (↑↓): <Kbd>+</Kbd> <Kbd>−</Kbd> qty · <Kbd>D</Kbd> diskon · <Kbd>H</Kbd> harga · <Kbd>N</Kbd> catatan · <Kbd>Del</Kbd> hapus
         </span>
       </div>
     </>

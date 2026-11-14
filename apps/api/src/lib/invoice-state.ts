@@ -44,5 +44,17 @@ export function invoiceState(db: Db, invoice: InvoiceColumns, paymentInvoiceId: 
     }
   }
 
-  return { paidByInvoice, paid, live, open, statusWhere };
+  /**
+   * List order by what needs attention: Telat (oldest due date first), Belum lunas, Lunas, Void.
+   * Callers append their own tie-breakers, e.g. newest date first.
+   */
+  function priorityOrder(today: string): SQL[] {
+    const overdue = statusWhere("overdue", today);
+    return [
+      sql`case when ${overdue} then 0 when ${open} then 1 when ${live} then 2 else 3 end`,
+      sql`case when ${overdue} then ${invoice.dueDate} end`,
+    ];
+  }
+
+  return { paidByInvoice, paid, live, open, statusWhere, priorityOrder };
 }
