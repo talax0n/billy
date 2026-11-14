@@ -1,3 +1,4 @@
+import { businessDate } from "@billy/core";
 import { cashEntries } from "@billy/db";
 import { asc, eq } from "drizzle-orm";
 import { beforeAll, expect, it } from "vitest";
@@ -68,7 +69,7 @@ it("voids with a reason: a reversal entry, out of the period total, and only onc
   expect(voided.body).toMatchObject({ voidReason: "Dobel input", voidedAt: expect.any(String) });
   expect(await entriesOf(id)).toEqual([
     { accountId: kas, date: "2026-11-13", direction: "out", amount: 450_000, category: "expense", note: "Listrik: PLN November" },
-    { accountId: kas, date: "2026-11-13", direction: "in", amount: 450_000, category: "reversal", note: "Void: Dobel input" },
+    { accountId: kas, date: businessDate(), direction: "in", amount: 450_000, category: "reversal", note: "Void: Dobel input" },
   ]);
   expect(await json("/api/expenses?month=2026-11")).toMatchObject({ total: 2, amountTotal: 50_000 });
   expect(await json(`/api/accounts/${kas}`)).toMatchObject({ balance: -2_050_000 });
