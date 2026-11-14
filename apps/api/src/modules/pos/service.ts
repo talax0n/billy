@@ -41,6 +41,7 @@ import { audit } from "../../lib/audit.ts";
 import { costAsOf } from "../../lib/cost-as-of.ts";
 import { likePattern } from "../../lib/search.ts";
 import { stockByProduct } from "../products/service.ts";
+import { queueDelivery } from "../deliveries/service.ts";
 import { settleDraft } from "./drafts.ts";
 
 type PosSale = z.output<typeof posSaleInput>;
@@ -105,7 +106,7 @@ export async function getCatalog(db: Db) {
       .where(eq(accounts.active, true))
       .orderBy(asc(accounts.code)),
     db
-      .select({ id: contacts.id, code: contacts.code, name: contacts.name })
+      .select({ id: contacts.id, code: contacts.code, name: contacts.name, address: contacts.address, phone: contacts.phone })
       .from(contacts)
       .where(and(eq(contacts.kind, "customer"), eq(contacts.active, true)))
       .orderBy(asc(contacts.name)),
@@ -260,6 +261,12 @@ export async function recordSale(db: Db, input: PosSale, actor: Actor, draftId?:
       deviceCode,
       ...(offline && { source: "kasir_offline" as const }),
     });
+    if (input.delivery) {
+      await queueDelivery(tx, input.delivery, { posSaleId: input.id, customerId: input.customerId, queuedAt: soldAt }, actor, {
+        deviceCode,
+        ...(offline && { source: "kasir_offline" as const }),
+      });
+    }
     if (draftId) await settleDraft(tx, draftId, input, actor);
     return { created: true, sale: await getSale(tx, input.id) };
   });

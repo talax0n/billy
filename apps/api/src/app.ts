@@ -9,6 +9,7 @@ import { categoryRoutes } from "./modules/categories/routes.ts";
 import { invoiceBundleRoutes } from "./modules/invoice-bundles/routes.ts";
 import { accountRoutes, cashRoutes } from "./modules/cash/routes.ts";
 import { contactRoutes } from "./modules/contacts/routes.ts";
+import { deliveryRoutes } from "./modules/deliveries/routes.ts";
 import { expenseRoutes } from "./modules/expenses/routes.ts";
 import { insightRoutes } from "./modules/insights/routes.ts";
 import { opnameRoutes } from "./modules/opname/routes.ts";
@@ -53,6 +54,7 @@ export function createApp(db: Db) {
     .route("/stock", stockRoutes)
     .route("/opnames", opnameRoutes)
     .route("/pos", posRoutes)
+    .route("/deliveries", deliveryRoutes)
     .route("/approvals", approvalRoutes)
     .route("/audit", auditRoutes)
     .route("/shifts", shiftRoutes)
