@@ -59,8 +59,8 @@ function Delta({
   );
 }
 const cashChartConfig = {
-  incoming: { label: "Masuk", color: "var(--ink)" },
-  outgoing: { label: "Keluar", color: "var(--faint)" },
+  incoming: { label: "Masuk", color: "var(--up)" },
+  outgoing: { label: "Keluar", color: "var(--down)" },
 } satisfies ChartConfig;
 const weekLabel = (from: unknown) => formatDate(String(from)).replace(/ \d{4}$/, "");
 function CashChart({ rows }: { rows: Dashboard["chart"] }) {
