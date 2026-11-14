@@ -83,18 +83,38 @@ function invoiceQuery(db: Db) {
       .innerJoin(contacts, eq(contacts.id, purchaseInvoices.supplierId))
       .leftJoin(paidByInvoice, eq(paidByInvoice.invoiceId, purchaseInvoices.id));
 
-  const aggregate = () =>
+  const owed = (where: SQL) => sql<number>`coalesce(sum(${purchaseInvoices.total} - ${paid}) filter (where ${where}), 0)`.mapWith(Number);
+  const aggregate = (today: string) =>
     db
       .select({
         count: count(),
         purchased: sql<number>`coalesce(sum(${purchaseInvoices.total}) filter (where ${purchaseInvoices.voidedAt} is null), 0)`.mapWith(Number),
-        outstanding: sql<number>`coalesce(sum(${purchaseInvoices.total} - ${paid}) filter (where ${open}), 0)`.mapWith(Number),
+        paid: sql<number>`coalesce(sum(${paid}) filter (where ${purchaseInvoices.voidedAt} is null), 0)`.mapWith(Number),
+        outstanding: owed(open),
+        overdue: owed(state.statusWhere("overdue", today)),
+        /** The Hutang "≤7 hari" bucket: due today through today + 7. */
+        dueSoon: owed(and(open, gte(purchaseInvoices.dueDate, today), lte(purchaseInvoices.dueDate, addDays(today, 7)))!),
       })
       .from(purchaseInvoices)
       .innerJoin(contacts, eq(contacts.id, purchaseInvoices.supplierId))
       .leftJoin(paidByInvoice, eq(paidByInvoice.invoiceId, purchaseInvoices.id));
 
-  return { ...state, select, aggregate };
+  const listOrder = (query: ListFilter, today: string) =>
+    state.listOrder(
+      query,
+      {
+        number: purchaseInvoices.number,
+        date: purchaseInvoices.date,
+        supplier: contacts.name,
+        dueDate: purchaseInvoices.dueDate,
+        total: purchaseInvoices.total,
+        outstanding: sql`case when ${open} then ${purchaseInvoices.total} - ${paid} else 0 end`,
+      },
+      [desc(purchaseInvoices.date), desc(purchaseInvoices.number)],
+      today,
+    );
+
+  return { ...state, select, aggregate, listOrder };
 }
 
 type InvoiceRow = Awaited<ReturnType<ReturnType<typeof invoiceQuery>["select"]>>[number];
@@ -115,16 +135,16 @@ const listWhere = (invoices: ReturnType<typeof invoiceQuery>, query: ListFilter,
     query.status ? invoices.statusWhere(query.status, today) : undefined,
   );
 
-/** Every supplier invoice the Pembelian filters match, oldest first, as an .xlsx with a totals row. */
+/** Every supplier invoice the Pembelian filters match, in the list's order, as an .xlsx with a totals row. */
 export async function exportPurchases(db: Db, query: ListFilter) {
   const today = businessDate();
   const { rows, summary } = await db.transaction(
     async (tx) => {
       const invoices = invoiceQuery(tx);
       const where = listWhere(invoices, query, today);
-      const [summary] = await invoices.aggregate().where(where);
+      const [summary] = await invoices.aggregate(today).where(where);
       assertExportable(summary!.count);
-      const rows = await invoices.select().where(where).orderBy(asc(purchaseInvoices.date), asc(purchaseInvoices.number));
+      const rows = await invoices.select().where(where).orderBy(...invoices.listOrder(query, today));
       return { rows: rows.map((row) => withState(row, today)), summary: summary! };
     },
     { isolationLevel: "repeatable read" },
@@ -166,15 +186,21 @@ export async function listPurchases(db: Db, query: ListQuery) {
     invoices
       .select()
       .where(where)
-      .orderBy(desc(purchaseInvoices.date), desc(purchaseInvoices.number))
+      .orderBy(...invoices.listOrder(query, today))
       .limit(query.pageSize)
       .offset((query.page - 1) * query.pageSize),
-    invoices.aggregate().where(where),
+    invoices.aggregate(today).where(where),
   ]);
   return {
     rows: rows.map((row) => withState(row, today)),
     total: summary!.count,
-    summary: { purchased: rupiah(summary!.purchased), outstanding: rupiah(summary!.outstanding) },
+    summary: {
+      purchased: rupiah(summary!.purchased),
+      paid: rupiah(summary!.paid),
+      outstanding: rupiah(summary!.outstanding),
+      overdue: rupiah(summary!.overdue),
+      dueSoon: rupiah(summary!.dueSoon),
+    },
   };
 }
 

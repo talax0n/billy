@@ -42,6 +42,7 @@ export function QuotationSheet({
 }
 
 const money = (value: number) => formatRupiah(rupiah(value));
+const amount = (value: number) => formatRupiah(rupiah(value), { symbol: false });
 
 function QuotationDetail({ quotation }: { quotation: Quotation }) {
   const queryClient = useQueryClient();
@@ -96,8 +97,8 @@ function QuotationDetail({ quotation }: { quotation: Quotation }) {
             <tr className="border-b border-line text-left text-xs text-muted">
               <th className="px-4 py-2 font-normal">Barang</th>
               <th className="px-2 py-2 text-right font-normal">Jumlah</th>
-              <th className="px-2 py-2 text-right font-normal">Harga</th>
-              <th className="px-4 py-2 text-right font-normal">Total</th>
+              <th className="px-2 py-2 text-right font-normal">Harga (Rp)</th>
+              <th className="px-4 py-2 text-right font-normal">Total (Rp)</th>
             </tr>
           </thead>
           <tbody>
@@ -111,17 +112,17 @@ function QuotationDetail({ quotation }: { quotation: Quotation }) {
                   {line.qty} <span className="text-muted">{line.unit}</span>
                 </td>
                 <td className="px-2 py-2.5 text-right tabular-nums">
-                  {money(line.unitPrice)}
-                  {line.discountAmount > 0 && <div className="text-xs text-muted">diskon {money(line.discountAmount)}</div>}
+                  {amount(line.unitPrice)}
+                  {line.discountAmount > 0 && <div className="text-xs text-muted">diskon {amount(line.discountAmount)}</div>}
                 </td>
-                <td className="px-4 py-2.5 text-right tabular-nums">{money(line.lineTotal)}</td>
+                <td className="px-4 py-2.5 text-right tabular-nums">{amount(line.lineTotal)}</td>
               </tr>
             ))}
           </tbody>
           <tfoot className="border-t border-line">
-            <TotalRow label="Subtotal" value={money(quotation.subtotal)} />
-            {quotation.discountAmount > 0 && <TotalRow label="Diskon" value={`− ${money(quotation.discountAmount)}`} />}
-            <TotalRow label="Total" value={money(quotation.total)} strong />
+            <TotalRow label="Subtotal" value={amount(quotation.subtotal)} />
+            {quotation.discountAmount > 0 && <TotalRow label="Diskon" value={`− ${amount(quotation.discountAmount)}`} />}
+            <TotalRow label="Total" value={amount(quotation.total)} strong />
           </tfoot>
         </table>
       </section>

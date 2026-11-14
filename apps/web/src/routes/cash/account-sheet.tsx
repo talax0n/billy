@@ -27,8 +27,8 @@ import type { AccountRow } from "./cash-page.tsx";
 import { VoidDialog } from "./void-dialog.tsx";
 
 /** A balance, red when the account is overdrawn. */
-export function Balance({ value }: { value: number }) {
-  return <span className={cx("tabular-nums", value < 0 && "text-down")}>{formatRupiah(rupiah(value))}</span>;
+export function Balance({ value, symbol = true }: { value: number; symbol?: boolean }) {
+  return <span className={cx("tabular-nums", value < 0 && "text-down")}>{formatRupiah(rupiah(value), { symbol })}</span>;
 }
 
 type CashBookPage = InferResponseType<(typeof api.accounts)[":id"]["entries"]["$get"], 200>;
@@ -124,7 +124,7 @@ function CashBook({ accountId }: { accountId: string }) {
         },
       }),
     );
-  }, 15);
+  }, { pageSize: 15 });
   const setFilter = <K extends keyof CashBookFilters>(key: K, value: CashBookFilters[K]) => {
     setFilters((current) => ({ ...current, [key]: value }));
     paged.setPage(1);
@@ -202,9 +202,9 @@ function CashBook({ accountId }: { accountId: string }) {
               </span>
             ),
           },
-          { header: "Masuk", align: "right", className: "whitespace-nowrap", cell: (e) => (e.direction === "in" ? <span className="text-up">{formatRupiah(e.amount)}</span> : "") },
-          { header: "Keluar", align: "right", className: "whitespace-nowrap", cell: (e) => (e.direction === "out" ? <span className="text-down">{formatRupiah(e.amount)}</span> : "") },
-          { header: "Saldo", align: "right", className: "whitespace-nowrap", cell: (e) => <Balance value={e.balance} /> },
+          { header: "Masuk (Rp)", align: "right", className: "whitespace-nowrap", cell: (e) => (e.direction === "in" ? <span className="text-up">{formatRupiah(e.amount, { symbol: false })}</span> : "") },
+          { header: "Keluar (Rp)", align: "right", className: "whitespace-nowrap", cell: (e) => (e.direction === "out" ? <span className="text-down">{formatRupiah(e.amount, { symbol: false })}</span> : "") },
+          { header: "Saldo (Rp)", align: "right", className: "whitespace-nowrap", cell: (e) => <Balance value={e.balance} symbol={false} /> },
           {
             header: "",
             className: "w-14",

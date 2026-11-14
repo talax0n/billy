@@ -7,9 +7,8 @@ import { Badge, StatusTag } from "../../components/ui/badge.tsx";
 import { Button } from "../../components/ui/button.tsx";
 import { DataTable, usePagedQuery } from "../../components/ui/data-table.tsx";
 import { Sheet } from "../../components/ui/dialog.tsx";
-import { EmptyState, FilterRow, Loading, PageBody, PageHeader, StatTile } from "../../components/ui/page.tsx";
+import { Amount, EmptyState, FilterRow, Loading, PageBody, PageHeader, StatTile } from "../../components/ui/page.tsx";
 import { api, unwrap } from "../../lib/api.ts";
-import { Amount, timeOfDay } from "../purchases/bits.tsx";
 import { type PayableInvoice, PaymentDialog } from "../purchases/payment-dialog.tsx";
 
 type PayablesList = InferResponseType<typeof api.purchases.payables.$get, 200>;
@@ -24,7 +23,7 @@ const bucketLabels: Record<DueBucket, string> = {
 const bucketTone = { within7: "warn", within30: "neutral", later: "neutral" } as const;
 
 const money = (value: number, className?: string) =>
-  value ? <span className={className}>{formatRupiah(rupiah(value))}</span> : <span className="text-faint">—</span>;
+  value ? <span className={className}>{formatRupiah(rupiah(value), { symbol: false })}</span> : <span className="text-faint">—</span>;
 
 /** Hutang: what the shop owes each supplier and when, to plan which bills to pay first. */
 export function PayablesPage() {
@@ -46,7 +45,7 @@ export function PayablesPage() {
           ))}
           <StatTile label="Total hutang" value={<Amount value={rupiah(totals?.total ?? 0)} />} note={`Semua pemasok, per ${asOf}`} />
         </div>
-        <FilterRow aside={paged.query.dataUpdatedAt ? `Data per ${timeOfDay.format(paged.query.dataUpdatedAt)}` : undefined}>
+        <FilterRow aside={paged.query.data && `${paged.query.data.total} pemasok`}>
           <span className="text-muted">Pemasok paling mendesak di atas. Klik untuk melihat fakturnya.</span>
         </FilterRow>
         <DataTable
@@ -58,11 +57,11 @@ export function PayablesPage() {
             { header: "Pemasok", cell: (s) => s.supplierName },
             { header: "Faktur", align: "right", cell: (s) => s.invoiceCount },
             { header: "Jatuh tempo terdekat", cell: (s) => formatDate(s.nextDueDate), className: "whitespace-nowrap" },
-            { header: "Telat", align: "right", cell: (s) => money(s.late, "text-down") },
-            { header: "≤7 hari", align: "right", cell: (s) => money(s.within7, "text-warn") },
-            { header: "8–30 hari", align: "right", cell: (s) => money(s.within30) },
-            { header: ">30 hari", align: "right", cell: (s) => money(s.later) },
-            { header: "Total", align: "right", cell: (s) => <span className="font-medium">{formatRupiah(s.total)}</span> },
+            { header: "Telat (Rp)", align: "right", cell: (s) => money(s.late, "text-down") },
+            { header: "≤7 hari (Rp)", align: "right", cell: (s) => money(s.within7, "text-warn") },
+            { header: "8–30 hari (Rp)", align: "right", cell: (s) => money(s.within30) },
+            { header: ">30 hari (Rp)", align: "right", cell: (s) => money(s.later) },
+            { header: "Total (Rp)", align: "right", cell: (s) => <span className="font-medium">{formatRupiah(s.total, { symbol: false })}</span> },
           ]}
         />
       </PageBody>

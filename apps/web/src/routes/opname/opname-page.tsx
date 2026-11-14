@@ -18,7 +18,7 @@ type Filter = (typeof opnameLineFilters)[number];
 const filterLabels: Record<Filter, string> = { all: "Semua barang", counted: "Sudah dihitung", uncounted: "Belum dihitung", difference: "Ada selisih" };
 const qty = new Intl.NumberFormat("id-ID");
 const signed = (n: number) => (n > 0 ? `+${qty.format(n)}` : n < 0 ? `−${qty.format(-n)}` : "0");
-const signedMoney = (value: number) => `${value > 0 ? "+" : ""}${formatRupiah(rupiah(value))}`;
+const signedMoney = (value: number, symbol = true) => `${value > 0 ? "+" : ""}${formatRupiah(rupiah(value), { symbol })}`;
 const stamp = new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Jakarta" });
 
 /** Stok opname: the list, or one opname being counted (`/stok-opname?id=…`). */
@@ -131,7 +131,7 @@ function OpnameDetail({ id }: { id: string }) {
     ["opnames", id, "lines", filter],
     (params) =>
       unwrap(api.opnames[":id"].lines.$get({ param: { id }, query: { q: params.q, page: String(params.page), pageSize: String(params.pageSize), filter } })),
-    50,
+    { pageSize: 50 },
   );
   const opname = header.data;
   const draft = opname?.status === "draft";
@@ -257,11 +257,11 @@ function OpnameDetail({ id }: { id: string }) {
               },
             },
             {
-              header: "Nilai",
+              header: "Nilai (Rp)",
               align: "right",
               cell: (r) => {
                 const diff = difference(edits[r.id], r);
-                return diff === null ? "—" : signedMoney(diff * r.unitCost);
+                return diff === null ? "—" : signedMoney(diff * r.unitCost, false);
               },
             },
             {

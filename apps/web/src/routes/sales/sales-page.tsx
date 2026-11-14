@@ -1,4 +1,4 @@
-import { formatDate, formatRupiah, rupiah } from "@billy/core";
+import { formatDate, formatRupiah, rupiah, type SalesSortKey } from "@billy/core";
 import { useQuery } from "@tanstack/react-query";
 import { TriangleAlert, Plus } from "lucide-react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
@@ -6,8 +6,8 @@ import { useState } from "react";
 import { ExportButton } from "../../components/export-button.tsx";
 import { StatusTag } from "../../components/ui/badge.tsx";
 import { Button } from "../../components/ui/button.tsx";
-import { DataTable, usePagedQuery } from "../../components/ui/data-table.tsx";
-import { EmptyState, FilterRow, PageBody, PageHeader, StatTile } from "../../components/ui/page.tsx";
+import { DataTable, sortParams, usePagedQuery } from "../../components/ui/data-table.tsx";
+import { Amount, EmptyState, FilterRow, PageBody, PageHeader, StatTile } from "../../components/ui/page.tsx";
 import { api, unwrap } from "../../lib/api.ts";
 import { cx } from "../../lib/cx.ts";
 import { type Contact, LookupPicker, lookups } from "../../components/lookup-picker.tsx";
@@ -34,19 +34,23 @@ export function SalesPage() {
   const [status, setStatus] = useState<ChipStatus>("");
   const [customer, setCustomer] = useState<Contact | null>(null);
   const filters = { ...periodQuery(period), ...(status && { status }), ...(customer && { customerId: customer.id }) };
-  const paged = usePagedQuery(["sales", "list", period, status, customer?.id], (params) =>
-    unwrap(
-      api.sales.$get({
-        query: {
-          q: params.q,
-          page: String(params.page),
-          pageSize: String(params.pageSize),
-          ...periodQuery(period),
-          ...(status && { status }),
-          ...(customer && { customerId: customer.id }),
-        },
-      }),
-    ),
+  const paged = usePagedQuery(
+    ["sales", "list", period, status, customer?.id],
+    (params) =>
+      unwrap(
+        api.sales.$get({
+          query: {
+            q: params.q,
+            page: String(params.page),
+            pageSize: String(params.pageSize),
+            ...periodQuery(period),
+            ...(status && { status }),
+            ...(customer && { customerId: customer.id }),
+            ...sortParams(params.sort),
+          },
+        }),
+      ),
+    { sort: { key: "status" as SalesSortKey, dir: "asc" } },
   );
   const summary = paged.query.data?.summary;
   const overdue = useQuery({ ...attentionQuery, refetchOnMount: "always" }).data?.overdueInvoices;
@@ -54,6 +58,7 @@ export function SalesPage() {
     summary && (chip ? summary.counts[chip] : summary.counts.overdue + summary.counts.due + summary.counts.paid + summary.counts.void);
   const windowNote = `Faktur ${periodLabel(period)}${status ? ` · ${chips.find((c) => c.status === status)!.label}` : ""}${customer ? ` · ${customer.name}` : ""}`;
   const money = (v: number | undefined) => (v === undefined ? "—" : formatRupiah(rupiah(v)));
+  const amount = (v: number) => formatRupiah(rupiah(v), { symbol: false });
 
   return (
     <>
@@ -61,7 +66,7 @@ export function SalesPage() {
         title="Penjualan"
         actions={
           <>
-            <ExportButton path={`/api/sales/export.xlsx?${new URLSearchParams({ ...filters, ...(paged.q && { q: paged.q }) })}`} />
+            <ExportButton path={`/api/sales/export.xlsx?${new URLSearchParams({ ...filters, ...(paged.q && { q: paged.q }), ...sortParams(paged.sort) })}`} />
             <Button variant="primary" onClick={() => setCreating(true)}>
               <Plus className="size-4" />
               Faktur baru
@@ -103,12 +108,12 @@ export function SalesPage() {
           )}
         </FilterRow>
         <div className="grid grid-cols-4 gap-3.5 max-lg:grid-cols-2 max-md:grid-cols-2 max-md:gap-2 max-md:[&>:last-child:nth-child(odd)]:col-span-2">
-          <StatTile label="Total penjualan" value={money(summary?.total)} note={windowNote} />
-          <StatTile label="Sudah dibayar" value={money(summary?.paid)} note={windowNote} />
-          <StatTile label="Sisa piutang" value={money(summary?.outstanding)} note={`${windowNote} · sisa per hari ini`} />
+          <StatTile label="Total penjualan" value={<Amount value={rupiah(summary?.total ?? 0)} />} note={windowNote} />
+          <StatTile label="Sudah dibayar" value={<Amount value={rupiah(summary?.paid ?? 0)} />} note={windowNote} />
+          <StatTile label="Sisa piutang" value={<Amount value={rupiah(summary?.outstanding ?? 0)} />} note={`${windowNote} · sisa per hari ini`} />
           <StatTile
             label="Telat bayar"
-            value={<span className={cx(summary && summary.overdue > 0 && "text-down")}>{money(summary?.overdue)}</span>}
+            value={<Amount value={rupiah(summary?.overdue ?? 0)} className={cx(summary && summary.overdue > 0 && "text-down")} />}
             note={`${windowNote} · lewat jatuh tempo per hari ini`}
           />
         </div>
@@ -141,18 +146,19 @@ export function SalesPage() {
           onRowClick={(row) => openInvoice(row.id)}
           empty={<EmptyState title="Belum ada faktur di periode ini" action={<Button onClick={() => setCreating(true)}>Buat faktur</Button>} />}
           columns={[
-            { header: "Nomor", cell: (r) => <span className="font-medium">{r.number}</span>, className: "whitespace-nowrap" },
-            { header: "Pelanggan", cell: (r) => r.customerName },
-            { header: "Tanggal", cell: (r) => formatDate(r.date), className: "whitespace-nowrap" },
+            { header: "Nomor", sort: "number", cell: (r) => <span className="font-medium">{r.number}</span>, className: "whitespace-nowrap" },
+            { header: "Pelanggan", sort: "customer", cell: (r) => r.customerName },
+            { header: "Tanggal", sort: "date", cell: (r) => formatDate(r.date), className: "whitespace-nowrap" },
             {
               header: "Jatuh tempo",
+              sort: "dueDate",
               cell: (r) => <span className={cx(r.state.overdue && "text-down")}>{formatDate(r.dueDate)}</span>,
               className: "whitespace-nowrap",
             },
-            { header: "Total", align: "right", cell: (r) => money(r.total) },
-            { header: "Dibayar", mobile: false, align: "right", cell: (r) => money(r.paid) },
-            { header: "Sisa", align: "right", cell: (r) => money(r.state.outstanding) },
-            { header: "Status", cell: (r) => <StatusTag state={r.state} /> },
+            { header: "Total (Rp)", sort: "total", align: "right", cell: (r) => amount(r.total) },
+            { header: "Dibayar (Rp)", sort: "paid", mobile: false, align: "right", cell: (r) => amount(r.paid) },
+            { header: "Sisa (Rp)", sort: "outstanding", align: "right", cell: (r) => amount(r.state.outstanding) },
+            { header: "Status", sort: "status", cell: (r) => <StatusTag state={r.state} /> },
           ]}
         />
       </PageBody>

@@ -3,7 +3,7 @@ import { approvalInput } from "../approvals.ts";
 import { discountKinds } from "../invoice.ts";
 import { rupiah } from "../money.ts";
 import { salesStatusFilters } from "../sales.ts";
-import { businessDateInput, editReason, paginationQuery, paymentMethods, rupiahInput, text } from "./common.ts";
+import { businessDateInput, editReason, paginationQuery, paymentMethods, rupiahInput, sortQuery, text } from "./common.ts";
 
 const positiveRupiah = z
   .number()
@@ -54,11 +54,15 @@ export type SalesInvoiceEditInput = z.input<typeof salesInvoiceEditInput>;
 export const salesPaymentInput = z.object({ ...paymentFields, date: businessDateInput });
 export type SalesPaymentInput = z.input<typeof salesPaymentInput>;
 
+export const salesSortKeys = ["number", "customer", "date", "dueDate", "total", "paid", "outstanding", "status"] as const;
+export type SalesSortKey = (typeof salesSortKeys)[number];
+
 export const salesListQuery = paginationQuery.extend({
   from: businessDateInput.optional(),
   to: businessDateInput.optional(),
   status: z.enum(salesStatusFilters).optional(),
   customerId: z.uuid().optional(),
+  ...sortQuery(salesSortKeys).shape,
 });
 
 export const invoiceBundleInput = z.object({

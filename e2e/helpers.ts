@@ -33,6 +33,9 @@ export async function dismissLoginNotice(page: Page) {
 /** `Rp 1.234.567` as the app prints it (Indonesian grouping, no decimals). */
 export const rp = (value: number) => `Rp ${value.toLocaleString("id-ID")}`;
 
+/** `1.234.567`, the bare amount table cells print under a `(Rp)` header. */
+export const num = (value: number) => value.toLocaleString("id-ID");
+
 /** Today's business date in Jakarta as `YYMMDD`, the period part of every document number. */
 export const docPeriod = () =>
   new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta", year: "2-digit", month: "2-digit", day: "2-digit" })

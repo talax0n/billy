@@ -58,7 +58,7 @@ export function QuotationsPage() {
             { header: "Pelanggan", cell: (r) => r.customerName },
             { header: "Tanggal", cell: (r) => formatDate(r.date), className: "whitespace-nowrap" },
             { header: "Berlaku sampai", cell: (r) => formatDate(r.validUntil), className: "whitespace-nowrap" },
-            { header: "Total", align: "right", cell: (r) => formatRupiah(rupiah(r.total)) },
+            { header: "Total (Rp)", align: "right", cell: (r) => formatRupiah(rupiah(r.total), { symbol: false }) },
             { header: "Status", cell: (r) => <QuotationStatusTag status={r.status} /> },
           ]}
         />

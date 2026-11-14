@@ -1,5 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
-import { ADMIN, login, rp } from "../helpers.ts";
+import { ADMIN, login, num, rp } from "../helpers.ts";
 
 const card = (page: Page, title: string) => page.getByRole("heading", { name: title, level: 2 }).locator("..");
 
@@ -13,8 +13,8 @@ test("Overview and Perlu Tindakan count the sales made earlier in the run", asyn
   // 764.000 sold at a cost of 609.500 (cost snapshots taken at each sale).
   await expect(card(page, "Laba kotor")).toContainText(rp(154_500));
   await expect(card(page, "Piutang terbuka")).toContainText(rp(156_000));
-  await expect(page.getByRole("row", { name: `1 Kas Toko ${rp(1_808_000)} +${rp(1_808_000)}` })).toBeVisible();
-  await expect(page.getByRole("row", { name: `2 BCA Operasional ${rp(700_000)} +${rp(700_000)}` })).toBeVisible();
+  await expect(page.getByRole("row", { name: `1 Kas Toko ${num(1_808_000)} +${num(1_808_000)}` })).toBeVisible();
+  await expect(page.getByRole("row", { name: `2 BCA Operasional ${num(700_000)} +${num(700_000)}` })).toBeVisible();
 
   // The second invoice took Kilau Enamel Merah from 7 to 5, below its minimum of 6.
   await page.getByRole("button", { name: "Perlu tindakan: 3" }).click();

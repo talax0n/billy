@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { ADMIN, login, rp } from "../helpers.ts";
+import { ADMIN, login, rp, num } from "../helpers.ts";
 
 test("records money in and a transfer; a transfer needs two different accounts", async ({ page }) => {
   await login(page, ADMIN);
@@ -26,12 +26,12 @@ test("records money in and a transfer; a transfer needs two different accounts",
   await transfer.getByRole("button", { name: "Simpan transfer" }).click();
   await expect(page.getByText("Transfer dicatat")).toBeVisible();
 
-  await expect(page.getByRole("row", { name: `KAS Kas Toko Kas ${rp(1_500_000)}` })).toBeVisible();
-  await expect(page.getByRole("row", { name: `BCA BCA Operasional Bank ${rp(500_000)}` })).toBeVisible();
+  await expect(page.getByRole("row", { name: `KAS Kas Toko Kas ${num(1_500_000)}` })).toBeVisible();
+  await expect(page.getByRole("row", { name: `BCA BCA Operasional Bank ${num(500_000)}` })).toBeVisible();
   await expect(page.getByText(`Total saldo kas & bank${rp(2_000_000)}`)).toBeVisible();
 
   await page.getByRole("row", { name: /Kas Toko/ }).click();
   const sheet = page.getByRole("dialog", { name: "Kas Toko" });
-  await expect(sheet.getByRole("row", { name: new RegExp(`Modal awal.*${rp(2_000_000)}`) })).toBeVisible();
-  await expect(sheet.getByRole("row", { name: new RegExp(`Setor ke bank.*${rp(500_000)}.*${rp(1_500_000)}`) })).toBeVisible();
+  await expect(sheet.getByRole("row", { name: new RegExp(`Modal awal.*${num(2_000_000)}`) })).toBeVisible();
+  await expect(sheet.getByRole("row", { name: new RegExp(`Setor ke bank.*${num(500_000)}.*${num(1_500_000)}`) })).toBeVisible();
 });

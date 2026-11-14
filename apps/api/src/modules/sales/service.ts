@@ -106,7 +106,21 @@ function invoiceQuery(db: Db) {
       .innerJoin(contacts, eq(contacts.id, salesInvoices.customerId))
       .leftJoin(paidByInvoice, eq(paidByInvoice.invoiceId, salesInvoices.id));
 
-  const listOrder = (today: string) => [...state.priorityOrder(today), desc(salesInvoices.date), desc(salesInvoices.number)];
+  const listOrder = (query: ListFilter, today: string) =>
+    state.listOrder(
+      query,
+      {
+        number: salesInvoices.number,
+        customer: contacts.name,
+        date: salesInvoices.date,
+        dueDate: salesInvoices.dueDate,
+        total: salesInvoices.total,
+        paid,
+        outstanding: sql`case when ${open} then ${salesInvoices.total} - ${paid} else 0 end`,
+      },
+      [desc(salesInvoices.date), desc(salesInvoices.number)],
+      today,
+    );
 
   return { ...state, select, aggregate, statusCounts, listOrder };
 }
@@ -147,7 +161,7 @@ export async function listInvoices(db: Db, query: z.output<typeof salesListQuery
     invoices
       .select()
       .where(where)
-      .orderBy(...invoices.listOrder(today))
+      .orderBy(...invoices.listOrder(query, today))
       .limit(query.pageSize)
       .offset((query.page - 1) * query.pageSize),
     invoices.aggregate(today).where(where),
@@ -177,7 +191,7 @@ export async function exportInvoices(db: Db, query: ListFilter) {
       const where = listWhere(invoices, query, today);
       const [summary] = await invoices.aggregate(today).where(where);
       assertExportable(summary!.rows);
-      const rows = await invoices.select().where(where).orderBy(...invoices.listOrder(today));
+      const rows = await invoices.select().where(where).orderBy(...invoices.listOrder(query, today));
       return { rows: rows.map((row) => withState(row, today)), summary: summary! };
     },
     { isolationLevel: "repeatable read" },

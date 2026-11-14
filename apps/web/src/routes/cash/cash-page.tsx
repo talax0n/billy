@@ -72,7 +72,7 @@ export function CashPage() {
               ),
             },
             { header: "Jenis", cell: (a) => <span className="text-ink-2">{accountKindLabels[a.kind]}</span> },
-            { header: "Saldo", align: "right", cell: (a) => <Balance value={a.balance} /> },
+            { header: "Saldo (Rp)", align: "right", cell: (a) => <Balance value={a.balance} symbol={false} /> },
           ]}
         />
       </PageBody>

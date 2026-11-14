@@ -179,7 +179,7 @@ function MovementHistory({ productId }: { productId: string }) {
           query: { page: String(params.page), pageSize: String(params.pageSize) },
         }),
       ),
-    10,
+    { pageSize: 10 },
   );
   return (
     <DataTable

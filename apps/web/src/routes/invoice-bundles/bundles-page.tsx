@@ -20,6 +20,7 @@ import { type Contact, LookupPicker, lookups } from "../../components/lookup-pic
 type Bundle = InferResponseType<(typeof api)["invoice-bundles"][":id"]["$get"], 200>;
 
 const money = (value: number) => formatRupiah(rupiah(value));
+const amount = (value: number) => formatRupiah(rupiah(value), { symbol: false });
 
 /** The create fields plus the reason an Ubah needs; the server requires it on an edit. */
 const bundleForm = invoiceBundleInput.extend({ reason: z.string().trim().max(500).optional() });
@@ -58,8 +59,8 @@ export function BundlesPage() {
             { header: "Pelanggan", cell: (b) => b.customerName },
             { header: "Tanggal", cell: (b) => formatDate(b.date), className: "whitespace-nowrap" },
             { header: "Faktur", align: "right", cell: (b) => b.invoiceCount },
-            { header: "Total faktur", align: "right", cell: (b) => money(b.total) },
-            { header: "Sisa tagihan", align: "right", cell: (b) => money(b.outstanding) },
+            { header: "Total faktur (Rp)", align: "right", cell: (b) => amount(b.total) },
+            { header: "Sisa tagihan (Rp)", align: "right", cell: (b) => amount(b.outstanding) },
             { header: "Status", cell: (b) => (b.voidedAt ? <Badge>Void</Badge> : <Badge tone="up">Aktif</Badge>) },
           ]}
         />
@@ -264,7 +265,7 @@ function BundleDetail({ bundle, onVoid, onEdit }: { bundle: Bundle; onVoid: () =
               <th className="px-4 py-2 font-normal">Faktur</th>
               <th className="px-2 py-2 font-normal">Jatuh tempo</th>
               <th className="px-2 py-2 font-normal">Status</th>
-              <th className="px-4 py-2 text-right font-normal">Sisa</th>
+              <th className="px-4 py-2 text-right font-normal">Sisa (Rp)</th>
             </tr>
           </thead>
           <tbody>
@@ -275,7 +276,7 @@ function BundleDetail({ bundle, onVoid, onEdit }: { bundle: Bundle; onVoid: () =
                 <td className="px-2 py-2.5">
                   <StatusTag state={inv.state} />
                 </td>
-                <td className="px-4 py-2.5 text-right tabular-nums">{money(inv.state.outstanding)}</td>
+                <td className="px-4 py-2.5 text-right tabular-nums">{amount(inv.state.outstanding)}</td>
               </tr>
             ))}
           </tbody>
@@ -284,7 +285,7 @@ function BundleDetail({ bundle, onVoid, onEdit }: { bundle: Bundle; onVoid: () =
               <td colSpan={3} className="px-4 py-2 text-right">
                 Sisa tagihan
               </td>
-              <td className="px-4 py-2 text-right tabular-nums">{money(bundle.outstanding)}</td>
+              <td className="px-4 py-2 text-right tabular-nums">{amount(bundle.outstanding)}</td>
             </tr>
           </tfoot>
         </table>

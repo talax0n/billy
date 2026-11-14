@@ -224,8 +224,12 @@ describe("list", () => {
     expect(await res.json()).toMatchObject({
       total: 1,
       rows: [{ supplierName: "CV Kuas Makmur", supplierInvoiceNumber: "KM-77", total: 30_000, status: "unpaid" }],
-      summary: { purchased: 30_000, outstanding: 30_000 },
+      summary: { purchased: 30_000, paid: 0, outstanding: 30_000, overdue: 0, dueSoon: 0 },
     });
+    const { body: partly } = await create({ ...purchase(), supplierId: otherSupplierId, supplierInvoiceNumber: "KM-78", taxRateBp: 0 });
+    await pay(partly.id, 10_000);
+    const both = await call(`/api/purchases?supplierId=${otherSupplierId}&from=${today}&to=${today}`, { cookie });
+    expect(((await both.json()) as { summary: unknown }).summary).toEqual({ purchased: 60_000, paid: 10_000, outstanding: 50_000, overdue: 0, dueSoon: 0 });
     const search = await call("/api/purchases?q=kuas%20km-77", { cookie });
     expect(await search.json()).toMatchObject({ total: 1 });
     const voids = (await (await call("/api/purchases?status=void", { cookie })).json()) as { rows: Detail[] };
@@ -238,6 +242,19 @@ describe("list", () => {
     expect(overdue.rows.map((row) => row.id)).toEqual([body.id]);
     const unpaid = (await (await call(`/api/purchases?status=unpaid`, { cookie })).json()) as { rows: Detail[] };
     expect(unpaid.rows.map((row) => row.id)).not.toContain(body.id);
+  });
+
+  it("sums Telat and jatuh tempo ≤7 hari over the filtered period only", async () => {
+    const [supplier] = await db.insert(contacts).values({ code: "S-TLT", name: "PT Telat", kind: "supplier" }).returning();
+    const make = (date: string, termsDays: number) => create({ ...purchase(), supplierId: supplier!.id, date, termsDays, taxRateBp: 0 });
+    await make(addDays(today, -40), 30); // due −10: Telat
+    await make(addDays(today, -25), 30); // due +5: ≤7 hari
+    await make(addDays(today, -20), 30); // due +10: later
+    await make(addDays(today, -100), 30); // due −70: Telat, outside the period below
+    const summary = async (from: string) =>
+      ((await (await call(`/api/purchases?supplierId=${supplier!.id}&from=${from}&to=${today}`, { cookie })).json()) as { summary: unknown }).summary;
+    expect(await summary(addDays(today, -60))).toMatchObject({ overdue: 30_000, dueSoon: 30_000, outstanding: 90_000 });
+    expect(await summary(addDays(today, -30))).toMatchObject({ overdue: 0, dueSoon: 30_000, outstanding: 60_000 });
   });
 });
 

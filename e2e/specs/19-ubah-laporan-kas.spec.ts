@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
-import { ADMIN, login, rp } from "../helpers.ts";
+import { ADMIN, login, rp, num } from "../helpers.ts";
 
 const today = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(new Date());
 
@@ -51,7 +51,7 @@ test("Ubah a paid faktur, follow both links, then find its payment in Laporan Ka
   await edit.getByRole("button", { name: "Simpan perubahan" }).click();
 
   const revised = page.getByRole("dialog", { name: `${number}/R1` });
-  await expect(revised.getByRole("row", { name: `Total ${rp(86_400)}`, exact: true })).toBeVisible();
+  await expect(revised.getByRole("row", { name: `Total ${num(86_400)}`, exact: true })).toBeVisible();
   await expect(revised.getByText(`Terbayar${rp(50_000)}`)).toBeVisible();
   await expect(revised.getByText("tempo 20 hari")).toBeVisible();
   await revised.getByRole("link", { name: `Perubahan dari ${number}` }).click();
@@ -74,7 +74,7 @@ test("Ubah a paid faktur, follow both links, then find its payment in Laporan Ka
   await page.getByLabel("Akun", { exact: true }).selectOption({ label: "Kas Toko" });
   await page.getByLabel("Sumber", { exact: true }).selectOption({ label: "Pembayaran piutang" });
   const row = page.getByRole("row").filter({ has: page.getByRole("link", { name: `${number}/R1` }) });
-  await expect(row).toContainText(rp(50_000));
+  await expect(row).toContainText(num(50_000));
   await expect(page.getByText("Saldo awal")).toBeVisible();
 
   const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Ekspor Excel" }).click()]);

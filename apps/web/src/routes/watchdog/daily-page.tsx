@@ -4,19 +4,17 @@ import { DataTable, usePagedQuery } from "../../components/ui/data-table.tsx";
 import { DateInput } from "../../components/ui/field.tsx";
 import { EmptyState, FilterRow, PageBody, PageHeader } from "../../components/ui/page.tsx";
 import { api, unwrap } from "../../lib/api.ts";
-import { cx } from "../../lib/cx.ts";
 import { FlagItem } from "./flags.tsx";
 
-const signedMoney = (value: Rupiah) => (value === 0 ? "—" : `${value > 0 ? "+" : ""}${formatRupiah(value)}`);
-const countAndAmount = (n: number, amount: Rupiah) => (n === 0 ? "—" : `${n}× · ${formatRupiah(amount)}`);
+const countAndAmount = (n: number, amount: Rupiah) => (n === 0 ? "—" : `${n}× · ${formatRupiah(amount, { symbol: false })}`);
 
 /**
  * Ringkasan harian, admin only: the day's red flags, then per person the voids, revisi,
- * refunds, discounts given and shift cash differences. It replaces a daily email.
+ * refunds and discounts given. It replaces a daily email.
  */
 export function DailySummaryPage() {
   const [date, setDate] = useState(businessDate());
-  const paged = usePagedQuery(["watchdog", "daily", date], () => unwrap(api.watchdog.daily.$get({ query: { date } })), 100);
+  const paged = usePagedQuery(["watchdog", "daily", date], () => unwrap(api.watchdog.daily.$get({ query: { date } })), { pageSize: 100 });
   const flags = paged.query.data?.flags ?? [];
 
   return (
@@ -55,19 +53,10 @@ export function DailySummaryPage() {
                 </span>
               ),
             },
-            { header: "Void", align: "right", cell: (r) => countAndAmount(r.voids, r.voidAmount) },
+            { header: "Void (Rp)", align: "right", cell: (r) => countAndAmount(r.voids, r.voidAmount) },
             { header: "Revisi", align: "right", cell: (r) => (r.revisi ? `${r.revisi}×` : "—") },
-            { header: "Refund", align: "right", cell: (r) => countAndAmount(r.refunds, r.refundAmount) },
-            { header: "Diskon", align: "right", cell: (r) => (r.discountAmount ? formatRupiah(r.discountAmount) : "—") },
-            {
-              header: "Selisih shift",
-              align: "right",
-              cell: (r) => (
-                <span className={cx("tabular-nums", r.shiftDifference < 0 && "text-down", r.shiftDifference > 0 && "text-warn")}>
-                  {r.shifts ? signedMoney(r.shiftDifference) : "—"}
-                </span>
-              ),
-            },
+            { header: "Refund (Rp)", align: "right", cell: (r) => countAndAmount(r.refunds, r.refundAmount) },
+            { header: "Diskon (Rp)", align: "right", cell: (r) => (r.discountAmount ? formatRupiah(r.discountAmount, { symbol: false }) : "—") },
           ]}
         />
       </PageBody>

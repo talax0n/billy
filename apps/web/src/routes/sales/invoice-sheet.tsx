@@ -58,6 +58,7 @@ export function InvoiceSheet({
 }
 
 const money = (value: number) => formatRupiah(rupiah(value));
+const amount = (value: number) => formatRupiah(rupiah(value), { symbol: false });
 const openPrint = (path: string) => window.open(path, "_blank", "noopener");
 
 function InvoiceDetail({ invoice, onEdit }: { invoice: Invoice; onEdit: () => void }) {
@@ -135,8 +136,8 @@ function InvoiceDetail({ invoice, onEdit }: { invoice: Invoice; onEdit: () => vo
             <tr className="border-b border-line text-left text-xs text-muted">
               <th className="px-4 py-2 font-normal">Barang</th>
               <th className="px-2 py-2 text-right font-normal">Jumlah</th>
-              <th className="px-2 py-2 text-right font-normal">Harga</th>
-              <th className="px-4 py-2 text-right font-normal">Total</th>
+              <th className="px-2 py-2 text-right font-normal">Harga (Rp)</th>
+              <th className="px-4 py-2 text-right font-normal">Total (Rp)</th>
             </tr>
           </thead>
           <tbody>
@@ -150,17 +151,17 @@ function InvoiceDetail({ invoice, onEdit }: { invoice: Invoice; onEdit: () => vo
                   {line.qty} <span className="text-muted">{line.unit}</span>
                 </td>
                 <td className="px-2 py-2.5 text-right tabular-nums">
-                  {money(line.unitPrice)}
-                  {line.discountAmount > 0 && <div className="text-xs text-muted">diskon {money(line.discountAmount)}</div>}
+                  {amount(line.unitPrice)}
+                  {line.discountAmount > 0 && <div className="text-xs text-muted">diskon {amount(line.discountAmount)}</div>}
                 </td>
-                <td className="px-4 py-2.5 text-right tabular-nums">{money(line.lineTotal)}</td>
+                <td className="px-4 py-2.5 text-right tabular-nums">{amount(line.lineTotal)}</td>
               </tr>
             ))}
           </tbody>
           <tfoot className="border-t border-line">
-            <TotalRow label="Subtotal" value={money(invoice.subtotal)} />
-            {invoice.discountAmount > 0 && <TotalRow label="Diskon faktur" value={`− ${money(invoice.discountAmount)}`} />}
-            <TotalRow label="Total" value={money(invoice.total)} strong />
+            <TotalRow label="Subtotal" value={amount(invoice.subtotal)} />
+            {invoice.discountAmount > 0 && <TotalRow label="Diskon faktur" value={`− ${amount(invoice.discountAmount)}`} />}
+            <TotalRow label="Total" value={amount(invoice.total)} strong />
           </tfoot>
         </table>
       </section>

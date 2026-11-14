@@ -1,8 +1,10 @@
+import { formatRupiah, type Rupiah } from "@billy/core";
 import { Link } from "@tanstack/react-router";
-import { Loader2 } from "lucide-react";
+import { Info, Loader2 } from "lucide-react";
 import { createContext, type ReactNode, useContext } from "react";
 import { cx } from "../../lib/cx.ts";
 import { NotificationBell } from "../shell/notification-bell.tsx";
+import { Tooltip } from "./tooltip.tsx";
 
 /** Set by the shell when the current page is one tab of a sidebar entry (e.g. Penjualan → Nota Kasir). */
 export const SectionContext = createContext<{ title: string; tabs: { path: string; label: string }[] } | null>(null);
@@ -78,18 +80,33 @@ export function StatTile({
   value: ReactNode;
   delta?: ReactNode;
   tone?: keyof typeof toneClass;
-  note?: ReactNode;
+  /** Shown as a tooltip beside the label; also the icon's accessible name. */
+  note?: string | false | undefined;
 }) {
   return (
     <div className="min-w-0 rounded-xl border border-line px-4 py-3.5 max-md:px-3 max-md:py-2.5">
-      <div className="text-ink-2">{label}</div>
-      <div className="mt-2 mb-1 flex items-baseline gap-2 text-[27px] font-medium tracking-tight whitespace-nowrap tabular-nums max-md:mt-1 max-md:text-lg">
+      <div className="flex items-center gap-1.5 text-ink-2">
+        {label}
+        {note && (
+          <Tooltip content={note} className="-m-1 rounded-full p-1 text-faint hover:text-ink-2">
+            <Info className="size-3.5" role="img" aria-label={note} />
+          </Tooltip>
+        )}
+      </div>
+      <div className="mt-2 mb-1 flex flex-wrap items-baseline gap-x-2 text-[27px] font-medium tracking-tight whitespace-nowrap tabular-nums max-md:mt-1 max-md:text-lg">
         <span>{value}</span>
         {delta && <small className={cx("text-sm font-medium tracking-normal", toneClass[tone])}>{delta}</small>}
       </div>
-      {/* The filter row above already names the period on phones. */}
-      {note && <div className="text-xs text-muted max-md:hidden">{note}</div>}
     </div>
+  );
+}
+
+/** `Rp 1.234.567` with the currency in grey, for stat tiles and totals. */
+export function Amount({ value, className }: { value: Rupiah; className?: string }) {
+  return (
+    <span className={cx("tabular-nums", className)} title={formatRupiah(value)}>
+      <span className="text-muted">Rp</span> {formatRupiah(value, { symbol: false })}
+    </span>
   );
 }
 

@@ -118,9 +118,9 @@ function PurchaseDetail({ purchase: p, onEdit }: { purchase: Purchase; onEdit: (
             <tr className="border-b border-line text-xs text-muted">
               <th className="px-4 py-2 text-left font-normal">Barang</th>
               <th className="px-2 py-2 text-right font-normal">Qty</th>
-              <th className="px-2 py-2 text-right font-normal">Harga satuan</th>
-              <th className="px-2 py-2 text-right font-normal">Diskon</th>
-              <th className="px-4 py-2 text-right font-normal">Jumlah</th>
+              <th className="px-2 py-2 text-right font-normal">Harga satuan (Rp)</th>
+              <th className="px-2 py-2 text-right font-normal">Diskon (Rp)</th>
+              <th className="px-4 py-2 text-right font-normal">Jumlah (Rp)</th>
             </tr>
           </thead>
           <tbody>
@@ -133,9 +133,9 @@ function PurchaseDetail({ purchase: p, onEdit }: { purchase: Purchase; onEdit: (
                 <td className="px-2 py-2 text-right whitespace-nowrap tabular-nums">
                   {qty.format(line.qty)} <span className="text-muted">{line.unit}</span>
                 </td>
-                <td className="px-2 py-2 text-right tabular-nums">{formatRupiah(line.unitCost)}</td>
-                <td className="px-2 py-2 text-right tabular-nums text-muted">{line.discountAmount ? formatRupiah(line.discountAmount) : "—"}</td>
-                <td className="px-4 py-2 text-right tabular-nums">{formatRupiah(line.lineTotal)}</td>
+                <td className="px-2 py-2 text-right tabular-nums">{formatRupiah(line.unitCost, { symbol: false })}</td>
+                <td className="px-2 py-2 text-right tabular-nums text-muted">{line.discountAmount ? formatRupiah(line.discountAmount, { symbol: false }) : "—"}</td>
+                <td className="px-4 py-2 text-right tabular-nums">{formatRupiah(line.lineTotal, { symbol: false })}</td>
               </tr>
             ))}
           </tbody>

@@ -43,7 +43,7 @@ export function RiwayatKasirPage() {
             { header: "Kasir", cell: (s) => s.cashierName },
             { header: "Bayar", cell: (s) => <span className="text-ink-2">{`${methodLabels[s.method]} · ${s.accountName}`}</span> },
             { header: "Status", cell: (s) => <SaleStatus sale={s} /> },
-            { header: "Total", align: "right", cell: (s) => formatRupiah(s.total) },
+            { header: "Total (Rp)", align: "right", cell: (s) => formatRupiah(s.total, { symbol: false }) },
           ]}
         />
       </PageBody>
@@ -127,9 +127,9 @@ function SaleSheet({ id, onOpen, onClose }: { id: string; onOpen: (id: string) =
               <tr className="border-b border-line text-left text-xs text-muted">
                 <th className="py-2 font-normal">Produk</th>
                 <th className="py-2 text-right font-normal">Qty</th>
-                <th className="py-2 text-right font-normal">Harga</th>
-                <th className="py-2 text-right font-normal">Diskon</th>
-                <th className="py-2 text-right font-normal">Jumlah</th>
+                <th className="py-2 text-right font-normal">Harga (Rp)</th>
+                <th className="py-2 text-right font-normal">Diskon (Rp)</th>
+                <th className="py-2 text-right font-normal">Jumlah (Rp)</th>
               </tr>
             </thead>
             <tbody>
@@ -142,9 +142,9 @@ function SaleSheet({ id, onOpen, onClose }: { id: string; onOpen: (id: string) =
                   <td className="py-2 text-right tabular-nums">
                     {l.qty} {l.unit}
                   </td>
-                  <td className="py-2 text-right tabular-nums">{formatRupiah(l.unitPrice)}</td>
-                  <td className="py-2 text-right tabular-nums text-muted">{l.discountAmount ? formatRupiah(l.discountAmount) : "—"}</td>
-                  <td className="py-2 text-right tabular-nums">{formatRupiah(l.lineTotal)}</td>
+                  <td className="py-2 text-right tabular-nums">{formatRupiah(l.unitPrice, { symbol: false })}</td>
+                  <td className="py-2 text-right tabular-nums text-muted">{l.discountAmount ? formatRupiah(l.discountAmount, { symbol: false }) : "—"}</td>
+                  <td className="py-2 text-right tabular-nums">{formatRupiah(l.lineTotal, { symbol: false })}</td>
                 </tr>
               ))}
             </tbody>

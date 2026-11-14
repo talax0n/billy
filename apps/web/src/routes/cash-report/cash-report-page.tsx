@@ -19,6 +19,7 @@ const documentPages: Partial<Record<CashSourceType, string>> = {
 };
 
 const money = (value: number) => formatRupiah(rupiah(value));
+const amount = (value: number) => formatRupiah(rupiah(value), { symbol: false });
 
 type ReportPage = InferResponseType<typeof api.cash.report.$get, 200>;
 const noPeriod: ReportPage = { rows: [], total: 0, totalIn: rupiah(0), totalOut: rupiah(0), opening: null, closing: null };
@@ -108,9 +109,9 @@ export function CashReportPage() {
               className: "whitespace-nowrap",
             },
             { header: "Keterangan", cell: (r) => <span className="text-ink-2">{r.note || "—"}</span> },
-            { header: "Masuk", align: "right", cell: (r) => (r.direction === "in" ? money(r.amount) : "") },
-            { header: "Keluar", align: "right", cell: (r) => (r.direction === "out" ? money(r.amount) : "") },
-            ...(oneAccount ? [{ header: "Saldo", align: "right" as const, cell: (r: { balance: number | null }) => (r.balance === null ? "" : money(r.balance)) }] : []),
+            { header: "Masuk (Rp)", align: "right", cell: (r) => (r.direction === "in" ? amount(r.amount) : "") },
+            { header: "Keluar (Rp)", align: "right", cell: (r) => (r.direction === "out" ? amount(r.amount) : "") },
+            ...(oneAccount ? [{ header: "Saldo (Rp)", align: "right" as const, cell: (r: { balance: number | null }) => (r.balance === null ? "" : amount(r.balance)) }] : []),
           ]}
         />
       </PageBody>

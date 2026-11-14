@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { ADMIN, login, rp } from "../helpers.ts";
+import { ADMIN, login, rp, num } from "../helpers.ts";
 
 test("creates a product and adjusts its stock; an adjustment needs a reason", async ({ page }) => {
   await login(page, ADMIN);
@@ -33,5 +33,5 @@ test("creates a product and adjusts its stock; an adjustment needs a reason", as
 
   await sheet.getByRole("button", { name: "Tutup" }).click();
   await page.getByPlaceholder(/Cari/).fill("E2E-001");
-  await expect(page.getByRole("row", { name: `E2E-001 Cat Uji Kilap Biru 1 L — ${rp(50_000)} 10 kaleng` })).toBeVisible();
+  await expect(page.getByRole("row", { name: `E2E-001 Cat Uji Kilap Biru 1 L — ${num(50_000)} 10 kaleng` })).toBeVisible();
 });

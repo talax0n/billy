@@ -1,6 +1,6 @@
-import type { SalesStatusFilter } from "@billy/core";
+import type { SalesStatusFilter, SortDir } from "@billy/core";
 import { type Db, payments } from "@billy/db";
-import { and, gte, isNotNull, isNull, lt, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, gte, isNotNull, isNull, lt, sql, type SQL } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 
 interface InvoiceColumns {
@@ -47,16 +47,22 @@ export function invoiceState(db: Db, invoice: InvoiceColumns, paymentInvoiceId: 
   }
 
   /**
-   * List order by what needs attention: Telat (oldest due date first), Belum lunas, Lunas, Void.
-   * Callers append their own tie-breakers, e.g. newest date first.
+   * List order. `status` (the default) ranks by what needs attention: Telat, Belum lunas, Lunas,
+   * Void, and unpaid invoices by nearest jatuh tempo. Any other key sorts its own column.
+   * `newest` breaks ties and must end on a unique column so pages never overlap.
    */
-  function priorityOrder(today: string): SQL[] {
-    const overdue = statusWhere("overdue", today);
-    return [
-      sql`case when ${overdue} then 0 when ${open} then 1 when ${live} then 2 else 3 end`,
-      sql`case when ${overdue} then ${invoice.dueDate} end`,
-    ];
+  function listOrder(
+    sort: { sort?: string | undefined; dir: SortDir },
+    columns: Record<string, SQL | AnyPgColumn>,
+    newest: SQL[],
+    today: string,
+  ): SQL[] {
+    const by = sort.dir === "desc" ? desc : asc;
+    const column = sort.sort && sort.sort !== "status" ? columns[sort.sort] : undefined;
+    if (column) return [by(column), ...newest];
+    const rank = sql`case when ${statusWhere("overdue", today)} then 0 when ${open} then 1 when ${live} then 2 else 3 end`;
+    return [by(rank), asc(sql`case when ${open} then ${invoice.dueDate} end`), ...newest];
   }
 
-  return { paidByInvoice, paid, live, open, statusWhere, priorityOrder };
+  return { paidByInvoice, paid, live, open, statusWhere, listOrder };
 }

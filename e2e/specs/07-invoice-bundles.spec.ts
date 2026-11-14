@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { ADMIN, docNumber, login, rp } from "../helpers.ts";
+import { ADMIN, docNumber, login, rp, num } from "../helpers.ts";
 
 test("bundles the customer's open invoice; a bundle needs at least one invoice", async ({ page }) => {
   const number = docNumber("TF", 1);
@@ -25,7 +25,7 @@ test("bundles the customer's open invoice; a bundle needs at least one invoice",
   await expect(page.getByText(`${number} dibuat`)).toBeVisible();
 
   const detail = page.getByRole("dialog", { name: number });
-  await expect(detail.getByRole("row", { name: new RegExp(open) })).toContainText(rp(156_000));
+  await expect(detail.getByRole("row", { name: new RegExp(open) })).toContainText(num(156_000));
   await detail.getByRole("button", { name: "Tutup" }).click();
-  await expect(page.getByRole("row", { name: new RegExp(`${number} CV Uji Pelanggan .* 1 ${rp(156_000)} ${rp(156_000)} Aktif`) })).toBeVisible();
+  await expect(page.getByRole("row", { name: new RegExp(`${number} CV Uji Pelanggan .* 1 ${num(156_000)} ${num(156_000)} Aktif`) })).toBeVisible();
 });

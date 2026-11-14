@@ -1,5 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
-import { ADMIN, docNumber, KASIR, login, openShift, rp } from "../helpers.ts";
+import { ADMIN, docNumber, KASIR, login, openShift, rp, num } from "../helpers.ts";
 
 const search = (page: Page) => page.getByLabel("Cari produk atau scan barcode");
 const results = (page: Page) => page.getByRole("listbox", { name: "Hasil pencarian" });
@@ -60,8 +60,8 @@ test("sells online and offline; the offline sale syncs and reaches Riwayat Kasir
   const admin = await browser.newPage();
   await login(admin, ADMIN);
   await admin.goto("/riwayat-kasir");
-  await expect(admin.getByRole("row", { name: new RegExp(`${docNumber("K1", 1)} .* Kasir Satu Tunai · Kas Toko Lunas ${rp(110_000)}`) })).toBeVisible();
-  await expect(admin.getByRole("row", { name: new RegExp(`${docNumber("K1", 2)} .* Kasir Satu Tunai · Kas Toko Lunas ${rp(32_000)}`) })).toBeVisible();
+  await expect(admin.getByRole("row", { name: new RegExp(`${docNumber("K1", 1)} .* Kasir Satu Tunai · Kas Toko Lunas ${num(110_000)}`) })).toBeVisible();
+  await expect(admin.getByRole("row", { name: new RegExp(`${docNumber("K1", 2)} .* Kasir Satu Tunai · Kas Toko Lunas ${num(32_000)}`) })).toBeVisible();
 
   await admin.goto("/mutasi-stok");
   await admin.getByRole("link", { name: `Kasir ${docNumber("K1", 2)}` }).click();

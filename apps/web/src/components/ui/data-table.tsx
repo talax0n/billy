@@ -1,16 +1,26 @@
-import type { Paginated } from "@billy/core";
+import type { Paginated, SortDir } from "@billy/core";
 import { keepPreviousData, useQuery, type UseQueryResult } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, ChevronsUpDown } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { cx } from "../../lib/cx.ts";
 import { Button } from "./button.tsx";
 import { SearchInput } from "./field.tsx";
 import { EmptyState, Loading } from "./page.tsx";
 
-export interface PageParams {
+export interface Sort<Key extends string = string> {
+  key: Key;
+  dir: SortDir;
+}
+
+/** `{ sort, dir }` for a list endpoint's query string; empty when the list has no sort. */
+export const sortParams = <Key extends string>(sort: Sort<Key> | undefined) => (sort ? { sort: sort.key, dir: sort.dir } : {});
+
+export interface PageParams<Key extends string = string> {
   q: string;
   page: number;
   pageSize: number;
+  /** Set only when the caller passed a default sort; send it as `?sort=&dir=`. */
+  sort?: Sort<Key>;
 }
 
 /**
@@ -18,21 +28,22 @@ export interface PageParams {
  * any summary fields the endpoint adds (typed through `Page`).
  * The query key is `[...key, params]`, so invalidating `key` refreshes every page.
  */
-export function usePagedQuery<Page extends Paginated<unknown>>(
+export function usePagedQuery<Page extends Paginated<unknown>, Key extends string = never>(
   key: readonly unknown[],
-  fetchPage: (params: PageParams) => Promise<Page>,
-  pageSize = 25,
+  fetchPage: (params: PageParams<Key>) => Promise<Page>,
+  { pageSize = 25, sort: defaultSort }: { pageSize?: number; sort?: Sort<Key> } = {},
 ) {
   const [q, setQ] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
   const [page, setPage] = useState(1);
+  const [sort, setSort] = useState(defaultSort);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedQ(q.trim()), 250);
     return () => clearTimeout(timer);
   }, [q]);
 
-  const params = { q: debouncedQ, page, pageSize };
+  const params: PageParams<Key> = { q: debouncedQ, page, pageSize, ...(sort && { sort }) };
   const query = useQuery({
     queryKey: [...key, params],
     queryFn: () => fetchPage(params),
@@ -48,11 +59,17 @@ export function usePagedQuery<Page extends Paginated<unknown>>(
     page,
     setPage,
     pageSize,
+    sort: sort as Sort | undefined,
+    /** The same column flips direction; a new column starts ascending. */
+    sortBy: (column: string) => {
+      setSort((current) => ({ key: column as Key, dir: current?.key === column && current.dir === "asc" ? "desc" : "asc" }));
+      setPage(1);
+    },
     query,
   };
 }
 
-export type PagedQuery<Page extends Paginated<unknown>> = Omit<ReturnType<typeof usePagedQuery<Page>>, "query"> & {
+export type PagedQuery<Page extends Paginated<unknown>> = Omit<ReturnType<typeof usePagedQuery<Page, string>>, "query"> & {
   query: UseQueryResult<Page>;
 };
 
@@ -63,6 +80,8 @@ export interface Column<Row> {
   className?: string;
   /** Phone card list: false leaves the column out of the card. */
   mobile?: boolean;
+  /** The list endpoint's sort key for this column; makes the header a sort button. */
+  sort?: string;
 }
 
 export function DataTable<Row extends { id: string }>({
@@ -104,13 +123,14 @@ export function DataTable<Row extends { id: string }>({
               {columns.map((col) => (
                 <th
                   key={col.header}
+                  aria-sort={col.sort && paged.sort?.key === col.sort ? (paged.sort.dir === "asc" ? "ascending" : "descending") : undefined}
                   className={cx(
                     "px-4 py-2.5 text-left text-xs font-normal text-muted",
                     col.align === "right" && "text-right",
                     col.className,
                   )}
                 >
-                  {col.header}
+                  {col.sort ? <SortButton column={col} sortKey={col.sort} paged={paged} /> : col.header}
                 </th>
               ))}
             </tr>
@@ -150,6 +170,25 @@ export function DataTable<Row extends { id: string }>({
         </Button>
       </div>
     </div>
+  );
+}
+
+function SortButton<Row>({ column, sortKey, paged }: { column: Column<Row>; sortKey: string; paged: PagedQuery<Paginated<Row>> }) {
+  const dir = paged.sort?.key === sortKey ? paged.sort.dir : undefined;
+  const Icon = dir === "asc" ? ArrowUp : dir === "desc" ? ArrowDown : ChevronsUpDown;
+  return (
+    <button
+      type="button"
+      onClick={() => paged.sortBy(sortKey)}
+      className={cx(
+        "-mx-1 inline-flex items-center gap-1 rounded px-1 hover:text-ink",
+        column.align === "right" && "flex-row-reverse",
+        dir && "text-ink",
+      )}
+    >
+      {column.header}
+      <Icon className={cx("size-3", !dir && "opacity-40")} aria-hidden />
+    </button>
   );
 }
 

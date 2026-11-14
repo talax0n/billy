@@ -9,6 +9,7 @@ import { cx } from "../../lib/cx.ts";
 import { InvoiceSheet } from "../sales/invoice-sheet.tsx";
 
 const money = (value: number) => (value ? formatRupiah(rupiah(value)) : "—");
+const amount = (value: number) => (value ? formatRupiah(rupiah(value), { symbol: false }) : "—");
 
 /** Piutang: what each customer still owes, aged by days past due. */
 export function ReceivablesPage() {
@@ -69,10 +70,10 @@ export function ReceivablesPage() {
                 <th className="px-4 py-2.5 text-right font-normal">Faktur</th>
                 {agingBuckets.map((b) => (
                   <th key={b} className="px-4 py-2.5 text-right font-normal">
-                    {agingLabels[b]}
+                    {agingLabels[b]} (Rp)
                   </th>
                 ))}
-                <th className="px-4 py-2.5 text-right font-normal">Total</th>
+                <th className="px-4 py-2.5 text-right font-normal">Total (Rp)</th>
               </tr>
             </thead>
             <tbody>
@@ -86,10 +87,10 @@ export function ReceivablesPage() {
                   <td className="px-4 py-2.5 text-right tabular-nums">{row.invoiceCount}</td>
                   {agingBuckets.map((b) => (
                     <td key={b} className={cx("px-4 py-2.5 text-right tabular-nums", b !== "current" && row[b] > 0 && "text-down")}>
-                      {money(row[b])}
+                      {amount(row[b])}
                     </td>
                   ))}
-                  <td className="px-4 py-2.5 text-right font-medium tabular-nums">{money(row.total)}</td>
+                  <td className="px-4 py-2.5 text-right font-medium tabular-nums">{amount(row.total)}</td>
                 </tr>
               ))}
             </tbody>

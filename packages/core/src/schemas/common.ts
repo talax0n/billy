@@ -10,6 +10,13 @@ export const paginationQuery = z.object({
 });
 export type PaginationQuery = z.output<typeof paginationQuery>;
 
+export const sortDirs = ["asc", "desc"] as const;
+export type SortDir = (typeof sortDirs)[number];
+
+/** `?sort=&dir=` for a list whose columns can be sorted; no `sort` means the list's default order. */
+export const sortQuery = <const Keys extends readonly [string, ...string[]]>(keys: Keys) =>
+  z.object({ sort: z.enum(keys).optional(), dir: z.enum(sortDirs).default("asc") });
+
 /** Shape of every list endpoint response. */
 export interface Paginated<Row> {
   rows: Row[];

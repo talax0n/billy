@@ -20,13 +20,14 @@ const idrShort = new Intl.NumberFormat("id-ID", { maximumFractionDigits: 1 });
 /**
  * `Rp 1.250.000`; negatives get a real minus before the symbol: `−Rp 250.000`.
  * `compact` shortens millions and billions: `Rp 1,3 jt`, `Rp 2 M`.
+ * `symbol: false` drops the `Rp ` for columns whose header already says Rp: `−250.000`.
  */
-export function formatRupiah(value: Rupiah, { compact = false } = {}): string {
+export function formatRupiah(value: Rupiah, { compact = false, symbol = true } = {}): string {
   const sign = value < 0 ? "−" : "";
   const abs = Math.abs(value);
   const unit = !compact ? null : abs >= 1e9 ? ([1e9, "M"] as const) : abs >= 1e6 ? ([1e6, "jt"] as const) : null;
   const digits = unit ? `${idrShort.format(abs / unit[0])} ${unit[1]}` : idr.format(abs);
-  return `${sign}Rp ${digits}`;
+  return `${sign}${symbol ? "Rp " : ""}${digits}`;
 }
 
 export function parseRupiah(input: string): Rupiah {

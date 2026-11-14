@@ -292,8 +292,8 @@ export function DashboardPage() {
                       <tr>
                         <th>#</th>
                         <th>Akun</th>
-                        <th>Saldo</th>
-                        <th>Minggu ini</th>
+                        <th>Saldo (Rp)</th>
+                        <th>Minggu ini (Rp)</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -305,7 +305,7 @@ export function DashboardPage() {
                           <td>{i + 1}</td>
                           <td>{a.name}</td>
                           <td title={formatRupiah(a.balance)}>
-                            {formatRupiah(a.balance)}
+                            {formatRupiah(a.balance, { symbol: false })}
                           </td>
                           <td
                             className={
@@ -317,7 +317,7 @@ export function DashboardPage() {
                             }
                           >
                             {a.weeklyChange > 0 ? "+" : ""}
-                            {formatRupiah(a.weeklyChange)}
+                            {formatRupiah(a.weeklyChange, { symbol: false })}
                           </td>
                         </tr>
                       ))}

@@ -16,6 +16,11 @@ describe("rupiah", () => {
     expect(formatRupiah(rupiah(-250000))).toBe("\u2212Rp 250.000");
   });
 
+  it("drops the symbol for columns whose header carries it", () => {
+    expect(formatRupiah(rupiah(-250000), { symbol: false })).toBe("\u2212250.000");
+    expect(formatRupiah(rupiah(892000), { symbol: false })).toBe("892.000");
+  });
+
   it("shortens millions and billions when compact", () => {
     expect(formatRupiah(rupiah(-1250000), { compact: true })).toBe("\u2212Rp 1,3 jt");
     expect(formatRupiah(rupiah(51500000000), { compact: true })).toBe("Rp 51,5 M");

@@ -73,9 +73,9 @@ export function ExpensesPage() {
             { header: "Keterangan", cell: (e) => <span className="text-ink-2">{e.description || "—"}</span> },
             { header: "Akun", cell: (e) => <span className="text-ink-2">{e.accountName}</span> },
             {
-              header: "Jumlah",
+              header: "Jumlah (Rp)",
               align: "right",
-              cell: (e) => <span className={e.voidedAt ? "text-muted line-through" : undefined}>{formatRupiah(e.amount)}</span>,
+              cell: (e) => <span className={e.voidedAt ? "text-muted line-through" : undefined}>{formatRupiah(e.amount, { symbol: false })}</span>,
             },
             { header: "Status", className: "w-20", cell: (e) => e.voidedAt && <Badge>Void</Badge> },
           ]}

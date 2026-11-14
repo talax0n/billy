@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { ADMIN, docNumber, login, rp } from "../helpers.ts";
+import { ADMIN, docNumber, login, rp, num } from "../helpers.ts";
 
 test("records an expense and voids it; a void needs a reason", async ({ page }) => {
   const number = docNumber("BY", 1);
@@ -16,7 +16,7 @@ test("records an expense and voids it; a void needs a reason", async ({ page }) 
   await expect(page.getByText(`Biaya ${number} dicatat`)).toBeVisible();
   await expect(page.getByText(/^Total biaya/).locator("..")).toContainText(rp(75_000));
 
-  await page.getByRole("row", { name: new RegExp(`${number} Listrik Token listrik November Kas Toko ${rp(75_000)}`) }).click();
+  await page.getByRole("row", { name: new RegExp(`${number} Listrik Token listrik November Kas Toko ${num(75_000)}`) }).click();
   const sheet = page.getByRole("dialog", { name: number });
   await sheet.getByRole("button", { name: "Void biaya" }).click();
   const voiding = page.getByRole("dialog", { name: `Void ${number}` });
@@ -30,5 +30,5 @@ test("records an expense and voids it; a void needs a reason", async ({ page }) 
   await expect(page.getByText(/^Total biaya/).locator("..")).toContainText("Rp 0");
 
   await page.goto("/kas-bank");
-  await expect(page.getByRole("row", { name: `KAS Kas Toko Kas ${rp(1_500_000)}` })).toBeVisible();
+  await expect(page.getByRole("row", { name: `KAS Kas Toko Kas ${num(1_500_000)}` })).toBeVisible();
 });

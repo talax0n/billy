@@ -1,20 +1,6 @@
 import { formatRupiah, type Rupiah } from "@billy/core";
 import { cx } from "../../lib/cx.ts";
 
-const idr = new Intl.NumberFormat("id-ID");
-
-/** "14.05", for "Data per …" stamps. */
-export const timeOfDay = new Intl.DateTimeFormat("id-ID", { hour: "2-digit", minute: "2-digit" });
-
-/** `Rp 1.234.567` with the currency in grey, for KPI tiles and totals. */
-export function Amount({ value, className }: { value: Rupiah; className?: string }) {
-  return (
-    <span className={cx("tabular-nums", className)} title={formatRupiah(value)}>
-      <span className="text-muted">Rp</span> {idr.format(value)}
-    </span>
-  );
-}
-
 /** Two to four mutually exclusive choices, e.g. the payment method. */
 export function Segmented<Value extends string>({
   label,

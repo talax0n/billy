@@ -18,12 +18,13 @@ import { Button } from "../../components/ui/button.tsx";
 import { Combobox } from "../../components/ui/combobox.tsx";
 import { DateInput, Field, Input, MoneyInput } from "../../components/ui/field.tsx";
 import { lineTable } from "../../components/ui/line-table.ts";
+import { Amount } from "../../components/ui/page.tsx";
 import { cx } from "../../lib/cx.ts";
 import { toast } from "../../components/ui/toast.tsx";
 import { api, unwrap } from "../../lib/api.ts";
 import { useForm } from "../../lib/form.ts";
 import { useServerError } from "./actions.ts";
-import { Amount, formatPercent, paymentMethodLabels, Segmented, TotalsPanel } from "./bits.tsx";
+import { formatPercent, paymentMethodLabels, Segmented, TotalsPanel } from "./bits.tsx";
 import { AccountSelect } from "../cash/account-select.tsx";
 import { LookupPicker, lookups, type Product, type Contact, useLookup } from "../../components/lookup-picker.tsx";
 

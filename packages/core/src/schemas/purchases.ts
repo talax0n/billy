@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { discountKinds } from "../invoice.ts";
-import { businessDateInput, editReason, paginationQuery, paymentMethods, rupiahInput, text } from "./common.ts";
+import { businessDateInput, editReason, paginationQuery, paymentMethods, rupiahInput, sortQuery, text } from "./common.ts";
 
 export const purchasePaymentInput = z.object({
   accountId: z.uuid("Pilih akun pembayaran"),
@@ -42,10 +42,14 @@ export type PurchaseEditInput = z.input<typeof purchaseEditInput>;
 
 export const purchaseStatusFilters = ["unpaid", "partial", "overdue", "paid", "void"] as const;
 
+export const purchaseSortKeys = ["number", "date", "supplier", "dueDate", "status", "total", "outstanding"] as const;
+export type PurchaseSortKey = (typeof purchaseSortKeys)[number];
+
 export const purchaseListQuery = paginationQuery.extend({
   from: businessDateInput.optional(),
   to: businessDateInput.optional(),
   supplierId: z.uuid().optional(),
   status: z.enum(purchaseStatusFilters).optional(),
+  ...sortQuery(purchaseSortKeys).shape,
 });
 

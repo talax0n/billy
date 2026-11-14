@@ -11,7 +11,6 @@ import { EmptyState, FilterRow, PageBody, PageHeader } from "../../components/ui
 import { api, unwrap } from "../../lib/api.ts";
 import { StockAdjustDialog } from "../products/stock-adjust-dialog.tsx";
 import { StockQty } from "../products/stock-qty.tsx";
-import { timeOfDay } from "../purchases/bits.tsx";
 import { LookupPicker, lookups } from "../../components/lookup-picker.tsx";
 import { type Period, PeriodFilter, periodQuery, presetPeriod } from "../../components/period-filter.tsx";
 import { sourceDocuments } from "./source-documents.ts";
@@ -115,7 +114,7 @@ function Ledger({ productId, onProductChange }: { productId: string | null; onPr
       ),
     },
     selected !== null && { header: "Stok", align: "right", cell: (m) => qty.format(m.runningStock ?? 0) },
-    { header: "Harga pokok", align: "right", cell: (m) => formatRupiah(m.unitCost) },
+    { header: "Harga pokok (Rp)", align: "right", cell: (m) => formatRupiah(m.unitCost, { symbol: false }) },
     {
       header: "Dokumen",
       cell: (m) => {
@@ -134,7 +133,7 @@ function Ledger({ productId, onProductChange }: { productId: string | null; onPr
 
   return (
     <>
-      <FilterRow aside={paged.query.dataUpdatedAt ? `Data per ${timeOfDay.format(paged.query.dataUpdatedAt)}` : undefined}>
+      <FilterRow aside={paged.query.data && `${paged.query.data.total} mutasi`}>
         <div className="w-72">
           <LookupPicker
             kind="product"

@@ -49,7 +49,7 @@ export function ProductsPage() {
               ),
             },
             { header: "Kategori", cell: (p) => <span className="text-ink-2">{p.categoryName ?? "—"}</span> },
-            { header: "Harga jual", align: "right", cell: (p) => formatRupiah(p.sellPrice) },
+            { header: "Harga jual (Rp)", align: "right", cell: (p) => formatRupiah(p.sellPrice, { symbol: false }) },
             { header: "Stok", align: "right", cell: (p) => <StockQty product={p} /> },
           ]}
         />
