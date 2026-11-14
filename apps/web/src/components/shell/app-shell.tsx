@@ -153,7 +153,7 @@ function ShopName() {
   return (
     <div className="flex min-w-0 items-center gap-2.5 text-[15px] font-semibold">
       <div className="grid size-[26px] shrink-0 place-items-center rounded-[7px] bg-ink text-xs text-panel">{initials || "SK"}</div>
-      <span className="truncate max-md:overflow-visible max-md:whitespace-nowrap group-data-[collapsed=true]/sb:hidden">{shopName || "Toko Cat Sumber Karya"}</span>
+      <span className="line-clamp-2 leading-tight max-md:overflow-visible max-md:whitespace-nowrap group-data-[collapsed=true]/sb:hidden">{shopName || "Toko Cat Sumber Karya"}</span>
     </div>
   );
 }
@@ -189,14 +189,14 @@ function Sidebar({
     >
       <div className="flex items-center gap-1 px-2 py-1.5 group-data-[collapsed=true]/sb:flex-col group-data-[collapsed=true]/sb:px-0">
         {/* Phones already show the shop in the top bar. */}
-        <div className="max-md:hidden">
+        <div className="min-w-0 flex-1 max-md:hidden">
           <ShopName />
         </div>
         <span className="text-[15px] font-semibold md:hidden">Menu</span>
         <Button
           variant="ghost"
           size="icon"
-          className="ml-auto max-md:hidden group-data-[collapsed=true]/sb:ml-0"
+          className="ml-auto shrink-0 max-md:hidden group-data-[collapsed=true]/sb:ml-0"
           aria-label={collapsed ? "Lebarkan menu" : "Ciutkan menu"}
           title={collapsed ? "Lebarkan menu" : "Ciutkan menu"}
           onClick={onToggle}
