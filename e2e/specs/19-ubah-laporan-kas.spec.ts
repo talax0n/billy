@@ -66,6 +66,11 @@ test("Ubah a paid faktur, follow both links, then find its payment in Laporan Ka
   await page.goto("/kas-bank");
   await page.getByRole("navigation", { name: "Kas & Biaya" }).getByRole("link", { name: "Laporan Kas" }).click();
   await expect(page).toHaveURL(/\/laporan-kas$/);
+  await expect(page.getByRole("link", { name: "Laporan Debit Kredit" })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("link", { name: "Kas & Biaya", exact: true })).not.toHaveAttribute("aria-current", "page");
+  await page.goto("/kas-bank");
+  await page.getByRole("link", { name: "Laporan Debit Kredit" }).click();
+  await expect(page).toHaveURL(/\/laporan-kas$/);
   await page.getByLabel("Akun", { exact: true }).selectOption({ label: "Kas Toko" });
   await page.getByLabel("Sumber", { exact: true }).selectOption({ label: "Pembayaran piutang" });
   const row = page.getByRole("row").filter({ has: page.getByRole("link", { name: `${number}/R1` }) });

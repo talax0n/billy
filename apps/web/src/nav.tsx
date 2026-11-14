@@ -59,7 +59,7 @@ export interface NavItem {
   page?: RouteComponent;
   /** Roles that may open it. Default: admin and staff (kasir never sees the shell). */
   roles?: Role[];
-  /** Shown as a tab of this sidebar entry's page instead of its own sidebar link. */
+  /** Shown as a tab of this sidebar entry's page; with a visible `group` it also gets its own sidebar link. */
   section?: string;
   /** Label on the section's tab strip; defaults to `label`. */
   tab?: string;
@@ -84,7 +84,7 @@ export const navItems: NavItem[] = [
   { group: "Transaksi", path: "/pembelian", label: "Pembelian", icon: ShoppingCart, page: PurchasesPage },
   { group: "Keuangan", path: "/kas-bank", label: "Kas & Biaya", tab: "Kas & Bank", icon: Wallet, page: CashPage },
   { group: "hidden", section: "/kas-bank", path: "/biaya", label: "Biaya", icon: WalletCards, page: ExpensesPage },
-  { group: "hidden", section: "/kas-bank", path: "/laporan-kas", label: "Laporan Kas", icon: FileSpreadsheet, page: CashReportPage, roles: ["admin", "staff"] },
+  { group: "Keuangan", section: "/kas-bank", path: "/laporan-kas", label: "Laporan Debit Kredit", tab: "Laporan Kas", icon: FileSpreadsheet, page: CashReportPage, roles: ["admin", "staff"] },
   { group: "Keuangan", path: "/piutang", label: "Piutang & Hutang", tab: "Piutang", icon: HandCoins, page: ReceivablesPage },
   { group: "hidden", section: "/piutang", path: "/hutang", label: "Hutang", icon: ArrowLeftRight, page: PayablesPage },
   { group: "Persediaan", path: "/produk", label: "Produk & Stok", tab: "Produk", icon: Package, page: ProductsPage, badge: (a) => a.negativeStock + a.lowStock },

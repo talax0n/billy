@@ -239,8 +239,9 @@ function Sidebar({
 
 function NavLink({ item }: { item: NavItem }) {
   const Icon = item.icon;
-  // Active on any of its tabs, e.g. Penjualan stays lit on /riwayat-kasir.
-  const active = sectionOf(useRouterState({ select: (s) => s.location.pathname })) === item.path;
+  // Active on any of its tabs, e.g. Penjualan stays lit on /riwayat-kasir; a tab with its own link lights only itself.
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const active = item.section ? pathname === item.path : sectionOf(pathname) === item.path && !navItems.some((i) => i.section && i.group !== "hidden" && i.path === pathname);
   const { data: attention } = useQuery({ ...attentionQuery, enabled: !!item.badge });
   const badge = item.badge && attention ? item.badge(attention) : 0;
   return (
