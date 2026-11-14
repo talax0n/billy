@@ -1,16 +1,76 @@
 import { type SettingsInput, settingsInput } from "@billy/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { Button } from "../../components/ui/button.tsx";
-import { Field, Input } from "../../components/ui/field.tsx";
+import { controlClass, Field, Input } from "../../components/ui/field.tsx";
 import { PageBody } from "../../components/ui/page.tsx";
 import { toast } from "../../components/ui/toast.tsx";
-import { api, unwrap } from "../../lib/api.ts";
+import { api, ApiError, unwrap } from "../../lib/api.ts";
+import { cx } from "../../lib/cx.ts";
 import { useForm } from "../../lib/form.ts";
 import { settingsQuery } from "../../lib/settings.ts";
 
 export function ShopTab() {
   const { data } = useQuery(settingsQuery);
-  return <PageBody>{data && <ShopForm initial={data} />}</PageBody>;
+  return (
+    <PageBody>
+      {data && <AnnouncementForm initial={data.announcement} updatedAt={data.announcementUpdatedAt} />}
+      {data && <ShopForm initial={data} />}
+    </PageBody>
+  );
+}
+
+const stamp = new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Jakarta" });
+
+/** Shown to every staff member when they sign in, and again after it changes. */
+function AnnouncementForm({ initial, updatedAt }: { initial: string; updatedAt: string | null }) {
+  const queryClient = useQueryClient();
+  const [text, setText] = useState(initial);
+  const [saving, setSaving] = useState(false);
+  async function save(announcement: string) {
+    setSaving(true);
+    try {
+      const saved = await unwrap(api.settings.announcement.$put({ json: { announcement } }));
+      queryClient.setQueryData(settingsQuery.queryKey, (s) => s && { ...s, ...saved });
+      setText(saved.announcement);
+      toast(saved.announcement ? "Pengumuman disimpan. Staf melihatnya saat masuk." : "Pengumuman dihapus", "up");
+    } catch (err) {
+      if (!(err instanceof ApiError)) throw err;
+      toast(err.message, "down");
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <section className="flex max-w-2xl flex-col gap-2 rounded-xl border border-line p-4">
+      <label htmlFor="announcement" className="font-medium">
+        Pengumuman untuk semua staf
+      </label>
+      <p className="text-xs text-muted">
+        Muncul sekali saat staf masuk aplikasi, dan muncul lagi setiap kali diubah.
+        {updatedAt && initial && ` Terakhir diubah ${stamp.format(new Date(updatedAt))}.`}
+      </p>
+      <textarea
+        id="announcement"
+        rows={3}
+        maxLength={1000}
+        placeholder="Misal: Sabtu ini stok opname, toko tutup jam 15.00."
+        className={cx(controlClass, "h-auto py-2")}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+      />
+      <div className="flex justify-end gap-2">
+        {initial && (
+          <Button variant="danger" disabled={saving} onClick={() => void save("")}>
+            Hapus pengumuman
+          </Button>
+        )}
+        <Button variant="primary" disabled={saving || text.trim() === initial} onClick={() => void save(text)}>
+          Simpan pengumuman
+        </Button>
+      </div>
+    </section>
+  );
 }
 
 const fields: { key: Exclude<keyof SettingsInput, "posDeviceCode">; label: string; hint?: string }[] = [

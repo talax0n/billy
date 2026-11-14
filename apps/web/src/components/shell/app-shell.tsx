@@ -3,12 +3,14 @@ import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { ChevronsUpDown, LayoutDashboard, LogOut, Menu, MonitorSmartphone, Package, PanelLeftClose, PanelLeftOpen, Receipt, ShoppingCart, X } from "lucide-react";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { attentionQuery } from "../../lib/attention.ts";
 import { meQuery, useLogout } from "../../lib/auth.ts";
 import { settingsQuery } from "../../lib/settings.ts";
 import { canOpen, type NavItem, navGroups, navItems, sectionOf, sectionTabs } from "../../nav.tsx";
 import { cx } from "../../lib/cx.ts";
 import { Button } from "../ui/button.tsx";
 import { SectionContext } from "../ui/page.tsx";
+import { LoginNotice } from "./login-notice.tsx";
 import { NotificationBell } from "./notification-bell.tsx";
 import { ThemeToggle } from "./theme-toggle.tsx";
 
@@ -81,6 +83,7 @@ export function AppShell() {
         </SectionContext.Provider>
       </main>
       <TabBar />
+      <LoginNotice />
     </div>
   );
 }
@@ -238,6 +241,8 @@ function NavLink({ item }: { item: NavItem }) {
   const Icon = item.icon;
   // Active on any of its tabs, e.g. Penjualan stays lit on /riwayat-kasir.
   const active = sectionOf(useRouterState({ select: (s) => s.location.pathname })) === item.path;
+  const { data: attention } = useQuery({ ...attentionQuery, enabled: !!item.badge });
+  const badge = item.badge && attention ? item.badge(attention) : 0;
   return (
     <Link
       to={item.path}
@@ -248,8 +253,19 @@ function NavLink({ item }: { item: NavItem }) {
         active && "border-line bg-panel font-medium text-ink",
       )}
     >
-      <Icon className="size-4 shrink-0 opacity-60" />
+      <span className="relative shrink-0">
+        <Icon className="size-4 opacity-60" />
+        {badge > 0 && <span className="absolute -top-1 -right-1 hidden size-2 rounded-full bg-down group-data-[collapsed=true]/sb:block" />}
+      </span>
       <span className="group-data-[collapsed=true]/sb:sr-only">{item.label}</span>
+      {badge > 0 && (
+        <span
+          title={`${badge} perlu dicek`}
+          className="ml-auto grid h-[18px] min-w-[18px] place-items-center rounded-full bg-down px-1.5 text-[11px] font-semibold text-panel tabular-nums group-data-[collapsed=true]/sb:hidden"
+        >
+          {badge > 99 ? "99+" : badge}
+        </span>
+      )}
     </Link>
   );
 }

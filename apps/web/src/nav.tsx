@@ -24,6 +24,7 @@ import {
   WalletCards,
 } from "lucide-react";
 import type { ReactNode } from "react";
+import type { Attention } from "./lib/attention.ts";
 import { AuditPage } from "./routes/audit/audit-page.tsx";
 import { BundlesPage } from "./routes/invoice-bundles/bundles-page.tsx";
 import { CashPage } from "./routes/cash/cash-page.tsx";
@@ -61,6 +62,8 @@ export interface NavItem {
   section?: string;
   /** Label on the section's tab strip; defaults to `label`. */
   tab?: string;
+  /** Count shown next to the sidebar link, from GET /api/insights/attention; 0 hides it. */
+  badge?: (attention: Attention) => number;
 }
 
 /**
@@ -72,7 +75,7 @@ export const navItems: NavItem[] = [
   { group: "hidden", section: "/", path: "/ringkasan-harian", label: "Ringkasan harian", icon: ShieldAlert, page: DailySummaryPage, roles: ["admin"] },
   // Reached from the notification bell in every page header.
   { group: "hidden", path: "/tindakan", label: "Perlu Tindakan", icon: BellDot, page: ActionsPage },
-  { group: "Transaksi", path: "/penjualan", label: "Penjualan", tab: "Faktur", icon: Receipt, page: SalesPage },
+  { group: "Transaksi", path: "/penjualan", label: "Penjualan", tab: "Faktur", icon: Receipt, page: SalesPage, badge: (a) => a.overdueInvoices.count },
   { group: "hidden", section: "/penjualan", path: "/riwayat-kasir", label: "Nota Kasir", icon: History, page: RiwayatKasirPage },
   { group: "hidden", section: "/penjualan", path: "/penawaran", label: "Penawaran", icon: FileText, page: QuotationsPage },
   { group: "hidden", section: "/penjualan", path: "/tukar-faktur", label: "Tukar Faktur", icon: FileStack, page: BundlesPage },
@@ -83,7 +86,7 @@ export const navItems: NavItem[] = [
   { group: "hidden", section: "/kas-bank", path: "/laporan-shift", label: "Laporan Shift", icon: ClipboardCheck, page: ShiftsPage, roles: ["admin"] },
   { group: "Keuangan", path: "/piutang", label: "Piutang & Hutang", tab: "Piutang", icon: HandCoins, page: ReceivablesPage },
   { group: "hidden", section: "/piutang", path: "/hutang", label: "Hutang", icon: ArrowLeftRight, page: PayablesPage },
-  { group: "Persediaan", path: "/produk", label: "Produk & Stok", tab: "Produk", icon: Package, page: ProductsPage },
+  { group: "Persediaan", path: "/produk", label: "Produk & Stok", tab: "Produk", icon: Package, page: ProductsPage, badge: (a) => a.negativeStock + a.lowStock },
   { group: "hidden", section: "/produk", path: "/mutasi-stok", label: "Mutasi Stok", icon: Boxes, page: StockPage },
   { group: "hidden", section: "/produk", path: "/stok-menipis", label: "Stok Menipis", icon: TriangleAlert, page: StockAlertsPage },
   { group: "hidden", section: "/produk", path: "/stok-opname", label: "Stok Opname", icon: ClipboardList, page: OpnamePage },
