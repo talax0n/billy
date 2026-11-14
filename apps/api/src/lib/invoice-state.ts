@@ -35,6 +35,8 @@ export function invoiceState(db: Db, invoice: InvoiceColumns, paymentInvoiceId: 
         return isNotNull(invoice.voidedAt);
       case "paid":
         return and(live, sql`${invoice.total} <= ${paid}`)!;
+      case "due":
+        return and(open, gte(invoice.dueDate, today))!;
       case "overdue":
         return and(open, lt(invoice.dueDate, today))!;
       case "partial":

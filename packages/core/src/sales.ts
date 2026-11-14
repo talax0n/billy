@@ -69,7 +69,7 @@ export function ageReceivables(
  * List filters, matching what the status tag shows: an overdue invoice tags as Telat,
  * so it falls under `overdue` and not under `unpaid` or `partial`. `open` is anything still owed.
  */
-export const salesStatusFilters = ["open", "unpaid", "partial", "overdue", "paid", "void"] as const;
+export const salesStatusFilters = ["open", "due", "unpaid", "partial", "overdue", "paid", "void"] as const;
 export type SalesStatusFilter = (typeof salesStatusFilters)[number];
 
 export function assertPaymentAllowed(state: InvoiceState, amount: Rupiah): void {

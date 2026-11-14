@@ -12,13 +12,13 @@ import { api, unwrap } from "../../lib/api.ts";
 import { cx } from "../../lib/cx.ts";
 import { type Contact, LookupPicker, lookups } from "../../components/lookup-picker.tsx";
 import { InvoiceSheet } from "./invoice-sheet.tsx";
-import { overdueSalesOptions } from "./queries.ts";
+import { attentionQuery } from "../../lib/attention.ts";
 import { type Period, PeriodFilter, periodLabel, periodQuery, presetPeriod } from "../../components/period-filter.tsx";
 
 const chips = [
   { status: "", label: "Semua" },
   { status: "overdue", label: "Telat bayar" },
-  { status: "open", label: "Belum lunas" },
+  { status: "due", label: "Belum lunas" },
   { status: "paid", label: "Lunas" },
   { status: "void", label: "Void" },
 ] as const;
@@ -49,9 +49,9 @@ export function SalesPage() {
     ),
   );
   const summary = paged.query.data?.summary;
-  const overdue = useQuery(overdueSalesOptions).data;
+  const overdue = useQuery({ ...attentionQuery, refetchOnMount: "always" }).data?.overdueInvoices;
   const chipCount = (chip: ChipStatus) =>
-    summary && (chip ? summary.counts[chip] : summary.counts.open + summary.counts.paid + summary.counts.void);
+    summary && (chip ? summary.counts[chip] : summary.counts.overdue + summary.counts.due + summary.counts.paid + summary.counts.void);
   const windowNote = `Faktur ${periodLabel(period)}${status ? ` · ${chips.find((c) => c.status === status)!.label}` : ""}${customer ? ` · ${customer.name}` : ""}`;
   const money = (v: number | undefined) => (v === undefined ? "—" : formatRupiah(rupiah(v)));
 

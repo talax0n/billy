@@ -93,12 +93,12 @@ function invoiceQuery(db: Db) {
       .innerJoin(contacts, eq(contacts.id, salesInvoices.customerId))
       .leftJoin(paidByInvoice, eq(paidByInvoice.invoiceId, salesInvoices.id));
 
-  /** Rows per status chip; `open` includes overdue, like the `open` filter. */
+  /** Rows per status chip; the four are disjoint so they add up to "Semua". */
   const statusCounts = (today: string) =>
     db
       .select({
         overdue: sql<number>`count(*) filter (where ${state.statusWhere("overdue", today)})`.mapWith(Number),
-        open: sql<number>`count(*) filter (where ${open})`.mapWith(Number),
+        due: sql<number>`count(*) filter (where ${state.statusWhere("due", today)})`.mapWith(Number),
         paid: sql<number>`count(*) filter (where ${state.statusWhere("paid", today)})`.mapWith(Number),
         void: sql<number>`count(*) filter (where ${state.statusWhere("void", today)})`.mapWith(Number),
       })
@@ -166,14 +166,6 @@ export async function listInvoices(db: Db, query: z.output<typeof salesListQuery
       counts: counts!,
     },
   };
-}
-
-/** Overdue invoices across all time, for the Penjualan banner and the sidebar badge. */
-export async function overdueSummary(db: Db) {
-  const today = businessDate();
-  const invoices = invoiceQuery(db);
-  const [summary] = await invoices.aggregate(today).where(invoices.statusWhere("overdue", today));
-  return { count: summary!.count, outstanding: rupiah(summary!.overdue) };
 }
 
 /** Every invoice the Penjualan filters match, in the list's priority order, as an .xlsx with a totals row. */

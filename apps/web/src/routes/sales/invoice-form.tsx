@@ -199,6 +199,7 @@ export function InvoiceForm({
   async function save(invoice: SalesInvoiceInput) {
     const saved = await unwrap(api.sales.$post({ json: invoice }));
     await queryClient.invalidateQueries({ queryKey: ["sales"] });
+    await queryClient.invalidateQueries({ queryKey: ["insights"] });
     await queryClient.invalidateQueries({ queryKey: ["products"] });
     toast(`${saved.number} disimpan`, "up");
     onSaved(saved.id);
@@ -207,6 +208,7 @@ export function InvoiceForm({
   async function saveEdit(original: InvoiceDetail, input: SalesInvoiceEditInput) {
     const saved = await unwrap(api.sales[":id"].edit.$post({ param: { id: original.id }, json: input }));
     await queryClient.invalidateQueries({ queryKey: ["sales"] });
+    await queryClient.invalidateQueries({ queryKey: ["insights"] });
     await queryClient.invalidateQueries({ queryKey: ["products"] });
     await queryClient.invalidateQueries({ queryKey: ["invoice-bundles"] });
     toast(`${original.number} diubah menjadi ${saved.number}`, "up");

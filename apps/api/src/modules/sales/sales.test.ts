@@ -197,7 +197,7 @@ describe("lists", () => {
       paid: 0,
       outstanding: 1_575_200,
       overdue: 0,
-      counts: { overdue: 0, open: 2, paid: 1, void: 1 },
+      counts: { overdue: 0, due: 2, paid: 1, void: 1 },
     });
     expect(body.rows.map((r: Json) => r.state.status)).toEqual(["unpaid", "unpaid"]);
 
@@ -262,17 +262,17 @@ describe("priority order", () => {
     const body = (await (await call(`/api/sales?customerId=${customer!.id}`, { cookie })).json()) as Json;
     expect(body.rows.map((r: Json) => r.number)).toEqual([olderOverdue.number, overdue.number, unpaid.number, paid.number, voided.number]);
     expect(body.rows.map((r: Json) => (r.state.overdue ? "overdue" : r.state.status))).toEqual(["overdue", "overdue", "unpaid", "paid", "void"]);
-    expect(body.summary.counts).toEqual({ overdue: 2, open: 3, paid: 1, void: 1 });
+    expect(body.summary.counts).toEqual({ overdue: 2, due: 1, paid: 1, void: 1 });
 
     const filtered = (await (await call(`/api/sales?customerId=${customer!.id}&status=paid`, { cookie })).json()) as Json;
     expect(filtered.total).toBe(1);
-    expect(filtered.summary.counts).toEqual({ overdue: 2, open: 3, paid: 1, void: 1 });
+    expect(filtered.summary.counts).toEqual({ overdue: 2, due: 1, paid: 1, void: 1 });
   });
 
-  it("sums overdue invoices across all time", async () => {
-    const body = (await (await call("/api/sales/overdue-summary", { cookie })).json()) as Json;
+  it("counts the same overdue invoices for the banner and the sidebar badge, across all time", async () => {
+    const body = (await (await call("/api/insights/attention", { cookie })).json()) as Json;
     // 775.200 overdue from the lists suite, 2 × 816.000 here
-    expect(body).toEqual({ count: 3, outstanding: 2_407_200 });
+    expect(body.overdueInvoices).toEqual({ count: 3, outstanding: 2_407_200 });
   });
 });
 

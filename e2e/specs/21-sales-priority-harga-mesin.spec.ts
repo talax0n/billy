@@ -28,6 +28,7 @@ test("Penjualan puts overdue invoices first, counts each status chip and links t
 
   const notice = page.getByRole("alert").filter({ hasText: "faktur telat bayar" });
   await expect(notice).toContainText(`1 faktur telat bayar · total ${rp(64_000)}`);
+  await expect(page.getByRole("link", { name: /^Penjualan/ }).getByTitle("1 perlu dicek")).toHaveText("1");
   const chips = page.getByRole("group", { name: "Status faktur" });
   await expect(chips.getByRole("button", { name: /^Telat bayar/ })).toHaveText("Telat bayar0");
   await page.screenshot({ path: "test-results/penjualan-banner.png", fullPage: true });

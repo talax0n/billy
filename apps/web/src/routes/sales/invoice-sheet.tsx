@@ -67,6 +67,7 @@ function InvoiceDetail({ invoice, onEdit }: { invoice: Invoice; onEdit: () => vo
   const activePayments = invoice.payments.filter((p) => !p.voidedAt);
   const refresh = async (message: string) => {
     await queryClient.invalidateQueries({ queryKey: ["sales"] });
+    await queryClient.invalidateQueries({ queryKey: ["insights"] });
     await queryClient.invalidateQueries({ queryKey: ["products"] });
     toast(message, "up");
   };

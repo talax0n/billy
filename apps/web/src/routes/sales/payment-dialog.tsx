@@ -24,6 +24,7 @@ export function PaymentDialog({ invoice, onClose }: { invoice: InvoiceDetail; on
   const submit = form.onSubmit(async (input) => {
     await unwrap(api.sales[":id"].payments.$post({ param: { id: invoice.id }, json: input }));
     await queryClient.invalidateQueries({ queryKey: ["sales"] });
+    await queryClient.invalidateQueries({ queryKey: ["insights"] });
     toast("Pembayaran dicatat", "up");
     onClose();
   });
