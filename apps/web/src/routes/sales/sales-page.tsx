@@ -1,28 +1,28 @@
-import { formatDate, formatRupiah, rupiah, type SalesStatusFilter, salesStatusFilters } from "@billy/core";
-import { Plus } from "lucide-react";
+import { formatDate, formatRupiah, rupiah } from "@billy/core";
+import { useQuery } from "@tanstack/react-query";
+import { TriangleAlert, Plus } from "lucide-react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useState } from "react";
 import { ExportButton } from "../../components/export-button.tsx";
 import { StatusTag } from "../../components/ui/badge.tsx";
 import { Button } from "../../components/ui/button.tsx";
 import { DataTable, usePagedQuery } from "../../components/ui/data-table.tsx";
-import { Select } from "../../components/ui/field.tsx";
 import { EmptyState, FilterRow, PageBody, PageHeader, StatTile } from "../../components/ui/page.tsx";
 import { api, unwrap } from "../../lib/api.ts";
 import { cx } from "../../lib/cx.ts";
 import { type Contact, LookupPicker, lookups } from "../../components/lookup-picker.tsx";
 import { InvoiceSheet } from "./invoice-sheet.tsx";
+import { overdueSalesOptions } from "./queries.ts";
 import { type Period, PeriodFilter, periodLabel, periodQuery, presetPeriod } from "../../components/period-filter.tsx";
 
-
-const statusLabels: Record<SalesStatusFilter, string> = {
-  open: "Belum lunas",
-  unpaid: "Belum bayar",
-  partial: "Sebagian",
-  overdue: "Telat",
-  paid: "Lunas",
-  void: "Void",
-};
+const chips = [
+  { status: "", label: "Semua" },
+  { status: "overdue", label: "Telat bayar" },
+  { status: "open", label: "Belum lunas" },
+  { status: "paid", label: "Lunas" },
+  { status: "void", label: "Void" },
+] as const;
+type ChipStatus = (typeof chips)[number]["status"];
 
 /** Penjualan. The open invoice lives in the URL (`/penjualan?id=…`) so other pages can link to it. */
 export function SalesPage() {
@@ -31,7 +31,7 @@ export function SalesPage() {
   const openInvoice = (id: string | null) => void navigate({ to: "/penjualan", search: id ? { id } : {} });
   const [creating, setCreating] = useState(false);
   const [period, setPeriod] = useState<Period>(() => presetPeriod("month"));
-  const [status, setStatus] = useState<SalesStatusFilter | "">("");
+  const [status, setStatus] = useState<ChipStatus>("");
   const [customer, setCustomer] = useState<Contact | null>(null);
   const filters = { ...periodQuery(period), ...(status && { status }), ...(customer && { customerId: customer.id }) };
   const paged = usePagedQuery(["sales", "list", period, status, customer?.id], (params) =>
@@ -49,7 +49,10 @@ export function SalesPage() {
     ),
   );
   const summary = paged.query.data?.summary;
-  const windowNote = `Faktur ${periodLabel(period)}${status ? ` · ${statusLabels[status]}` : ""}${customer ? ` · ${customer.name}` : ""}`;
+  const overdue = useQuery(overdueSalesOptions).data;
+  const chipCount = (chip: ChipStatus) =>
+    summary && (chip ? summary.counts[chip] : summary.counts.open + summary.counts.paid + summary.counts.void);
+  const windowNote = `Faktur ${periodLabel(period)}${status ? ` · ${chips.find((c) => c.status === status)!.label}` : ""}${customer ? ` · ${customer.name}` : ""}`;
   const money = (v: number | undefined) => (v === undefined ? "—" : formatRupiah(rupiah(v)));
 
   return (
@@ -67,16 +70,25 @@ export function SalesPage() {
         }
       />
       <PageBody>
+        {overdue && overdue.count > 0 && (
+          <div role="alert" className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-down/30 bg-down/10 px-4 py-3 text-down">
+            <TriangleAlert className="size-5 shrink-0" />
+            <p className="flex-1 font-medium">
+              {overdue.count} faktur telat bayar · total {money(overdue.outstanding)}
+            </p>
+            <Button
+              variant="danger"
+              onClick={() => {
+                setPeriod(presetPeriod("all"));
+                setStatus("overdue");
+              }}
+            >
+              Lihat faktur telat
+            </Button>
+          </div>
+        )}
         <FilterRow aside={summary && `${summary.count} faktur`}>
           <PeriodFilter value={period} onChange={setPeriod} />
-          <Select className="w-40" aria-label="Status" value={status} onChange={(e) => setStatus(e.target.value as SalesStatusFilter | "")}>
-            <option value="">Semua status</option>
-            {salesStatusFilters.map((s) => (
-              <option key={s} value={s}>
-                {statusLabels[s]}
-              </option>
-            ))}
-          </Select>
           <div className="w-56">
             <LookupPicker kind="customer" lookup={lookups.customer} value={customer} onChange={setCustomer} placeholder="Semua pelanggan" />
           </div>
@@ -99,6 +111,29 @@ export function SalesPage() {
             value={<span className={cx(summary && summary.overdue > 0 && "text-down")}>{money(summary?.overdue)}</span>}
             note={`${windowNote} · lewat jatuh tempo per hari ini`}
           />
+        </div>
+        <div role="group" aria-label="Status faktur" className="flex flex-wrap gap-2">
+          {chips.map((chip) => {
+            const n = chipCount(chip.status);
+            const late = chip.status === "overdue" && !!n;
+            return (
+              <button
+                key={chip.status}
+                type="button"
+                aria-pressed={status === chip.status}
+                onClick={() => setStatus(chip.status)}
+                className={cx(
+                  "inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border border-line bg-panel px-3.5 font-medium text-ink-2 hover:bg-line-2",
+                  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink",
+                  "aria-pressed:border-ink aria-pressed:bg-ink aria-pressed:text-panel",
+                  late && "border-down/40 text-down aria-pressed:border-down aria-pressed:bg-down",
+                )}
+              >
+                {chip.label}
+                <span className="tabular-nums opacity-70">{n ?? "–"}</span>
+              </button>
+            );
+          })}
         </div>
         <DataTable
           paged={paged}
