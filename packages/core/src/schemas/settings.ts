@@ -16,3 +16,5 @@ export const settingsInput = z.object({
     .regex(/^[A-Z0-9]{1,4}$/, "1–4 huruf atau angka, misal K1"),
 });
 export type SettingsInput = z.input<typeof settingsInput>;
+
+export const announcementInput = z.object({ announcement: text(1000) });

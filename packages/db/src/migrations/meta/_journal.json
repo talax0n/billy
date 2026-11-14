@@ -43,6 +43,13 @@
       "when": 1794569284768,
       "tag": "0005_ubah_laporan_kas",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794631840564,
+      "tag": "0006_deliveries_announcement",
+      "breakpoints": true
     }
   ]
 }

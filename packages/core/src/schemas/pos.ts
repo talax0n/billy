@@ -3,6 +3,7 @@ import { approvalInput } from "../approvals.ts";
 import { discountKinds } from "../invoice.ts";
 import { rupiah } from "../money.ts";
 import { rupiahInput, text } from "./common.ts";
+import { deliveryDetailsInput } from "./deliveries.ts";
 
 export const posMethods = ["cash", "qris", "transfer"] as const;
 export type PosMethod = (typeof posMethods)[number];
@@ -42,6 +43,8 @@ export const posSaleInput = z.object({
   shiftId: z.uuid({ error: "Buka shift dulu sebelum berjualan" }),
   /** Only when the sale breaks a limit; never stored on the device, since it may hold the admin's PIN. */
   approval: approvalInput.optional(),
+  /** "Diantar ke alamat": queues the goods in Antrian Antar with the sale. */
+  delivery: deliveryDetailsInput.optional(),
 });
 export type PosSaleInput = z.input<typeof posSaleInput>;
 
@@ -73,5 +76,5 @@ export type PosDraftCancelInput = z.input<typeof posDraftCancelInput>;
  * difference: a higher total collects it there, a lower total is refunded in cash from the
  * reviser's drawer whatever they say. `tendered` is what the customer hands over for the difference.
  */
-export const posRevisionInput = posSaleInput.omit({ soldAt: true, cashierId: true }).extend({ reason: reasonInput("revisi") });
+export const posRevisionInput = posSaleInput.omit({ soldAt: true, cashierId: true, delivery: true }).extend({ reason: reasonInput("revisi") });
 export type PosRevisionInput = z.input<typeof posRevisionInput>;

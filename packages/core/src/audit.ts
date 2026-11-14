@@ -25,6 +25,7 @@ export const auditActions = {
   "settings.update": { entity: "settings", label: "Pengaturan toko diubah" },
   "settings.limits.update": { entity: "settings", label: "Batas kasir diubah" },
   "settings.watchdog.update": { entity: "settings", label: "Pengaturan pengawasan diubah" },
+  "settings.announcement.update": { entity: "settings", label: "Pengumuman diubah" },
   "approval_pin.set": { entity: "user", label: "PIN persetujuan diatur" },
   "category.create": { entity: "category", label: "Kategori dibuat" },
   "category.update": { entity: "category", label: "Kategori diubah" },
@@ -76,6 +77,13 @@ export const auditActions = {
   "approval.reject": { entity: "approval", label: "Persetujuan ditolak" },
   "approval.pin_failed": { entity: "approval", label: "PIN admin salah" },
   "approval.pin_locked": { entity: "approval", label: "PIN dikunci" },
+  "driver.create": { entity: "driver", label: "Sopir ditambah" },
+  "driver.update": { entity: "driver", label: "Sopir diubah" },
+  "delivery.create": { entity: "delivery", label: "Antaran masuk antrian" },
+  "delivery.depart": { entity: "delivery", label: "Antaran berangkat" },
+  "delivery.deliver": { entity: "delivery", label: "Antaran sampai" },
+  "delivery.requeue": { entity: "delivery", label: "Antaran kembali ke antrian" },
+  "delivery.cancel": { entity: "delivery", label: "Antaran dibatalkan" },
 } as const satisfies Record<string, { entity: string; label: string }>;
 
 export type AuditAction = keyof typeof auditActions;

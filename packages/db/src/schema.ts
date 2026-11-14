@@ -4,6 +4,7 @@ import {
   approvalStatuses,
   auditSources,
   cashSourceTypes,
+  deliveryStatuses,
   discountKinds,
   opnameStatuses,
   quotationStatuses,
@@ -75,6 +76,7 @@ export const approvalMethod = pgEnum("approval_method", approvalMethods);
 export const posDraftStatus = pgEnum("pos_draft_status", ["open", "paid", "cancelled"]);
 export const quotationStatus = pgEnum("quotation_status", quotationStatuses);
 export const opnameStatus = pgEnum("opname_status", opnameStatuses);
+export const deliveryStatus = pgEnum("delivery_status", deliveryStatuses);
 
 /** A document line kept as jsonb on a document that moves no stock (nota sementara, penawaran). */
 export interface DocumentLine {
@@ -131,6 +133,9 @@ export const settings = pgTable(
     /** Watchdog: opening hours, Asia/Jakarta wall-clock time. */
     openTime: time().notNull().default("07:00"),
     closeTime: time().notNull().default("17:00"),
+    /** Shown to every staff member when they sign in; empty means none. */
+    announcement: text().notNull().default(""),
+    announcementUpdatedAt: timestamp({ withTimezone: true }),
   },
   (t) => [check("settings_single_row", sql`${t.id} = 1`)],
 );
@@ -695,4 +700,43 @@ export const auditEvents = pgTable(
     approvalId: uuid().references(() => approvals.id),
   },
   (t) => [index().on(t.at), index().on(t.actorId, t.action, t.at)],
+);
+
+/** Shop drivers for Antrian Antar. They never sign in. */
+export const drivers = pgTable("drivers", {
+  id: id(),
+  name: text().notNull(),
+  phone: text().notNull().default(""),
+  active: boolean().notNull().default(true),
+  createdAt: createdAt(),
+});
+
+/**
+ * Antrian Antar: goods waiting for, or out with, a driver. Moves only along
+ * `deliveryTransitions` in @billy/core. The queue is FIFO by `queued_at`, which a
+ * "kembali ke antrian" keeps, so a returned delivery keeps its place.
+ */
+export const deliveries = pgTable(
+  "deliveries",
+  {
+    id: id(),
+    status: deliveryStatus().notNull().default("waiting"),
+    customerName: text().notNull(),
+    address: text().notNull(),
+    phone: text().notNull().default(""),
+    note: text().notNull().default(""),
+    /** At most one delivery per nota, so a retried Kasir upload cannot queue it twice. */
+    posSaleId: uuid()
+      .unique()
+      .references(() => posSales.id),
+    salesInvoiceId: uuid().references(() => salesInvoices.id),
+    driverId: uuid().references(() => drivers.id),
+    queuedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    departedAt: timestamp({ withTimezone: true }),
+    deliveredAt: timestamp({ withTimezone: true }),
+    cancelledAt: timestamp({ withTimezone: true }),
+    cancelReason: text(),
+    createdBy: userRef().notNull(),
+  },
+  (t) => [index().on(t.status, t.queuedAt), index().on(t.driverId, t.deliveredAt)],
 );
