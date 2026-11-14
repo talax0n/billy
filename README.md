@@ -32,6 +32,8 @@ pnpm e2e        # end-to-end suite, see below
 
 Set `DATABASE_URL` to use Postgres (the Neon pooled URL in production) instead. Tests always use an in-memory PGlite.
 
+To work on a copy of the production data, `NEON_URL_FILE=<file holding the Neon URL> tools/pull-prod.sh` replaces the local Postgres database `billy_prod` with the deployed one (read-only on Neon; needs Homebrew `postgresql@16` running and `libpq` for a Postgres 18 `pg_dump`). Then `pnpm dev:prod`, and sign in with the production passwords.
+
 After changing `packages/db/src/schema.ts`, generate a migration:
 
 ```sh
