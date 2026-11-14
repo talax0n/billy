@@ -178,7 +178,7 @@ export function PayPanel({
         type="button"
         disabled={!canPay}
         onClick={onPay}
-        className="mt-auto flex items-center justify-between rounded-[11px] bg-ink px-4 py-3.5 text-[15px] font-semibold text-panel disabled:opacity-40"
+        className="sticky bottom-0 mt-auto flex items-center justify-between rounded-[11px] bg-ink px-4 py-3.5 shadow-[0_-8px_16px_var(--panel)] text-[15px] font-semibold text-panel disabled:opacity-40"
       >
         {paidBefore === undefined ? "Bayar & cetak struk" : "Simpan revisi & cetak struk"}
         <kbd className="rounded-[5px] border border-panel/35 px-1.5 py-px font-sans text-xs font-normal">Enter</kbd>

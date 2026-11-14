@@ -756,7 +756,7 @@ function TopBar({
   };
 
   return (
-    <header className="flex flex-wrap items-center gap-3.5 px-4 py-2.5 max-md:gap-2 max-md:px-2.5">
+    <header className="flex flex-wrap items-center gap-2.5 px-4 py-2.5 max-md:gap-2 max-md:px-2.5">
       <div className="grid size-[26px] place-items-center rounded-[7px] bg-ink text-xs font-semibold text-panel">{initials || "B"}</div>
       <b className="text-[15px] font-semibold">Kasir</b>
       <Chip>
