@@ -366,9 +366,20 @@ it("rejects invalid dates, backwards windows and invalid accounts", async () => 
     ).toBe(400);
   }
 });
+it("counts what needs attention for the login notice and the sidebar badges", async () => {
+  expect(await (await call("/api/insights/attention", { cookie })).json()).toEqual({
+    negativeStock: 1,
+    lowStock: 1,
+    overdueInvoices: { count: 6, outstanding: 21_000_000 },
+    pendingApprovals: null,
+  });
+  const admin = await signIn("admin");
+  expect(await (await call("/api/insights/attention", { cookie: admin.cookie })).json()).toMatchObject({ pendingApprovals: 0 });
+});
 it("rejects kasir and unauthenticated reads of every endpoint", async () => {
   const kasir = await signIn("kasir");
   for (const path of [
+    "/api/insights/attention",
     `/api/insights/dashboard?${query}`,
     "/api/insights/actions",
     `/api/reports/cash-book.xlsx?${query}`,

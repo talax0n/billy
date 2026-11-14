@@ -6,6 +6,8 @@ export interface SessionUser {
   username: string;
   name: string;
   role: Role;
+  /** When this sign-in began (ISO), so the web can show its login notice once per session. */
+  sessionStartedAt: string;
 }
 
 /** Who an audited change is recorded under, and where it came from. */

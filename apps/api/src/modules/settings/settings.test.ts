@@ -20,6 +20,17 @@ it("lets only admin update the shop settings, and every role read them", async (
     invoiceSigner: "",
     receiptFooter: "Terima kasih",
     posDeviceCode: "K2",
+    announcement: "",
+    announcementUpdatedAt: null,
   });
   expect(await (await call("/api/settings", { cookie: kasir.cookie })).json()).toMatchObject({ shopName: "Toko Uji" });
+
+  // Pengumuman: admin writes it, every role reads it, an unchanged save keeps its time.
+  const announce = (cookie: string, announcement: string) => call("/api/settings/announcement", { method: "PUT", cookie, body: { announcement } });
+  expect((await announce(staff.cookie, "Stok opname Sabtu")).status).toBe(403);
+  const first = (await (await announce(admin.cookie, " Stok opname Sabtu ")).json()) as { announcement: string; announcementUpdatedAt: string };
+  expect(first.announcement).toBe("Stok opname Sabtu");
+  expect(await (await announce(admin.cookie, "Stok opname Sabtu")).json()).toEqual(first);
+  expect(await (await call("/api/settings", { cookie: kasir.cookie })).json()).toMatchObject(first);
+  expect(await (await announce(admin.cookie, "")).json()).toMatchObject({ announcement: "" });
 });

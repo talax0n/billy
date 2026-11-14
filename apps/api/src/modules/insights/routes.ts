@@ -5,7 +5,7 @@ import { validate } from "../../lib/validate.ts";
 import { actionsQuery, dashboardQuery, reportQuery } from "./query.ts";
 import { exportReport } from "./reports.ts";
 import { businessDate } from "@billy/core";
-import { dashboard, listActions, yearlyOverview } from "./service.ts";
+import { attention, dashboard, listActions, yearlyOverview } from "./service.ts";
 
 export const insightRoutes = new Hono<AppEnv>()
   .use("/insights/*", backOffice())
@@ -13,6 +13,7 @@ export const insightRoutes = new Hono<AppEnv>()
   .get("/insights/dashboard", validate("query", dashboardQuery), async (c) =>
     c.json(await dashboard(c.var.db, c.req.valid("query"))),
   )
+  .get("/insights/attention", async (c) => c.json(await attention(c.var.db, c.var.user.role === "admin")))
   .get("/insights/yearly", async (c) => c.json(await yearlyOverview(c.var.db, businessDate())))
   .get("/insights/actions", validate("query", actionsQuery), async (c) =>
     c.json(await listActions(c.var.db, c.req.valid("query"))),

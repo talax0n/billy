@@ -16,6 +16,7 @@ import {
 } from "@billy/core";
 import {
   accounts,
+  approvals,
   cashEntries,
   contacts,
   type Db,
@@ -32,8 +33,10 @@ import {
 import {
   and,
   between,
+  count,
   desc,
   eq,
+  gt,
   isNull,
   lte,
   ne,
@@ -335,4 +338,28 @@ export async function yearlyOverview(db: Db, today: string) {
     months,
     totals: { sales: sum("sales"), pos: sum("pos"), purchases: sum("purchases"), expenses: sum("expenses") },
   };
+}
+
+/**
+ * "Perlu perhatian hari ini": the counts behind the login notice and the sidebar badges.
+ * Overdue invoices are across all time. Pending approvals are counted for admin only (null otherwise).
+ */
+export async function attention(db: Db, isAdmin: boolean, now = new Date()) {
+  const today = businessDate(now);
+  return db.transaction(async (tx) => {
+    const [stock, { receivables }, [pending]] = await Promise.all([
+      stockAlerts(tx, today),
+      openInvoices(tx, today),
+      isAdmin
+        ? tx.select({ n: count() }).from(approvals).where(and(eq(approvals.status, "pending"), gt(approvals.expiresAt, now)))
+        : [null],
+    ]);
+    const overdue = receivables.filter((r) => r.dueDate < today);
+    return {
+      negativeStock: stock.filter((p) => p.stock < 0).length,
+      lowStock: stock.filter((p) => p.stock >= 0).length,
+      overdueInvoices: { count: overdue.length, outstanding: rupiah(overdue.reduce((n, r) => n + r.outstanding, 0)) },
+      pendingApprovals: pending ? pending.n : null,
+    };
+  }, snapshot);
 }

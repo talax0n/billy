@@ -22,11 +22,11 @@ export async function createSession(db: Db, userId: string): Promise<string> {
 /** The active user behind a live session token, or null. */
 export async function findSessionUser(db: Db, token: string): Promise<SessionUser | null> {
   const [row] = await db
-    .select({ id: users.id, username: users.username, name: users.name, role: users.role })
+    .select({ id: users.id, username: users.username, name: users.name, role: users.role, sessionStartedAt: sessions.createdAt })
     .from(sessions)
     .innerJoin(users, eq(users.id, sessions.userId))
     .where(and(eq(sessions.tokenHash, hashToken(token)), gt(sessions.expiresAt, new Date()), eq(users.active, true)));
-  return row ?? null;
+  return row ? { ...row, sessionStartedAt: row.sessionStartedAt.toISOString() } : null;
 }
 
 export async function deleteSession(db: Db, token: string): Promise<void> {

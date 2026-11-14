@@ -1,4 +1,4 @@
-import { changedFields, DomainError, formatBp, formatRupiah, limitsInput, settingsInput, watchdogSettingsInput } from "@billy/core";
+import { announcementInput, changedFields, DomainError, formatBp, formatRupiah, limitsInput, settingsInput, watchdogSettingsInput } from "@billy/core";
 import { settings } from "@billy/db";
 import { getTableColumns } from "drizzle-orm";
 import { Hono } from "hono";
@@ -25,6 +25,31 @@ export const settingsRoutes = new Hono<AppEnv>()
     const [row] = await c.var.db.select(columns).from(settings);
     if (!row) throw new DomainError("not_found", "Pengaturan toko belum dibuat");
     return c.json(row);
+  })
+  /** Pengumuman: shown to every staff member when they sign in, and again after each change. */
+  .put("/announcement", adminOnly(), validate("json", announcementInput), async (c) => {
+    const { announcement } = c.req.valid("json");
+    const saved = await c.var.db.transaction(async (tx) => {
+      const [before] = await tx.select({ announcement: settings.announcement }).from(settings).for("update");
+      if (!before) throw new DomainError("not_found", "Simpan pengaturan toko dulu");
+      if (before.announcement === announcement) {
+        const [row] = await tx.select({ announcement: settings.announcement, announcementUpdatedAt: settings.announcementUpdatedAt }).from(settings);
+        return row!;
+      }
+      const [row] = await tx
+        .update(settings)
+        .set({ announcement, announcementUpdatedAt: new Date() })
+        .returning({ announcement: settings.announcement, announcementUpdatedAt: settings.announcementUpdatedAt });
+      await audit(tx, c.var.actor, {
+        action: "settings.announcement.update",
+        entityId: "1",
+        summary: announcement ? `Pengumuman: ${announcement.slice(0, 80)}` : "Pengumuman dihapus",
+        before,
+        after: { announcement },
+      });
+      return row!;
+    });
+    return c.json(saved);
   })
   .put("/", adminOnly(), validate("json", settingsInput), async (c) => {
     const input = c.req.valid("json");
