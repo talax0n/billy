@@ -343,7 +343,7 @@ export function HistoryDialog({
               </small>
             </span>
             <span className="flex items-center gap-2 tabular-nums">
-              {s.revisedByNumber ? <Badge>Direvisi</Badge> : s.voidedAt && <Badge>Void</Badge>}
+              {s.revisedByNumber ? <Badge>Direvisi</Badge> : s.voidedAt && <Badge>Dibatalkan</Badge>}
               {money(s.total)}
             </span>
             <span className="flex gap-1.5">
@@ -355,8 +355,8 @@ export function HistoryDialog({
                   <Button size="sm" onClick={() => onRevise(s.id)} aria-label={`Revisi ${s.number}`}>
                     Revisi
                   </Button>
-                  <Button size="sm" variant="danger" onClick={() => setVoiding(s)} aria-label={`Void ${s.number}`}>
-                    Void
+                  <Button size="sm" variant="danger" onClick={() => setVoiding(s)} aria-label={`Batalkan ${s.number}`}>
+                    Batalkan
                   </Button>
                 </>
               )}

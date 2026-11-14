@@ -15,7 +15,7 @@ export const approvalKinds = [
 export type ApprovalKind = (typeof approvalKinds)[number];
 
 export const approvalKindLabels: Record<ApprovalKind, string> = {
-  void: "Void",
+  void: "Pembatalan",
   discount: "Diskon di atas batas",
   below_cost: "Harga di bawah modal",
   revisi_lower: "Revisi turun",

@@ -76,7 +76,7 @@ it("exports the filtered Penjualan list with typed cells and totals that leave o
     100_000,
     270_000,
   ]);
-  expect(sheet.getCell("E3").value).toBe("Void");
+  expect(sheet.getCell("E3").value).toBe("Dibatalkan");
   expect([sheet.getCell("B4").value, sheet.getCell("F4").value, sheet.getCell("H4").value]).toEqual(["1 faktur, tanpa void", 370_000, 270_000]);
 });
 

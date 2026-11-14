@@ -49,7 +49,7 @@ export const posSaleInput = z.object({
 export type PosSaleInput = z.input<typeof posSaleInput>;
 
 export const posVoidInput = z.object({
-  reason: z.string().trim().min(1, "Alasan void wajib diisi").max(500),
+  reason: z.string().trim().min(1, "Alasan pembatalan wajib diisi").max(500),
   approval: approvalInput.optional(),
 });
 

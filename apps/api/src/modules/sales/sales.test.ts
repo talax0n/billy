@@ -156,7 +156,7 @@ describe("payments", () => {
 
   it("refuses to void the invoice while a payment stands", async () => {
     const res = await post(`/api/sales/${invoiceId}/void`, { reason: "Salah input" });
-    expect(res).toEqual({ status: 409, body: { error: "Void dulu semua pembayaran faktur ini" } });
+    expect(res).toEqual({ status: 409, body: { error: "Batalkan dulu semua pembayaran faktur ini" } });
   });
 
   it("voids the payment with a reversal cash entry, then the invoice with reversal stock rows", async () => {

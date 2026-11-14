@@ -225,7 +225,7 @@ export async function voidTransfer(db: Db, id: string, reason: string, actor: Ac
       .where(eq(transfers.id, id))
       .for("update");
     if (!row) throw new DomainError("not_found", "Transfer tidak ditemukan");
-    if (row.voidedAt) throw new DomainError("conflict", "Transfer ini sudah di-void");
+    if (row.voidedAt) throw new DomainError("conflict", "Transfer ini sudah dibatalkan");
     const [voided] = await tx
       .update(transfers)
       .set({ voidedAt: new Date(), voidedBy: userId, voidReason: reason })
@@ -235,7 +235,7 @@ export async function voidTransfer(db: Db, id: string, reason: string, actor: Ac
     await audit(tx, actor, {
       action: "cash.transfer.void",
       entityId: id,
-      summary: `Void transfer ${formatRupiah(row.amount)}`,
+      summary: `Pembatalan transfer ${formatRupiah(row.amount)}`,
       before: { voidedAt: null },
       after: { voidedAt: voided!.voidedAt },
       reason,
@@ -266,7 +266,7 @@ export async function writeReversals(
       category: "reversal" as const,
       sourceType,
       sourceId,
-      note: `Void: ${reason}`,
+      note: `Pembatalan: ${reason}`,
       createdBy: userId,
     })),
   );

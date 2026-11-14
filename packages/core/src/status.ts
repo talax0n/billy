@@ -30,7 +30,7 @@ export function deriveInvoiceStatus(input: {
 
 /** The status glossary shown on screen and in exports: Lunas, Sebagian, Belum bayar, Telat, Void. */
 export function invoiceStatusLabel(state: Pick<InvoiceState, "status" | "overdue">): string {
-  if (state.status === "void") return "Void";
+  if (state.status === "void") return "Dibatalkan";
   if (state.status === "paid") return "Lunas";
   if (state.overdue) return "Telat";
   return state.status === "partial" ? "Sebagian" : "Belum bayar";

@@ -61,7 +61,7 @@ export function BundlesPage() {
             { header: "Faktur", align: "right", cell: (b) => b.invoiceCount },
             { header: "Total faktur (Rp)", align: "right", cell: (b) => amount(b.total) },
             { header: "Sisa tagihan (Rp)", align: "right", cell: (b) => amount(b.outstanding) },
-            { header: "Status", cell: (b) => (b.voidedAt ? <Badge>Void</Badge> : <Badge tone="up">Aktif</Badge>) },
+            { header: "Status", cell: (b) => (b.voidedAt ? <Badge>Dibatalkan</Badge> : <Badge tone="up">Aktif</Badge>) },
           ]}
         />
       </PageBody>
@@ -190,7 +190,7 @@ function BundleSheet({ bundleId, onOpen, onClose }: { bundleId: string; onOpen: 
   async function voidBundle() {
     await unwrap(api["invoice-bundles"][":id"].void.$post({ param: { id: bundleId } }));
     await queryClient.invalidateQueries({ queryKey: ["invoice-bundles"] });
-    toast(`${b!.number} di-void`, "up");
+    toast(`${b!.number} dibatalkan`, "up");
     setConfirming(false);
   }
 
@@ -217,13 +217,13 @@ function BundleSheet({ bundleId, onOpen, onClose }: { bundleId: string; onOpen: 
         <Dialog
           open={confirming}
           onClose={() => setConfirming(false)}
-          title="Void tukar faktur"
+          title="Batalkan tukar faktur"
           description={`${b.number}. Fakturnya tetap ada dan bisa ditukar lagi.`}
         >
           <div className="flex justify-end gap-2">
             <Button onClick={() => setConfirming(false)}>Batal</Button>
             <Button variant="danger" onClick={() => void voidBundle().catch((err: Error) => toast(err.message, "down"))}>
-              Void
+              Batalkan
             </Button>
           </div>
         </Dialog>
@@ -236,8 +236,8 @@ function BundleDetail({ bundle, onVoid, onEdit }: { bundle: Bundle; onVoid: () =
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center gap-2">
-        {bundle.voidedAt ? <Badge>Void</Badge> : <Badge tone="up">Aktif</Badge>}
-        {bundle.voidReason && <span className="text-muted">Alasan void: {bundle.voidReason}</span>}
+        {bundle.voidedAt ? <Badge>Dibatalkan</Badge> : <Badge tone="up">Aktif</Badge>}
+        {bundle.voidReason && <span className="text-muted">Alasan pembatalan: {bundle.voidReason}</span>}
         <RevisionLinks path="/tukar-faktur" revisionOf={bundle.revisionOf} revisedBy={bundle.revisedBy} />
         <div className="ml-auto flex gap-2">
           <Button size="sm" onClick={() => window.open(`/cetak/tukar-faktur/${bundle.id}`, "_blank", "noopener")}>
@@ -253,7 +253,7 @@ function BundleDetail({ bundle, onVoid, onEdit }: { bundle: Bundle; onVoid: () =
           {!bundle.voidedAt && (
             <Button size="sm" variant="danger" onClick={onVoid}>
               <Ban className="size-3.5" />
-              Void
+              Batalkan
             </Button>
           )}
         </div>

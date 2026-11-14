@@ -14,7 +14,7 @@ export function Badge({ tone = "neutral", children }: { tone?: keyof typeof dotC
   );
 }
 
-/** Invoice status in the fixed glossary: Lunas, Sebagian, Belum bayar, Telat, Void. */
+/** Invoice status in the fixed glossary: Lunas, Sebagian, Belum bayar, Telat, Dibatalkan. */
 export function StatusTag({ state }: { state: Pick<InvoiceState, "status" | "overdue"> }) {
   const tone = state.status === "void" ? "neutral" : state.status === "paid" ? "up" : state.overdue ? "down" : "warn";
   return <Badge tone={tone}>{invoiceStatusLabel(state)}</Badge>;

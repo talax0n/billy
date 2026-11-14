@@ -465,8 +465,8 @@ async function voidRequirement(tx: Db, id: string, actor: Viewer): Promise<Requi
   return {
     kind: "void",
     subject: { saleId: sale.id, number: sale.number, total: sale.total },
-    summary: `Void ${sale.number} · ${formatRupiah(sale.total)}`,
-    message: "Void struk kasir butuh persetujuan admin.",
+    summary: `Pembatalan ${sale.number} · ${formatRupiah(sale.total)}`,
+    message: "Pembatalan struk kasir butuh persetujuan admin.",
     deviceCode: sale.deviceCode,
   };
 }
@@ -487,10 +487,10 @@ export async function voidSale(db: Db, id: string, { reason, approval }: z.outpu
       .where(and(eq(posSales.id, id), isNull(posSales.voidedAt)))
       .returning({ id: posSales.id });
     const sale = await getSale(tx, id);
-    if (!voided) throw new DomainError("conflict", "Struk sudah di-void");
+    if (!voided) throw new DomainError("conflict", "Struk sudah dibatalkan");
     const approvalId = await authorize(tx, actor, requirement, approval, pinAdmin);
     const date = businessDate();
-    const note = `Void ${sale.number}: ${reason}`;
+    const note = `Pembatalan ${sale.number}: ${reason}`;
     const userId = actor.id;
 
     await reverseStock(tx, id, date, note, userId);
@@ -510,7 +510,7 @@ export async function voidSale(db: Db, id: string, { reason, approval }: z.outpu
     await audit(tx, actor, {
       action: "pos.sale.void",
       entityId: id,
-      summary: `Void ${sale.number} ${formatRupiah(sale.total)}`,
+      summary: `Pembatalan ${sale.number} ${formatRupiah(sale.total)}`,
       before: { voidedAt: null },
       after: { voidedAt: new Date().toISOString(), total: sale.total },
       reason,
@@ -557,7 +557,7 @@ async function findOriginal(tx: Db, id: string, lock: boolean) {
   const query = tx.select().from(posSales).where(eq(posSales.id, id));
   const [sale] = await (lock ? query.for("update") : query);
   if (!sale) throw new DomainError("not_found", "Struk tidak ditemukan");
-  if (sale.voidedAt) throw new DomainError("conflict", "Struk ini sudah di-void atau direvisi");
+  if (sale.voidedAt) throw new DomainError("conflict", "Struk ini sudah dibatalkan atau direvisi");
   return sale;
 }
 

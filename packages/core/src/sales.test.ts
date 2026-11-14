@@ -62,14 +62,14 @@ describe("assertPaymentAllowed", () => {
       new DomainError("invalid", "Pembayaran melebihi sisa tagihan Rp 600.000"),
     );
     expect(() => assertPaymentAllowed(state(0), rupiah(0))).toThrow(DomainError);
-    expect(() => assertPaymentAllowed(state(0, today, true), rupiah(1))).toThrow("Faktur sudah di-void");
+    expect(() => assertPaymentAllowed(state(0, today, true), rupiah(1))).toThrow("Faktur sudah dibatalkan");
   });
 });
 
 describe("assertInvoiceVoidable", () => {
   it("refuses while payments stand or when already void", () => {
     expect(() => assertInvoiceVoidable({ voided: false, activePayments: 0 })).not.toThrow();
-    expect(() => assertInvoiceVoidable({ voided: false, activePayments: 1 })).toThrow("Void dulu semua pembayaran faktur ini");
-    expect(() => assertInvoiceVoidable({ voided: true, activePayments: 0 })).toThrow("Faktur sudah di-void");
+    expect(() => assertInvoiceVoidable({ voided: false, activePayments: 1 })).toThrow("Batalkan dulu semua pembayaran faktur ini");
+    expect(() => assertInvoiceVoidable({ voided: true, activePayments: 0 })).toThrow("Faktur sudah dibatalkan");
   });
 });

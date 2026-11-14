@@ -29,9 +29,9 @@ export function VoidDialog({
           {(p) => <Input {...p} autoFocus value={form.values.reason} onChange={(e) => form.set("reason", e.target.value)} />}
         </Field>
         <div className="flex justify-end gap-2">
-          <Button onClick={onClose}>Batal</Button>
+          <Button onClick={onClose}>Kembali</Button>
           <Button type="submit" variant="danger" disabled={form.submitting}>
-            Void
+            Batalkan
           </Button>
         </div>
       </form>

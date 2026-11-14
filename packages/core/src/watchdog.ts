@@ -36,7 +36,7 @@ export const watchdogFlagTypes = [
 export type WatchdogFlagType = (typeof watchdogFlagTypes)[number];
 
 export const watchdogFlagLabels: Record<WatchdogFlagType, string> = {
-  voids: "Void di atas normal",
+  voids: "Pembatalan di atas normal",
   revisi: "Revisi di atas normal",
   refunds: "Refund di atas normal",
   shift_difference: "Selisih kas shift",

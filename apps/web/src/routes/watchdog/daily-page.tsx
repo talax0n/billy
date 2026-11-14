@@ -42,7 +42,7 @@ export function DailySummaryPage() {
         <DataTable
           paged={paged}
           search={false}
-          empty={<EmptyState title="Tidak ada void, revisi, diskon atau shift" />}
+          empty={<EmptyState title="Tidak ada pembatalan, revisi, diskon atau shift" />}
           columns={[
             {
               header: "Orang",
@@ -53,7 +53,7 @@ export function DailySummaryPage() {
                 </span>
               ),
             },
-            { header: "Void (Rp)", align: "right", cell: (r) => countAndAmount(r.voids, r.voidAmount) },
+            { header: "Pembatalan (Rp)", align: "right", cell: (r) => countAndAmount(r.voids, r.voidAmount) },
             { header: "Revisi", align: "right", cell: (r) => (r.revisi ? `${r.revisi}×` : "—") },
             { header: "Refund (Rp)", align: "right", cell: (r) => countAndAmount(r.refunds, r.refundAmount) },
             { header: "Diskon (Rp)", align: "right", cell: (r) => (r.discountAmount ? formatRupiah(r.discountAmount, { symbol: false }) : "—") },

@@ -20,7 +20,7 @@ const chips = [
   { status: "overdue", label: "Telat bayar" },
   { status: "due", label: "Belum lunas" },
   { status: "paid", label: "Lunas" },
-  { status: "void", label: "Void" },
+  { status: "void", label: "Dibatalkan" },
 ] as const;
 type ChipStatus = (typeof chips)[number]["status"];
 

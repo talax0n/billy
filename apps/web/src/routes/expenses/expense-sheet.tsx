@@ -110,7 +110,7 @@ function ExpenseForm({ edit, onDone }: { edit?: Expense; onDone: (savedId?: stri
         </Field>
       )}
       <p className="col-span-2 text-muted">
-        {edit ? `${edit.number} di-void dan diganti biaya baru bernomor ${edit.number}/R….` : "Nomor BY-… dibuat otomatis saat disimpan."}
+        {edit ? `${edit.number} dibatalkan dan diganti biaya baru bernomor ${edit.number}/R….` : "Nomor BY-… dibuat otomatis saat disimpan."}
       </p>
       <div className="col-span-2 flex justify-end gap-2">
         <Button onClick={() => onDone()}>Batal</Button>
@@ -148,7 +148,7 @@ function ExpenseDetail({ expense, onVoided, onEdit }: { expense: Expense; onVoid
       queryClient.invalidateQueries({ queryKey: ["expenses"] }),
       queryClient.invalidateQueries({ queryKey: ["accounts"] }),
     ]);
-    toast(`Biaya ${expense.number} di-void`, "up");
+    toast(`Biaya ${expense.number} dibatalkan`, "up");
     onVoided();
   }
 
@@ -158,7 +158,7 @@ function ExpenseDetail({ expense, onVoided, onEdit }: { expense: Expense; onVoid
         <span className={expense.voidedAt ? "text-[27px] font-medium text-muted line-through" : "text-[27px] font-medium"}>
           {formatRupiah(expense.amount)}
         </span>
-        {expense.voidedAt && <Badge>Void</Badge>}
+        {expense.voidedAt && <Badge>Dibatalkan</Badge>}
       </div>
       {(expense.revisionOf || expense.revisedBy) && (
         <div className="flex flex-wrap gap-3">
@@ -174,7 +174,7 @@ function ExpenseDetail({ expense, onVoided, onEdit }: { expense: Expense; onVoid
         ))}
         {expense.voidReason && (
           <div className="contents">
-            <dt className="text-muted">Alasan void</dt>
+            <dt className="text-muted">Alasan pembatalan</dt>
             <dd>{expense.voidReason}</dd>
           </div>
         )}
@@ -186,13 +186,13 @@ function ExpenseDetail({ expense, onVoided, onEdit }: { expense: Expense; onVoid
             Ubah
           </Button>
           <Button variant="danger" onClick={() => setVoiding(true)}>
-            Void biaya
+            Batalkan biaya
           </Button>
         </div>
       )}
       <VoidDialog
         open={voiding}
-        title={`Void ${expense.number}`}
+        title={`Batalkan ${expense.number}`}
         description={`${expense.category} · ${formatRupiah(expense.amount)}`}
         onVoid={voidExpense}
         onClose={() => setVoiding(false)}

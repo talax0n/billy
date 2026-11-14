@@ -77,7 +77,7 @@ function InvoiceDetail({ invoice, onEdit }: { invoice: Invoice; onEdit: () => vo
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center gap-2">
         <StatusTag state={invoice.state} />
-        {voided && <span className="text-muted">Alasan void: {invoice.voidReason}</span>}
+        {voided && <span className="text-muted">Alasan pembatalan: {invoice.voidReason}</span>}
         <RevisionLinks path="/penjualan" revisionOf={invoice.revisionOf} revisedBy={invoice.revisedBy} />
         {invoice.quotation && (
           <Link to="/penawaran" search={{ id: invoice.quotation.id }} className="text-ink-2 underline hover:text-ink">
@@ -110,11 +110,11 @@ function InvoiceDetail({ invoice, onEdit }: { invoice: Invoice; onEdit: () => vo
               size="sm"
               variant="danger"
               disabled={activePayments.length > 0}
-              title={activePayments.length > 0 ? "Void dulu semua pembayaran faktur ini" : undefined}
+              title={activePayments.length > 0 ? "Batalkan dulu semua pembayaran faktur ini" : undefined}
               onClick={() => setDialog("void")}
             >
               <Ban className="size-3.5" />
-              Void faktur
+              Batalkan faktur
             </Button>
           )}
         </div>
@@ -198,7 +198,7 @@ function InvoiceDetail({ invoice, onEdit }: { invoice: Invoice; onEdit: () => vo
                 </div>
                 {!p.voidedAt && (
                   <Button size="sm" variant="ghost" onClick={() => setDialog({ voidPayment: p.id })}>
-                    Void pembayaran
+                    Batalkan pembayaran
                   </Button>
                 )}
               </li>
@@ -213,18 +213,18 @@ function InvoiceDetail({ invoice, onEdit }: { invoice: Invoice; onEdit: () => vo
       {dialog === "pay" && <PaymentDialog invoice={invoice} onClose={() => setDialog(null)} />}
       {dialog === "void" && (
         <VoidDialog
-          title="Void faktur"
+          title="Batalkan faktur"
           description={`${invoice.number}. Stok barang dikembalikan lewat mutasi pembatalan.`}
           onClose={() => setDialog(null)}
           onConfirm={async (reason) => {
             await unwrap(api.sales[":id"].void.$post({ param: { id: invoice.id }, json: { reason } }));
-            await refresh(`${invoice.number} di-void`);
+            await refresh(`${invoice.number} dibatalkan`);
           }}
         />
       )}
       {typeof dialog === "object" && dialog !== null && (
         <VoidDialog
-          title="Void pembayaran"
+          title="Batalkan pembayaran"
           description="Saldo akun dikurangi lewat entri kas pembatalan."
           onClose={() => setDialog(null)}
           onConfirm={async (reason) => {
@@ -234,7 +234,7 @@ function InvoiceDetail({ invoice, onEdit }: { invoice: Invoice; onEdit: () => vo
                 json: { reason },
               }),
             );
-            await refresh("Pembayaran di-void");
+            await refresh("Pembayaran dibatalkan");
           }}
         />
       )}

@@ -79,7 +79,7 @@ it("transfers between accounts with an out and an in entry, and voids with rever
 
   expect(await post(`/api/cash/transfers/${id}/void`, { reason: "Lagi" })).toEqual({
     status: 409,
-    body: { error: "Transfer ini sudah di-void" },
+    body: { error: "Transfer ini sudah dibatalkan" },
   });
 });
 
@@ -90,7 +90,7 @@ it("rejects a transfer to the same account and a void without reason", async () 
   });
   expect((await post("/api/cash/transfers/01a1d234-3800-7000-8000-000000000000/void", { reason: "" })).body).toEqual({
     error: "Periksa kembali isian",
-    fields: { reason: "Alasan void wajib diisi" },
+    fields: { reason: "Alasan pembatalan wajib diisi" },
   });
   expect((await post("/api/cash/transfers/01a1d234-3800-7000-8000-000000000000/void", { reason: "x" })).status).toBe(404);
 });
@@ -103,7 +103,7 @@ it("shows the cash book newest first with a running balance, filters and period 
     totalIn: 6_800_000,
     totalOut: 1_700_000,
     rows: [
-      { date: "2026-11-13", direction: "in", category: "reversal", note: "Void: Salah akun", balance: 5_100_000, voidable: false },
+      { date: "2026-11-13", direction: "in", category: "reversal", note: "Pembatalan: Salah akun", balance: 5_100_000, voidable: false },
       { date: "2026-11-05", direction: "in", amount: 300_000, category: "other_in", balance: 3_600_000, createdByName: "Uji staff" },
       { date: "2026-11-03", direction: "out", category: "transfer", balance: 3_300_000, voidable: false },
       { date: "2026-11-02", direction: "out", amount: 200_000, balance: 4_800_000 },

@@ -45,7 +45,7 @@ test("Penjualan puts overdue invoices first, counts each status chip and links t
   await chips.getByRole("button", { name: /^Semua/ }).click();
   await expect(rows.first()).toContainText(late);
   const tags = await rows.evaluateAll((trs) => trs.map((tr) => tr.lastElementChild!.textContent!.trim()));
-  const rank = { Telat: 0, "Belum bayar": 1, Sebagian: 1, Lunas: 2, Void: 3 } as Record<string, number>;
+  const rank = { Telat: 0, "Belum bayar": 1, Sebagian: 1, Lunas: 2, Dibatalkan: 3 } as Record<string, number>;
   expect(tags.map((t) => rank[t])).toEqual([...tags.map((t) => rank[t])].sort());
   await page.screenshot({ path: "test-results/penjualan-chips.png", fullPage: true });
 

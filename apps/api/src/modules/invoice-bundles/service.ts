@@ -95,7 +95,7 @@ async function writeBundle(tx: Db, input: BundleInput, userId: string, number: s
   const invoices = await invoicesWithState(tx, inArray(salesInvoices.id, invoiceIds));
   const eligible = invoices.filter((inv) => inv.customerId === input.customerId && inv.state.outstanding > 0);
   if (eligible.length !== invoiceIds.length) {
-    throw new DomainError("invalid", "Hanya faktur pelanggan ini yang belum lunas dan tidak di-void yang bisa ditukar");
+    throw new DomainError("invalid", "Hanya faktur pelanggan ini yang belum lunas dan tidak dibatalkan yang bisa ditukar");
   }
   const [taken] = await tx
     .select({ number: invoiceBundles.number })
@@ -134,7 +134,7 @@ async function markVoid(tx: Db, id: string, userId: string, reason: string | nul
     .set({ voidedAt: new Date(), voidedBy: userId, voidReason: reason })
     .where(and(eq(invoiceBundles.id, id), isNull(invoiceBundles.voidedAt)))
     .returning({ id: invoiceBundles.id, number: invoiceBundles.number, voidedAt: invoiceBundles.voidedAt });
-  if (!row) throw new DomainError("conflict", "Tukar faktur tidak ditemukan atau sudah di-void");
+  if (!row) throw new DomainError("conflict", "Tukar faktur tidak ditemukan atau sudah dibatalkan");
   return row;
 }
 
@@ -145,7 +145,7 @@ export async function voidBundle(db: Db, id: string, actor: Actor) {
     await audit(tx, actor, {
       action: "invoice_bundle.void",
       entityId: id,
-      summary: `Void tukar faktur ${row.number}`,
+      summary: `Pembatalan tukar faktur ${row.number}`,
       before: { voidedAt: null },
       after: { voidedAt: row.voidedAt },
     });

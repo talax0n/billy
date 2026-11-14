@@ -410,7 +410,7 @@ async function editRequirement(
 /** For a remote approval request: what this Ubah would need approved, computed as `editInvoice` does. */
 export async function invoiceEditApproval(db: Db, originalId: string, input: InvoiceEditInput, actor: Pick<Actor, "role">) {
   const original = await getInvoice(db, originalId);
-  if (original.voidedAt) throw new DomainError("conflict", "Faktur ini sudah di-void atau diubah");
+  if (original.voidedAt) throw new DomainError("conflict", "Faktur ini sudah dibatalkan atau diubah");
   return editRequirement(db, original, input, actor);
 }
 
@@ -526,7 +526,7 @@ export async function voidPayment(
       .set({ voidedAt: new Date(), voidedBy: userId, voidReason: reason })
       .where(and(eq(payments.id, paymentId), eq(payments.salesInvoiceId, invoiceId), isNull(payments.voidedAt)))
       .returning({ id: payments.id, accountId: payments.accountId, amount: payments.amount });
-    if (!payment) throw new DomainError("conflict", "Pembayaran tidak ditemukan atau sudah di-void");
+    if (!payment) throw new DomainError("conflict", "Pembayaran tidak ditemukan atau sudah dibatalkan");
     await tx.insert(cashEntries).values({
       accountId: payment.accountId,
       date: businessDate(),
@@ -535,13 +535,13 @@ export async function voidPayment(
       category: "reversal",
       sourceType: "sales_payment",
       sourceId: payment.id,
-      note: `Void pembayaran ${invoice.number}: ${reason}`,
+      note: `Pembatalan pembayaran ${invoice.number}: ${reason}`,
       createdBy: userId,
     });
     await audit(tx, actor, {
       action: "sales.payment.void",
       entityId: payment.id,
-      summary: `Void pembayaran ${invoice.number} ${formatRupiah(payment.amount)}`,
+      summary: `Pembatalan pembayaran ${invoice.number} ${formatRupiah(payment.amount)}`,
       before: { voidedAt: null },
       after: { voidedAt: new Date().toISOString(), amount: payment.amount },
       reason,
@@ -562,7 +562,7 @@ export async function voidInvoice(db: Db, invoiceId: string, { reason }: z.outpu
     await audit(tx, actor, {
       action: "sales.invoice.void",
       entityId: invoiceId,
-      summary: `Void faktur ${invoice.number} ${formatRupiah(current.total)}`,
+      summary: `Pembatalan faktur ${invoice.number} ${formatRupiah(current.total)}`,
       before: { voidedAt: null },
       after: { voidedAt: new Date().toISOString(), total: current.total },
       reason,
@@ -590,7 +590,7 @@ async function reverseInvoice(tx: Db, invoice: { id: string; number: string }, r
       unitCost: m.unitCost,
       sourceType: "sales_invoice" as const,
       sourceId: invoice.id,
-      note: `Void ${invoice.number}: ${reason}`,
+      note: `Pembatalan ${invoice.number}: ${reason}`,
       createdBy: userId,
     })),
   );
@@ -607,13 +607,13 @@ export async function editInvoice(db: Db, invoiceId: string, input: InvoiceEditI
   return db.transaction(async (tx) => {
     await lockInvoice(tx, invoiceId);
     const original = await getInvoice(tx, invoiceId);
-    if (original.voidedAt) throw new DomainError("conflict", "Faktur ini sudah di-void atau diubah");
+    if (original.voidedAt) throw new DomainError("conflict", "Faktur ini sudah dibatalkan atau diubah");
     const approvalId = await authorize(tx, actor, await editRequirement(tx, original, input, actor), input.approval, pinAdmin);
     const total = invoiceSubject(input).total;
     if (original.paid > total) {
       throw new DomainError(
         "invalid",
-        `Faktur ini sudah dibayar ${formatRupiah(original.paid)}, lebih dari total baru ${formatRupiah(total)}. Void pembayaran yang berlebih dulu.`,
+        `Faktur ini sudah dibayar ${formatRupiah(original.paid)}, lebih dari total baru ${formatRupiah(total)}. Batalkan pembayaran yang berlebih dulu.`,
       );
     }
     const bundles = await tx

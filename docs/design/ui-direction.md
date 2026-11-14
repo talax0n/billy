@@ -39,11 +39,11 @@ The sync status card replaces the reference's "Getting started" card. It always 
 - **Lists** (Penjualan, Pembelian, Produk…): the same filter row, a search that fires as you type, status as small tags (Lunas / Sebagian / Belum bayar / Telat), right-aligned tabular money, a sticky header, and row click to open a side sheet. Keyboard j/k moves between rows.
 - **Invoice form:** a document layout, not a grid of inputs. The header (customer, date, terms) sits on top. Below it is a line table where you type a product name, press Enter for qty, and Enter for the next line. A totals panel on the right is computed and read-only, so computed values never look editable. Per-line discount sits behind a "+ diskon" toggle and does not show on every line.
 - **Kasir (POS):** a full-screen mode separate from the dashboard shell. The search or barcode field is always focused, with the cart on the left and the totals plus payment on the right. Large touch targets. F-keys handle payment method and Enter-Enter completes the sale. The offline state is visible but quiet. The receipt prints automatically.
-- **Detail side sheet:** document header, lines, payments timeline, and actions (Bayar, Cetak faktur, Surat jalan, Void).
+- **Detail side sheet:** document header, lines, payments timeline, and actions (Bayar, Cetak faktur, Surat jalan, Batalkan).
 
 ## Glossary (fixed terms)
 
-Penjualan, Pembelian, Biaya, Pelanggan, Pemasok, Piutang, Hutang, Jatuh tempo, Lunas, Belum bayar, Sebagian, Telat, Void, Kas & Bank, Mutasi stok, Tukar faktur, Surat jalan. The legacy spellings ("Suppliyer", "Excell") go away.
+Penjualan, Pembelian, Biaya, Pelanggan, Pemasok, Piutang, Hutang, Jatuh tempo, Lunas, Belum bayar, Sebagian, Telat, Dibatalkan, Kas & Bank, Mutasi stok, Tukar faktur, Surat jalan. The legacy spellings ("Suppliyer", "Excell") go away. A void shows as "Batalkan" on its button and "Dibatalkan" as its status; the code, API paths and database keep the word `void`.
 
 ## Decisions (2026-11-12)
 

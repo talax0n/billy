@@ -57,7 +57,7 @@ test("Ubah a paid faktur, follow both links, then find its payment in Laporan Ka
   await revised.getByRole("link", { name: `Perubahan dari ${number}` }).click();
 
   const replaced = page.getByRole("dialog", { name: number, exact: true });
-  await expect(replaced.getByText("Alasan void: Diubah: Pelanggan tambah satu")).toBeVisible();
+  await expect(replaced.getByText("Alasan pembatalan: Diubah: Pelanggan tambah satu")).toBeVisible();
   await replaced.getByRole("link", { name: `Diubah → ${number}/R1` }).click();
   await expect(page.getByRole("dialog", { name: `${number}/R1` })).toBeVisible();
   await page.getByRole("dialog", { name: `${number}/R1` }).getByRole("button", { name: "Tutup" }).click();

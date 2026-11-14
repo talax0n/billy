@@ -46,7 +46,7 @@ export function ExpensesPage() {
           <StatTile
             label={month ? `Total biaya ${monthLabel.format(new Date(`${month}-01T00:00:00Z`))}` : "Total biaya semua periode"}
             value={amountTotal === undefined ? "—" : formatRupiah(rupiah(amountTotal))}
-            note={paged.query.data && `${paged.query.data.total} catatan · biaya yang di-void tidak dihitung`}
+            note={paged.query.data && `${paged.query.data.total} catatan · biaya yang dibatalkan tidak dihitung`}
           />
         </div>
         <DataTable
@@ -77,7 +77,7 @@ export function ExpensesPage() {
               align: "right",
               cell: (e) => <span className={e.voidedAt ? "text-muted line-through" : undefined}>{formatRupiah(e.amount, { symbol: false })}</span>,
             },
-            { header: "Status", className: "w-20", cell: (e) => e.voidedAt && <Badge>Void</Badge> },
+            { header: "Status", className: "w-20", cell: (e) => e.voidedAt && <Badge>Dibatalkan</Badge> },
           ]}
         />
       </PageBody>

@@ -57,7 +57,7 @@ export function RiwayatKasirPage() {
 function SaleStatus({ sale }: { sale: { voidedAt: string | null; revisedByNumber: string | null; revisionOfNumber: string | null } }) {
   return (
     <span className="flex flex-col items-start gap-0.5">
-      {sale.revisedByNumber ? <Badge>Direvisi</Badge> : sale.voidedAt ? <Badge>Void</Badge> : <Badge tone="up">Lunas</Badge>}
+      {sale.revisedByNumber ? <Badge>Direvisi</Badge> : sale.voidedAt ? <Badge>Dibatalkan</Badge> : <Badge tone="up">Lunas</Badge>}
       {sale.revisionOfNumber && <small className="text-muted">revisi dari {sale.revisionOfNumber}</small>}
     </span>
   );
@@ -95,7 +95,7 @@ function SaleSheet({ id, onOpen, onClose }: { id: string; onOpen: (id: string) =
             </Button>
             {!s.voidedAt && (
               <Button size="sm" variant="danger" onClick={() => setVoiding(true)}>
-                Void
+                Batalkan
               </Button>
             )}
           </div>

@@ -231,7 +231,7 @@ export function RevisiDialog({ number, onStart, onClose }: { number: string; onS
     else setError("Alasan revisi wajib diisi");
   };
   return (
-    <Dialog open onClose={onClose} title={`Revisi ${number}`} description="Nota lama di-void dan diganti nota baru. Selisih dibayar atau dikembalikan tunai dari laci.">
+    <Dialog open onClose={onClose} title={`Revisi ${number}`} description="Nota lama dibatalkan dan diganti nota baru. Selisih dibayar atau dikembalikan tunai dari laci.">
       <form onSubmit={submit} noValidate className="flex flex-col gap-4">
         <Field label="Alasan revisi" error={error}>
           {(p) => <Input {...p} autoFocus maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} />}

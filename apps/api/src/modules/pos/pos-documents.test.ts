@@ -169,7 +169,7 @@ describe("revisi nota kasir", () => {
       403,
       { error: "Persetujuan ini sudah dipakai.", approval: { kind: "revisi_lower" } },
     ]);
-    expect(await json(await revise(kasir, first, revision(shift, 3)))).toEqual([409, { error: "Struk ini sudah di-void atau direvisi" }]);
+    expect(await json(await revise(kasir, first, revision(shift, 3)))).toEqual([409, { error: "Struk ini sudah dibatalkan atau direvisi" }]);
     await closeShift(kasir, shift);
   });
 

@@ -73,7 +73,7 @@ export const salesStatusFilters = ["open", "due", "unpaid", "partial", "overdue"
 export type SalesStatusFilter = (typeof salesStatusFilters)[number];
 
 export function assertPaymentAllowed(state: InvoiceState, amount: Rupiah): void {
-  if (state.status === "void") throw new DomainError("conflict", "Faktur sudah di-void");
+  if (state.status === "void") throw new DomainError("conflict", "Faktur sudah dibatalkan");
   if (amount <= 0) throw new DomainError("invalid", "Jumlah pembayaran harus lebih dari 0");
   if (amount > state.outstanding) {
     throw new DomainError("invalid", `Pembayaran melebihi sisa tagihan ${formatRupiah(state.outstanding)}`);
@@ -81,8 +81,8 @@ export function assertPaymentAllowed(state: InvoiceState, amount: Rupiah): void 
 }
 
 export function assertInvoiceVoidable(invoice: { voided: boolean; activePayments: number }): void {
-  if (invoice.voided) throw new DomainError("conflict", "Faktur sudah di-void");
+  if (invoice.voided) throw new DomainError("conflict", "Faktur sudah dibatalkan");
   if (invoice.activePayments > 0) {
-    throw new DomainError("conflict", "Void dulu semua pembayaran faktur ini");
+    throw new DomainError("conflict", "Batalkan dulu semua pembayaran faktur ini");
   }
 }

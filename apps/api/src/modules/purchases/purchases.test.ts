@@ -176,7 +176,7 @@ describe("payments and voids", () => {
 
     const blocked = await call(`/api/purchases/${invoice.id}/void`, { method: "POST", cookie, body: { reason: "Salah input" } });
     expect(blocked.status).toBe(422);
-    expect(await blocked.json()).toEqual({ error: "Faktur masih punya pembayaran. Void pembayarannya dulu." });
+    expect(await blocked.json()).toEqual({ error: "Faktur masih punya pembayaran. Batalkan pembayarannya dulu." });
 
     const voidedPayment = await call(`/api/purchases/${invoice.id}/payments/${paymentId}/void`, {
       method: "POST",

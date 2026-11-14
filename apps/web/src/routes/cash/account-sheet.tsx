@@ -139,7 +139,7 @@ function CashBook({ accountId }: { accountId: string }) {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["accounts"] });
       await queryClient.invalidateQueries({ queryKey: ["expenses"] });
-      toast("Dokumen di-void, saldo dikembalikan", "up");
+      toast("Dokumen dibatalkan, saldo dikembalikan", "up");
     },
   });
 
@@ -211,7 +211,7 @@ function CashBook({ accountId }: { accountId: string }) {
             cell: (e) =>
               e.voidable && (
                 <Button size="sm" variant="ghost" onClick={() => setVoiding(e)}>
-                  Void
+                  Batalkan
                 </Button>
               ),
           },
@@ -219,7 +219,7 @@ function CashBook({ accountId }: { accountId: string }) {
       />
       <VoidDialog
         open={voiding !== null}
-        title={voiding?.sourceType === "transfer" ? "Void transfer" : "Void biaya"}
+        title={voiding?.sourceType === "transfer" ? "Batalkan transfer" : "Batalkan biaya"}
         description={voiding && `${formatDate(voiding.date)} · ${formatRupiah(voiding.amount)}`}
         onVoid={(reason) => voidSource.mutateAsync({ row: voiding!, reason })}
         onClose={() => setVoiding(null)}

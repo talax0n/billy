@@ -60,9 +60,9 @@ function ReasonForm({ consequence, onConfirm, onClose }: { consequence: string; 
       </Field>
       {server.message && <p className="text-down">{server.message}</p>}
       <div className="flex justify-end gap-2">
-        <Button onClick={onClose}>Batal</Button>
+        <Button onClick={onClose}>Kembali</Button>
         <Button type="submit" variant="danger" disabled={form.submitting}>
-          Void
+          Batalkan
         </Button>
       </div>
     </form>

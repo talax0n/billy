@@ -34,14 +34,14 @@ function VoidForm({ onVoid, onClose }: { onVoid: (reason: string) => Promise<unk
   });
   return (
     <form onSubmit={submit} noValidate className="flex flex-col gap-4">
-      <p className="text-ink-2">Dokumen tetap tersimpan dengan tanda Void, dan uangnya dikembalikan ke akun lewat entri pembatalan.</p>
-      <Field label="Alasan void" error={form.errors.reason}>
+      <p className="text-ink-2">Dokumen tetap tersimpan dengan tanda Dibatalkan, dan uangnya dikembalikan ke akun lewat entri pembatalan.</p>
+      <Field label="Alasan pembatalan" error={form.errors.reason}>
         {(p) => <Input {...p} autoFocus value={form.values.reason} onChange={(e) => form.set("reason", e.target.value)} />}
       </Field>
       <div className="flex justify-end gap-2">
-        <Button onClick={onClose}>Batal</Button>
+        <Button onClick={onClose}>Kembali</Button>
         <Button type="submit" variant="danger" disabled={form.submitting}>
-          Void
+          Batalkan
         </Button>
       </div>
     </form>

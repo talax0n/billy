@@ -21,7 +21,7 @@ export function VoidSaleDialog({ sale, onClose }: { sale: { id: string; number: 
   async function send(reason: string, approval?: ApprovalInput) {
     await unwrap(api.pos.sales[":id"].void.$post({ param: { id: sale.id }, json: { reason, ...(approval && { approval }) } }));
     await queryClient.invalidateQueries({ queryKey: ["pos", "sales"] });
-    toast(`Struk ${sale.number} di-void`, "up");
+    toast(`Struk ${sale.number} dibatalkan`, "up");
     onClose();
   }
 
@@ -45,15 +45,15 @@ export function VoidSaleDialog({ sale, onClose }: { sale: { id: string; number: 
     );
   }
   return (
-    <Dialog open onClose={onClose} title={`Void ${sale.number}`} description="Stok dikembalikan dan uang dikeluarkan dari akun lewat baris pembalik.">
+    <Dialog open onClose={onClose} title={`Batalkan ${sale.number}`} description="Stok dikembalikan dan uang dikeluarkan dari akun lewat baris pembalik.">
       <form onSubmit={submit} noValidate className="flex flex-col gap-4">
         <Field label="Alasan" error={form.errors.reason}>
           {(p) => <Input {...p} autoFocus value={form.values.reason} onChange={(e) => form.set("reason", e.target.value)} />}
         </Field>
         <div className="flex justify-end gap-2">
-          <Button onClick={onClose}>Batal</Button>
+          <Button onClick={onClose}>Kembali</Button>
           <Button type="submit" variant="danger" disabled={form.submitting}>
-            Void struk
+            Batalkan struk
           </Button>
         </div>
       </form>

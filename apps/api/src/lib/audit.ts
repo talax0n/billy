@@ -5,7 +5,7 @@ import type { Actor } from "../env.ts";
 export interface AuditEntry {
   action: AuditAction;
   entityId: string;
-  /** One readable line, e.g. "Void K1-261113-0410 Rp 210.000". */
+  /** One readable line, e.g. "Pembatalan K1-261113-0410 Rp 210.000". */
   summary: string;
   /** Changed fields only. */
   before?: unknown;

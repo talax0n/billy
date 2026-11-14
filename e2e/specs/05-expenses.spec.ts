@@ -18,15 +18,15 @@ test("records an expense and voids it; a void needs a reason", async ({ page }) 
 
   await page.getByRole("row", { name: new RegExp(`${number} Listrik Token listrik November Kas Toko ${num(75_000)}`) }).click();
   const sheet = page.getByRole("dialog", { name: number });
-  await sheet.getByRole("button", { name: "Void biaya" }).click();
-  const voiding = page.getByRole("dialog", { name: `Void ${number}` });
-  await voiding.getByRole("button", { name: "Void", exact: true }).click();
-  await expect(voiding.getByText("Alasan void wajib diisi")).toBeVisible();
+  await sheet.getByRole("button", { name: "Batalkan biaya" }).click();
+  const voiding = page.getByRole("dialog", { name: `Batalkan ${number}` });
+  await voiding.getByRole("button", { name: "Batalkan", exact: true }).click();
+  await expect(voiding.getByText("Alasan pembatalan wajib diisi")).toBeVisible();
 
-  await voiding.getByLabel("Alasan void").fill("Salah input");
-  await voiding.getByRole("button", { name: "Void", exact: true }).click();
-  await expect(page.getByText(`Biaya ${number} di-void`)).toBeVisible();
-  await expect(page.getByRole("row", { name: new RegExp(`${number}.*Void`) })).toBeVisible();
+  await voiding.getByLabel("Alasan pembatalan").fill("Salah input");
+  await voiding.getByRole("button", { name: "Batalkan", exact: true }).click();
+  await expect(page.getByText(`Biaya ${number} dibatalkan`)).toBeVisible();
+  await expect(page.getByRole("row", { name: new RegExp(`${number}.*Dibatalkan`) })).toBeVisible();
   await expect(page.getByText(/^Total biaya/).locator("..")).toContainText("Rp 0");
 
   await page.goto("/kas-bank");

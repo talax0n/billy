@@ -57,7 +57,7 @@ export function fieldErrors(error: z.core.$ZodError): Record<string, string> {
 /** Ubah: why a posted document is replaced. The original is voided with "Diubah: <reason>". */
 export const editReason = z.string().trim().min(1, "Alasan perubahan wajib diisi").max(500);
 
-export const voidInput = z.object({ reason: z.string().trim().min(1, "Alasan void wajib diisi").max(500) });
+export const voidInput = z.object({ reason: z.string().trim().min(1, "Alasan pembatalan wajib diisi").max(500) });
 export type VoidInput = z.input<typeof voidInput>;
 
 export const paymentMethods = ["cash", "transfer", "qris", "giro"] as const;

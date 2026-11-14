@@ -95,7 +95,7 @@ function PurchaseDetail({ purchase: p, onEdit }: { purchase: Purchase; onEdit: (
             )}
             <Button variant="danger" size="sm" onClick={() => setVoiding(true)}>
               <Ban className="size-3.5" />
-              Void faktur
+              Batalkan faktur
             </Button>
           </div>
         )}
@@ -103,7 +103,7 @@ function PurchaseDetail({ purchase: p, onEdit }: { purchase: Purchase; onEdit: (
 
       {voided && (
         <p className="rounded-lg border border-line px-3 py-2.5 text-ink-2">
-          Faktur ini sudah di-void. Alasan: {p.voidReason}. Stok barangnya sudah dikurangi kembali.
+          Faktur ini sudah dibatalkan. Alasan: {p.voidReason}. Stok barangnya sudah dikurangi kembali.
         </p>
       )}
       {(p.revisionOf || p.revisedBy) && (
@@ -174,12 +174,12 @@ function PurchaseDetail({ purchase: p, onEdit }: { purchase: Purchase; onEdit: (
                   </div>
                   <div className="flex items-center justify-between gap-3 text-xs text-muted">
                     <span>
-                      {payment.voidedAt ? `Void: ${payment.voidReason}` : `Dicatat ${payment.createdByName}`}
+                      {payment.voidedAt ? `Dibatalkan: ${payment.voidReason}` : `Dicatat ${payment.createdByName}`}
                       {payment.note && ` · ${payment.note}`}
                     </span>
                     {!payment.voidedAt && (
                       <Button variant="ghost" size="sm" onClick={() => setVoidingPayment(payment)}>
-                        Void pembayaran
+                        Batalkan pembayaran
                       </Button>
                     )}
                   </div>
@@ -193,24 +193,24 @@ function PurchaseDetail({ purchase: p, onEdit }: { purchase: Purchase; onEdit: (
       <PaymentDialog invoice={paying ? p : null} onClose={() => setPaying(false)} />
       <VoidDialog
         open={voiding}
-        title="Void faktur"
+        title="Batalkan faktur"
         description={`${p.number} · ${formatRupiah(p.total)}`}
         consequence="Stok setiap barang di faktur ini dikurangi kembali. Harga pokok produk tidak berubah."
         blocked={
           livePayments.length > 0
-            ? `Faktur ini masih punya ${livePayments.length} pembayaran. Void pembayarannya dulu, baru faktur bisa di-void.`
+            ? `Faktur ini masih punya ${livePayments.length} pembayaran. Batalkan pembayarannya dulu, baru faktur bisa dibatalkan.`
             : undefined
         }
         onConfirm={async (reason) => {
           await unwrap(api.purchases[":id"].void.$post({ param: { id: p.id }, json: { reason } }));
           await refresh();
-          toast(`${p.number} di-void`, "up");
+          toast(`${p.number} dibatalkan`, "up");
         }}
         onClose={() => setVoiding(false)}
       />
       <VoidDialog
         open={voidingPayment !== null}
-        title="Void pembayaran"
+        title="Batalkan pembayaran"
         description={voidingPayment && `${formatDate(voidingPayment.date)} · ${voidingPayment.accountName} · ${formatRupiah(voidingPayment.amount)}`}
         consequence="Uangnya dicatat kembali masuk ke akun asal hari ini, dan sisa hutang faktur bertambah lagi."
         onConfirm={async (reason) => {
@@ -218,7 +218,7 @@ function PurchaseDetail({ purchase: p, onEdit }: { purchase: Purchase; onEdit: (
             api.purchases[":id"].payments[":paymentId"].void.$post({ param: { id: p.id, paymentId: voidingPayment!.id }, json: { reason } }),
           );
           await refresh();
-          toast("Pembayaran di-void", "up");
+          toast("Pembayaran dibatalkan", "up");
         }}
         onClose={() => setVoidingPayment(null)}
       />

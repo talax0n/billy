@@ -270,7 +270,7 @@ async function paidSoFar(tx: Db, invoiceId: string): Promise<Rupiah> {
 /** Payment + cash entry `out` / `purchase`. Call with the invoice row locked. */
 async function recordPayment(tx: Db, invoice: Awaited<ReturnType<typeof lockInvoice>>, input: PaymentInput, actor: Actor) {
   const userId = actor.id;
-  if (invoice.voidedAt) throw new DomainError("invalid", "Faktur ini sudah di-void");
+  if (invoice.voidedAt) throw new DomainError("invalid", "Faktur ini sudah dibatalkan");
   const outstanding = rupiah(invoice.total - (await paidSoFar(tx, invoice.id)));
   if (input.amount > outstanding) {
     throw new DomainError("invalid", `Pembayaran melebihi sisa hutang (${formatRupiah(outstanding)})`);
@@ -439,7 +439,7 @@ export async function voidPayment(db: Db, id: string, paymentId: string, reason:
       .from(payments)
       .where(and(eq(payments.id, paymentId), eq(payments.purchaseInvoiceId, id)));
     if (!payment) throw new DomainError("not_found", "Pembayaran tidak ditemukan");
-    if (payment.voidedAt) throw new DomainError("invalid", "Pembayaran ini sudah di-void");
+    if (payment.voidedAt) throw new DomainError("invalid", "Pembayaran ini sudah dibatalkan");
 
     await tx
       .update(payments)
@@ -459,7 +459,7 @@ export async function voidPayment(db: Db, id: string, paymentId: string, reason:
     await audit(tx, actor, {
       action: "purchase.payment.void",
       entityId: paymentId,
-      summary: `Void pembayaran ${invoice.number} ${formatRupiah(payment.amount)}`,
+      summary: `Pembatalan pembayaran ${invoice.number} ${formatRupiah(payment.amount)}`,
       before: { voidedAt: null },
       after: { voidedAt: new Date().toISOString(), amount: payment.amount },
       reason,
@@ -472,15 +472,15 @@ export async function voidPayment(db: Db, id: string, paymentId: string, reason:
 export async function voidPurchase(db: Db, id: string, reason: string, actor: Actor) {
   await db.transaction(async (tx) => {
     const invoice = await lockInvoice(tx, id);
-    if (invoice.voidedAt) throw new DomainError("invalid", "Faktur ini sudah di-void");
+    if (invoice.voidedAt) throw new DomainError("invalid", "Faktur ini sudah dibatalkan");
     if ((await paidSoFar(tx, id)) > 0) {
-      throw new DomainError("invalid", "Faktur masih punya pembayaran. Void pembayarannya dulu.");
+      throw new DomainError("invalid", "Faktur masih punya pembayaran. Batalkan pembayarannya dulu.");
     }
     const costs = await reversePurchase(tx, invoice, reason, actor.id);
     await audit(tx, actor, {
       action: "purchase.invoice.void",
       entityId: id,
-      summary: `Void pembelian ${invoice.number} ${formatRupiah(invoice.total)}`,
+      summary: `Pembatalan pembelian ${invoice.number} ${formatRupiah(invoice.total)}`,
       before: { voidedAt: null, ...(costs && { costPrice: costs.before }) },
       after: { voidedAt: new Date().toISOString(), ...(costs && { costPrice: costs.after }) },
       reason,
@@ -540,12 +540,12 @@ export async function editPurchase(db: Db, id: string, input: PurchaseEditInput,
   const newId = await db.transaction(async (tx) => {
     await lockInvoice(tx, id);
     const original = await getPurchase(tx, id);
-    if (original.voidedAt) throw new DomainError("conflict", "Faktur ini sudah di-void atau diubah");
+    if (original.voidedAt) throw new DomainError("conflict", "Faktur ini sudah dibatalkan atau diubah");
     const { totals } = priceLines(input);
     if (original.paid > totals.total) {
       throw new DomainError(
         "invalid",
-        `Faktur ini sudah dibayar ${formatRupiah(original.paid)}, lebih dari total baru ${formatRupiah(totals.total)}. Void pembayaran yang berlebih dulu.`,
+        `Faktur ini sudah dibayar ${formatRupiah(original.paid)}, lebih dari total baru ${formatRupiah(totals.total)}. Batalkan pembayaran yang berlebih dulu.`,
       );
     }
     const costs = await reversePurchase(tx, original, `Diubah: ${input.reason}`, actor.id);

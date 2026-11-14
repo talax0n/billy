@@ -24,7 +24,7 @@ const statusLabels: Record<StatusFilter, string> = {
   partial: "Sebagian",
   overdue: "Telat",
   paid: "Lunas",
-  void: "Void",
+  void: "Dibatalkan",
 };
 
 /** Pembelian. The open invoice lives in the URL (`/pembelian?id=…`) so other pages can link to it. */
@@ -90,9 +90,9 @@ export function PurchasesPage() {
           <StatTile
             label="Nilai pembelian"
             value={<Amount value={rupiah(summary?.purchased ?? 0)} />}
-            note={`${windowLabel} · tanpa faktur void`}
+            note={`${windowLabel} · tanpa faktur yang dibatalkan`}
           />
-          <StatTile label="Sudah dibayar" value={<Amount value={rupiah(summary?.paid ?? 0)} />} note={`${windowLabel} · tanpa faktur void`} />
+          <StatTile label="Sudah dibayar" value={<Amount value={rupiah(summary?.paid ?? 0)} />} note={`${windowLabel} · tanpa faktur yang dibatalkan`} />
           <StatTile label="Sisa hutang" value={<Amount value={rupiah(summary?.outstanding ?? 0)} />} note={`${windowLabel} · sesuai filter`} />
           <StatTile
             label="Telat bayar"

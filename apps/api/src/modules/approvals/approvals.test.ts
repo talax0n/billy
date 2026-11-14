@@ -287,12 +287,12 @@ describe("void by a kasir", () => {
     const body = sale(0);
     await post(kasir, body);
     const voidIt = (extra: object = {}) => call(`/api/pos/sales/${body.id}/void`, { method: "POST", cookie: kasir, body: { reason: "Salah input", ...extra } });
-    expect(await json(await voidIt())).toEqual([403, { error: "Void struk kasir butuh persetujuan admin. Minta persetujuan admin.", approval: { kind: "void" } }]);
+    expect(await json(await voidIt())).toEqual([403, { error: "Pembatalan struk kasir butuh persetujuan admin. Minta persetujuan admin.", approval: { kind: "void" } }]);
     const [stillLive] = await db.select({ voidedAt: posSales.voidedAt }).from(posSales).where(eq(posSales.id, body.id));
     expect(stillLive!.voidedAt).toBeNull();
 
     const request = await requestRemote(kasir, { action: "pos.void", saleId: body.id });
-    expect(request).toMatchObject({ kind: "void", summary: `Void ${body.number} · Rp 156.000` });
+    expect(request).toMatchObject({ kind: "void", summary: `Pembatalan ${body.number} · Rp 156.000` });
     await decide(request.id, "approve");
     expect((await voidIt({ approval: { id: request.id } })).status).toBe(200);
     const events = await auditOf(body.id);

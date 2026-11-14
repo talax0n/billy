@@ -121,12 +121,12 @@ async function reverseExpense(tx: Db, id: string, reason: string, userId: string
 export async function voidExpense(db: Db, id: string, reason: string, actor: Actor) {
   return db.transaction(async (tx) => {
     const row = await lockExpense(tx, id);
-    if (row.voidedAt) throw new DomainError("conflict", "Biaya ini sudah di-void");
+    if (row.voidedAt) throw new DomainError("conflict", "Biaya ini sudah dibatalkan");
     await reverseExpense(tx, id, reason, actor.id);
     await audit(tx, actor, {
       action: "expense.void",
       entityId: id,
-      summary: `Void biaya ${row.number} ${formatRupiah(row.amount)}`,
+      summary: `Pembatalan biaya ${row.number} ${formatRupiah(row.amount)}`,
       before: { voidedAt: null },
       after: { voidedAt: new Date().toISOString() },
       reason,
@@ -142,7 +142,7 @@ export async function voidExpense(db: Db, id: string, reason: string, actor: Act
 export async function editExpense(db: Db, id: string, { reason, ...input }: z.output<typeof expenseEditInput>, actor: Actor) {
   return db.transaction(async (tx) => {
     const original = await lockExpense(tx, id);
-    if (original.voidedAt) throw new DomainError("conflict", "Biaya ini sudah di-void atau diubah");
+    if (original.voidedAt) throw new DomainError("conflict", "Biaya ini sudah dibatalkan atau diubah");
     await reverseExpense(tx, id, `Diubah: ${reason}`, actor.id);
     const number = revisionNumber(original.number);
     const newId = await writeExpense(tx, input, actor.id, number, id);

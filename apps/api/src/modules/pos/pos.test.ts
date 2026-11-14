@@ -266,7 +266,7 @@ describe("history, reprint and void", () => {
       const res = await call(`/api/pos/sales/${own.id}/void`, { method: "POST", cookie, body: { reason: "Salah input" } });
       expect([res.status, await res.json()]).toEqual([
         403,
-        { error: "Void struk kasir butuh persetujuan admin. Minta persetujuan admin.", approval: { kind: "void" } },
+        { error: "Pembatalan struk kasir butuh persetujuan admin. Minta persetujuan admin.", approval: { kind: "void" } },
       ]);
     }
     const foreign = await call(`/api/pos/sales/${other.id}/void`, { method: "POST", cookie: kasir, body: { reason: "Salah input" } });
@@ -291,7 +291,7 @@ describe("history, reprint and void", () => {
     ]);
 
     const again = await call(`/api/pos/sales/${own.id}/void`, { method: "POST", cookie: admin, body: { reason: "Lagi" } });
-    expect([again.status, await again.json()]).toEqual([409, { error: "Struk sudah di-void" }]);
+    expect([again.status, await again.json()]).toEqual([409, { error: "Struk sudah dibatalkan" }]);
   });
 });
 
