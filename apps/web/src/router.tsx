@@ -7,6 +7,7 @@ import { ApiError } from "./lib/api.ts";
 import { meQuery } from "./lib/auth.ts";
 import { navItems } from "./nav.tsx";
 import { ComingSoon } from "./routes/coming-soon.tsx";
+import { KasirDeliveriesPage } from "./routes/deliveries/deliveries-page.tsx";
 import { KasirPage } from "./routes/kasir.tsx";
 import { LoginPage } from "./routes/login.tsx";
 import { printPages } from "./routes/print/print-pages.tsx";
@@ -57,6 +58,8 @@ const authedRoute = createRoute({
 
 /** Full-screen POS, without the back-office shell. Open to every role. */
 const kasirRoute = createRoute({ getParentRoute: () => authedRoute, path: "/kasir", component: KasirPage });
+/** Antrian Antar for the kasir, who never sees the shell; admin and staff use /antrian-antar. */
+const kasirDeliveriesRoute = createRoute({ getParentRoute: () => authedRoute, path: "/kasir/antar", component: KasirDeliveriesPage });
 
 /** The back-office shell. A kasir only ever sees /kasir. */
 const shellRoute = createRoute({
@@ -89,6 +92,6 @@ const pageRoutes = navItems.map((item) =>
   }),
 );
 
-const routeTree = rootRoute.addChildren([loginRoute, authedRoute.addChildren([kasirRoute, printRoute.addChildren(printRoutes), shellRoute.addChildren(pageRoutes)])]);
+const routeTree = rootRoute.addChildren([loginRoute, authedRoute.addChildren([kasirRoute, kasirDeliveriesRoute, printRoute.addChildren(printRoutes), shellRoute.addChildren(pageRoutes)])]);
 
 export const router = createRouter({ routeTree, context: { queryClient }, defaultPreload: "intent" });

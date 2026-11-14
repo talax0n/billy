@@ -2,6 +2,7 @@ import {
   type ApprovalRequestInput,
   breachMessage,
   cartTotals,
+  type DeliveryDetailsInput,
   emptyCartTotals,
   type PosMethod,
   type PosSaleInput,
@@ -13,7 +14,7 @@ import {
 } from "@billy/core";
 import { useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Contrast, LayoutDashboard, LogOut, Settings2 } from "lucide-react";
+import { Contrast, LayoutDashboard, LogOut, Settings2, Truck } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useEffect, useEffectEvent, useReducer, useRef, useState } from "react";
 import { ApprovalDialog } from "../components/approval-dialog.tsx";
 import { EmptyState } from "../components/ui/page.tsx";
@@ -38,6 +39,7 @@ import {
 } from "../pos/dialogs.tsx";
 import {
   type Catalog,
+  type CatalogCustomer,
   catalogQuery,
   change,
   commitNumber,
@@ -140,6 +142,8 @@ function Register({ catalog }: { catalog: Catalog }) {
   /** A revisi in progress: the cart holds the new lines of `original`. */
   const [revising, setRevising] = useState<{ original: { id: string; number: string; total: Rupiah }; reason: string } | null>(null);
   const [revisiOf, setRevisiOf] = useState<SaleDetail | null>(null);
+  /** "Diantar ke alamat" for this sale; null while off. */
+  const [delivery, setDelivery] = useState<Required<DeliveryDetailsInput> | null>(null);
   const drafts = useQuery(openDraftsQuery);
   /** This cashier's open shift on the device; `undefined` while it loads, `null` when none is open. */
   const [shift, setShift] = useState<LocalShift | null | undefined>(undefined);
@@ -149,6 +153,9 @@ function Register({ catalog }: { catalog: Catalog }) {
   const tenderRef = useRef<HTMLInputElement>(null);
 
   const { shop } = catalog;
+  /** Fills the delivery from the customer's contact card; a catalog cached by an older app version has no address. */
+  const withCustomer = (details: Required<DeliveryDetailsInput>, c: CatalogCustomer | null | undefined) =>
+    c ? { ...details, customerName: c.name, address: c.address ?? "", phone: c.phone ?? "" } : details;
   const results = searchProducts(catalog.products, query);
   const computed = cartTotals(cart.lines, cart.discount);
   const totals = computed.ok ? computed.totals : emptyCartTotals;
@@ -156,7 +163,7 @@ function Register({ catalog }: { catalog: Catalog }) {
   const due = rupiah(Math.max(totals.total - (revising?.original.total ?? 0), 0));
   const short = method === "cash" && tendered > 0 && tendered < due;
   const drawer = accountFor("cash", prefs, catalog.accounts);
-  const canPay = cart.lines.length > 0 && computed.ok && !short && account !== undefined && Boolean(shift);
+  const canPay = cart.lines.length > 0 && computed.ok && !short && account !== undefined && Boolean(shift) && (!delivery || delivery.address.trim() !== "");
   const line = cart.lines[cart.selected];
 
   useEffect(() => {
@@ -217,6 +224,7 @@ function Register({ catalog }: { catalog: Catalog }) {
     dispatch({ type: "load", cart: emptyCart });
     setActiveDraft(null);
     setRevising(null);
+    setDelivery(null);
     setTendered(rupiah(0));
     setMethod("cash");
     setQuery("");
@@ -312,6 +320,7 @@ function Register({ catalog }: { catalog: Catalog }) {
       total: totals.total,
       cashierId: me?.id,
       shiftId,
+      ...(delivery && !revising && { delivery }),
     };
     const receipt: ReceiptData = {
       number,
@@ -565,6 +574,8 @@ function Register({ catalog }: { catalog: Catalog }) {
             onChooseAccount={() => setDialog("prefs")}
             onPay={() => void pay()}
             paidBefore={revising?.original.total}
+            delivery={delivery}
+            onDelivery={(next) => setDelivery(next && !delivery ? withCustomer(next, cart.customer) : next)}
           />
         </aside>
       </div>
@@ -596,6 +607,7 @@ function Register({ catalog }: { catalog: Catalog }) {
           onClose={focusSearch}
           onSave={(customer) => {
             dispatch({ type: "customer", customer });
+            if (delivery) setDelivery(withCustomer({ customerName: "", address: "", phone: "", note: delivery.note }, customer));
             focusSearch();
           }}
         />
@@ -742,6 +754,10 @@ function TopBar({
       <Chip onClick={onDrafts} title="Nota sementara">
         Nota sementara{draftCount !== null && <strong className="font-medium text-ink">{draftCount} terbuka</strong>}
       </Chip>
+      <Link to="/kasir/antar" title="Antrian Antar" aria-label="Antrian Antar" className="flex items-center gap-1.5 rounded-full border border-line bg-panel px-2.5 py-1 text-ink-2 hover:text-ink">
+        <Truck className="size-3.5" />
+        Antar
+      </Link>
       {mode}
       <span className="flex-1" />
       <SyncChip outbox={outbox} />

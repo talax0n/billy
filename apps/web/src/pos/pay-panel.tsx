@@ -1,4 +1,4 @@
-import { type CartTotals, type Discount, type PosMethod, posMethods, quickTenderAmounts, rupiah, type Rupiah } from "@billy/core";
+import { type CartTotals, type DeliveryDetailsInput, type Discount, type PosMethod, posMethods, quickTenderAmounts, rupiah, type Rupiah } from "@billy/core";
 import type { Ref } from "react";
 import { cx } from "../lib/cx.ts";
 import { methodLabels } from "./receipt.tsx";
@@ -28,6 +28,8 @@ export function PayPanel({
   onChooseAccount,
   onPay,
   paidBefore,
+  delivery,
+  onDelivery,
 }: {
   totals: CartTotals;
   error: string | null;
@@ -46,6 +48,9 @@ export function PayPanel({
   onPay: () => void;
   /** A revisi: what the replaced nota already collected. Only the difference is paid or refunded. */
   paidBefore?: Rupiah | undefined;
+  /** "Diantar ke alamat": null while off. Not offered on a revisi. */
+  delivery: Required<DeliveryDetailsInput> | null;
+  onDelivery: (delivery: Required<DeliveryDetailsInput> | null) => void;
 }) {
   const cash = method === "cash";
   const due = totals.total - (paidBefore ?? 0);
@@ -167,6 +172,8 @@ export function PayPanel({
         </b>
       </div>
 
+      {paidBefore === undefined && <DeliveryFields delivery={delivery} onDelivery={onDelivery} />}
+
       <button
         type="button"
         disabled={!canPay}
@@ -176,6 +183,45 @@ export function PayPanel({
         {paidBefore === undefined ? "Bayar & cetak struk" : "Simpan revisi & cetak struk"}
         <kbd className="rounded-[5px] border border-panel/35 px-1.5 py-px font-sans text-xs font-normal">Enter</kbd>
       </button>
+    </div>
+  );
+}
+
+const fieldClass = "w-full rounded-lg border border-line bg-panel px-2.5 py-2 placeholder:text-faint focus:border-ink focus:outline-none";
+
+/** The toggle and, when on, where the goods go. The address is required to pay. */
+function DeliveryFields({ delivery, onDelivery }: { delivery: Required<DeliveryDetailsInput> | null; onDelivery: (delivery: Required<DeliveryDetailsInput> | null) => void }) {
+  const set = (key: keyof DeliveryDetailsInput, value: string) => delivery && onDelivery({ ...delivery, [key]: value });
+  return (
+    <div className={cx("rounded-[10px] border", delivery ? "border-ink" : "border-line")}>
+      <label className="flex cursor-pointer items-center gap-2.5 px-3 py-2.5 font-medium">
+        <input
+          type="checkbox"
+          className="size-[18px] accent-ink"
+          checked={delivery !== null}
+          onChange={(e) => onDelivery(e.target.checked ? { customerName: "", address: "", phone: "", note: "" } : null)}
+        />
+        Diantar ke alamat
+        {delivery && <span className="ml-auto text-xs font-normal text-muted">masuk Antrian Antar</span>}
+      </label>
+      {delivery && (
+        <div className="flex flex-col gap-2 border-t border-line px-3 pt-2.5 pb-3">
+          <input aria-label="Nama penerima" placeholder="Nama penerima" className={fieldClass} value={delivery.customerName} onChange={(e) => set("customerName", e.target.value)} />
+          <textarea
+            aria-label="Alamat antar"
+            placeholder="Alamat antar (wajib)"
+            rows={2}
+            className={cx(fieldClass, "resize-none", !delivery.address.trim() && "border-warn")}
+            value={delivery.address}
+            onChange={(e) => set("address", e.target.value)}
+          />
+          <div className="grid grid-cols-2 gap-2">
+            <input aria-label="Telepon penerima" placeholder="Telepon" inputMode="tel" className={fieldClass} value={delivery.phone} onChange={(e) => set("phone", e.target.value)} />
+            <input aria-label="Catatan antar" placeholder="Catatan untuk sopir" className={fieldClass} value={delivery.note} onChange={(e) => set("note", e.target.value)} />
+          </div>
+          {!delivery.address.trim() && <p className="text-xs text-warn">Isi alamat dulu supaya bisa dibayar.</p>}
+        </div>
+      )}
     </div>
   );
 }

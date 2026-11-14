@@ -20,6 +20,7 @@ import {
   ShoppingCart,
   Users,
   TriangleAlert,
+  Truck,
   Wallet,
   WalletCards,
 } from "lucide-react";
@@ -30,6 +31,7 @@ import { BundlesPage } from "./routes/invoice-bundles/bundles-page.tsx";
 import { CashPage } from "./routes/cash/cash-page.tsx";
 import { CashReportPage } from "./routes/cash-report/cash-report-page.tsx";
 import { ContactsPage } from "./routes/contacts/contacts-page.tsx";
+import { DeliveriesPage } from "./routes/deliveries/deliveries-page.tsx";
 import { ExpensesPage } from "./routes/expenses/expenses-page.tsx";
 import { ActionsPage } from "./routes/insights/actions.tsx";
 import { DashboardPage } from "./routes/insights/dashboard.tsx";
@@ -79,6 +81,7 @@ export const navItems: NavItem[] = [
   { group: "hidden", section: "/penjualan", path: "/riwayat-kasir", label: "Nota Kasir", icon: History, page: RiwayatKasirPage },
   { group: "hidden", section: "/penjualan", path: "/penawaran", label: "Penawaran", icon: FileText, page: QuotationsPage },
   { group: "hidden", section: "/penjualan", path: "/tukar-faktur", label: "Tukar Faktur", icon: FileStack, page: BundlesPage },
+  { group: "Transaksi", path: "/antrian-antar", label: "Antrian Antar", icon: Truck, page: DeliveriesPage },
   { group: "Transaksi", path: "/pembelian", label: "Pembelian", icon: ShoppingCart, page: PurchasesPage },
   { group: "Keuangan", path: "/kas-bank", label: "Kas & Biaya", tab: "Kas & Bank", icon: Wallet, page: CashPage },
   { group: "hidden", section: "/kas-bank", path: "/biaya", label: "Biaya", icon: WalletCards, page: ExpensesPage },
