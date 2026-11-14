@@ -66,6 +66,25 @@ export function NoteDialog({ line, onSave, onClose }: { line: CartLine; onSave: 
   );
 }
 
+/** The tinting machine mixes per customer and shows the price; the cashier types it here with the colour code. */
+export function PriceDialog({ line, onSave, onClose }: { line: CartLine; onSave: (unitPrice: Rupiah, note: string) => void; onClose: () => void }) {
+  const [price, setPrice] = useState(line.unitPrice);
+  const [note, setNote] = useState(line.note);
+  const error = price <= 0 ? "Isi harga lebih dari 0" : line.discountAmount > line.qty * price ? `Diskon baris ${money(line.discountAmount)} melebihi harga` : undefined;
+  return (
+    <Dialog open onClose={onClose} title="Ubah harga (harga mesin)" description={`${productLabel(line)}${line.listPrice ? ` · harga katalog ${money(line.listPrice)}` : ""}`}>
+      <DialogForm submitLabel="Simpan harga" onSubmit={() => !error && onSave(price, note)}>
+        <Field label="Harga per item" hint="Masukkan harga dari mesin tinting" error={error}>
+          {(p) => <MoneyInput {...p} autoFocus className="[&_input]:h-14 [&_input]:text-2xl" value={price} onChange={setPrice} onFocus={(e) => e.target.select()} />}
+        </Field>
+        <Field label="Kode warna tinting (boleh kosong)">
+          {(p) => <Input {...p} maxLength={200} placeholder="Kode warna: RAL 7035" value={note} onChange={(e) => setNote(e.target.value)} />}
+        </Field>
+      </DialogForm>
+    </Dialog>
+  );
+}
+
 /** Percent is typed as a number like `12,5` and stored in basis points; amount in whole rupiah. */
 export function TxDiscountDialog({ discount, onSave, onClose }: { discount: Discount; onSave: (d: Discount) => void; onClose: () => void }) {
   const [kind, setKind] = useState<"percent" | "amount">(discount.kind === "amount" ? "amount" : "percent");
