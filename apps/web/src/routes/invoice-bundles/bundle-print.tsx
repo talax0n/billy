@@ -4,7 +4,7 @@ import { useParams } from "@tanstack/react-router";
 import { EmptyState } from "../../components/ui/page.tsx";
 import { api, unwrap } from "../../lib/api.ts";
 import { cx } from "../../lib/cx.ts";
-import { PartyBlock, PrintLayout, printTable as t, Signatures } from "../print/print-layout.tsx";
+import { PrintLayout, partyMeta, printTable as t, Signatures } from "../print/print-layout.tsx";
 
 const money = (value: number) => formatRupiah(rupiah(value));
 
@@ -20,10 +20,11 @@ export function BundlePrintPage() {
   return (
     <PrintLayout
       title={bundle.voidedAt ? "Tukar faktur (VOID)" : "Tanda terima tukar faktur"}
+      numberLabel="NO Tukar Faktur"
       number={bundle.number}
-      meta={[["Tanggal", formatDate(bundle.date)]]}
+      date={formatDate(bundle.date)}
+      meta={partyMeta("Kepada", bundle.customer)}
     >
-      <PartyBlock label="Pelanggan" party={bundle.customer} />
       <table className={t.table}>
         <thead>
           <tr>

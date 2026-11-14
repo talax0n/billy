@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useParams } from "@tanstack/react-router";
 import { EmptyState } from "../../components/ui/page.tsx";
 import { cx } from "../../lib/cx.ts";
-import { PartyBlock, PrintLayout, printTable as t, Signatures } from "../print/print-layout.tsx";
+import { PrintLayout, partyMeta, printTable as t, Signatures } from "../print/print-layout.tsx";
 import { quotationQuery } from "./queries.ts";
 
 const money = (value: number) => formatRupiah(rupiah(value));
@@ -13,21 +13,24 @@ export function QuotationPrintPage() {
   const { data: quotation, error } = useQuery({ ...quotationQuery(id ?? ""), enabled: Boolean(id) });
   if (error) return <EmptyState title={error.message} />;
   if (!quotation) return null;
+  const hasKet = quotation.lines.some((line) => line.note);
   return (
     <PrintLayout
       title="PENAWARAN HARGA"
+      numberLabel="NO Penawaran"
       number={quotation.number}
+      date={formatDate(quotation.date)}
       meta={[
-        ["Tanggal", formatDate(quotation.date)],
         ["Berlaku sampai", formatDate(quotation.validUntil)],
+        ...partyMeta("Kepada", quotation.customer),
       ]}
     >
-      <PartyBlock label="Kepada" party={quotation.customer} />
       <table className={t.table}>
         <thead>
           <tr>
             <th className={cx(t.th, "w-6")}>No</th>
             <th className={t.th}>Barang</th>
+            {hasKet && <th className={t.th}>Ket</th>}
             <th className={cx(t.th, "text-right")}>Jumlah</th>
             <th className={cx(t.th, "text-right")}>Harga</th>
             <th className={cx(t.th, "text-right")}>Diskon</th>
@@ -40,8 +43,8 @@ export function QuotationPrintPage() {
               <td className={cx(t.td, "tabular-nums")}>{i + 1}</td>
               <td className={t.td}>
                 {line.productName} {line.variant}
-                {line.note && <div className="text-xs text-ink-2">{line.note}</div>}
               </td>
+              {hasKet && <td className={t.td}>{line.note}</td>}
               <td className={cx(t.td, "text-right whitespace-nowrap tabular-nums")}>
                 {line.qty} {line.unit}
               </td>

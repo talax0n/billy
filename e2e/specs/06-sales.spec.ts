@@ -1,6 +1,8 @@
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import { ADMIN, docNumber, login, rp } from "../helpers.ts";
 
+const num = (value: number) => value.toLocaleString("id-ID");
+
 /** Picks a product in the next empty line of the invoice form and types its quantity. */
 async function addLine(form: Locator, line: number, search: string, product: string, qty: string) {
   const picker = form.getByPlaceholder("Ketik nama barang…").last();
@@ -61,12 +63,21 @@ test("sells on an invoice, takes a partial and a final payment, prints it", asyn
   await expect(sheet.getByText(`Terbayar${rp(466_000)}`)).toBeVisible();
   await expect(sheet.getByText(`Sisa${rp(0)}`)).toBeVisible();
 
+  await page.context().addInitScript(() => {
+    window.print = () => {
+      document.documentElement.dataset.printed = String(Number(document.documentElement.dataset.printed ?? 0) + 1);
+    };
+  });
   const [print] = await Promise.all([page.waitForEvent("popup"), sheet.getByRole("button", { name: "Cetak faktur" }).click()]);
-  await expect(print.getByText("Faktur penjualan")).toBeVisible();
+  await expect(print.locator("html"), "the faktur prints on open, once").toHaveAttribute("data-printed", "1");
+  await expect(print.getByRole("heading", { name: "Faktur" })).toBeVisible();
   await expect(print.getByText(number)).toBeVisible();
   await expect(print.getByText("CV Uji Pelanggan")).toBeVisible();
-  await expect(print.getByRole("row", { name: /Thinner Super 1 L 3 botol/ })).toContainText(rp(96_000));
-  await expect(print.getByText(rp(466_000)).first()).toBeVisible();
+  await expect(print.getByRole("row", { name: /Thinner Super 1 L\s+3 botol/ })).toContainText(num(96_000));
+  await expect(print.getByText(`Rp. ${num(466_000)}`)).toBeVisible();
+
+  const pdf = (await print.pdf({ format: "A4", path: process.env.E2E_PDF_OUT })).toString("latin1");
+  expect(pdf.match(/\/Type\s*\/Page\b/g)?.length, "a short faktur takes one page").toBe(1);
   await print.close();
 });
 

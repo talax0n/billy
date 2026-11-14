@@ -1,13 +1,11 @@
-import { formatDate, formatRupiah, rupiah } from "@billy/core";
+import { formatDate } from "@billy/core";
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "@tanstack/react-router";
 import { EmptyState } from "../../components/ui/page.tsx";
 import { settingsQuery } from "../../lib/settings.ts";
 import { cx } from "../../lib/cx.ts";
-import { PartyBlock, PrintLayout, printTable as t, Signatures } from "../print/print-layout.tsx";
+import { amount, PrintLayout, partyMeta, printTable as t, RETURN_POLICY, Signatures } from "../print/print-layout.tsx";
 import { invoiceQuery } from "./queries.ts";
-
-const money = (value: number) => formatRupiah(rupiah(value));
 
 function usePrintedInvoice() {
   const { id } = useParams({ strict: false });
@@ -21,74 +19,55 @@ export function InvoicePrintPage() {
   if (!invoice) return null;
   return (
     <PrintLayout
-      title={invoice.state.status === "void" ? "Faktur (VOID)" : "Faktur penjualan"}
+      title={invoice.state.status === "void" ? "Faktur (VOID)" : "Faktur"}
+      numberLabel="NO Faktur"
       number={invoice.number}
-      meta={[
-        ["Tanggal", formatDate(invoice.date)],
-        ["Jatuh tempo", formatDate(invoice.dueDate)],
-      ]}
+      date={formatDate(invoice.date)}
+      meta={partyMeta("Kepada", invoice.customer)}
     >
-      <PartyBlock label="Kepada" party={invoice.customer} />
       <table className={t.table}>
         <thead>
           <tr>
-            <th className={cx(t.th, "w-6")}>No</th>
-            <th className={t.th}>Barang</th>
-            <th className={cx(t.th, "text-right")}>Jumlah</th>
-            <th className={cx(t.th, "text-right")}>Harga</th>
-            <th className={cx(t.th, "text-right")}>Diskon</th>
-            <th className={cx(t.th, "text-right")}>Total</th>
+            <th className={t.th}>Nama Barang</th>
+            <th className={t.th}>Ket</th>
+            <th className={t.th}>Qty</th>
+            <th className={t.th}>Harga Satuan</th>
+            <th className={t.th}>Diskon</th>
+            <th className={t.th}>Subtotal</th>
           </tr>
         </thead>
         <tbody>
-          {invoice.lines.map((line, i) => (
+          {invoice.lines.map((line) => (
             <tr key={line.id} className="break-inside-avoid">
-              <td className={cx(t.td, "tabular-nums")}>{i + 1}</td>
               <td className={t.td}>
                 {line.productName} {line.variant}
-                {line.note && <div className="text-xs text-ink-2">{line.note}</div>}
               </td>
-              <td className={cx(t.td, "text-right whitespace-nowrap tabular-nums")}>
+              <td className={t.td}>{line.note}</td>
+              <td className={t.td}>
                 {line.qty} {line.unit}
               </td>
-              <td className={cx(t.td, "text-right tabular-nums")}>{money(line.unitPrice)}</td>
-              <td className={cx(t.td, "text-right tabular-nums")}>{line.discountAmount ? money(line.discountAmount) : "—"}</td>
-              <td className={cx(t.td, "text-right tabular-nums")}>{money(line.lineTotal)}</td>
+              <td className={cx(t.td, "text-right")}>{amount(line.unitPrice)}</td>
+              <td className={cx(t.td, "text-right")}>{amount(line.discountAmount)}</td>
+              <td className={cx(t.td, "text-right")}>{amount(line.lineTotal)}</td>
             </tr>
           ))}
         </tbody>
+        <tfoot className="break-inside-avoid">
+          <tr>
+            <td colSpan={4} rowSpan={2} className={cx(t.td, "align-bottom text-[13pt] whitespace-pre-line")}>
+              {shop?.invoiceBankText}
+            </td>
+            <td className="border-l border-black px-1 text-right text-[10pt]">Diskon</td>
+            <td className="border-r border-black px-1 text-right">Rp. {amount(invoice.discountAmount)}</td>
+          </tr>
+          <tr>
+            <td className="border-b border-l border-black px-1 text-right text-[10pt]">Total</td>
+            <td className="border-r border-b border-black px-1 text-right">Rp. {amount(invoice.total)}</td>
+          </tr>
+        </tfoot>
       </table>
-      <div className="flex items-start justify-between gap-8 break-inside-avoid">
-        <div className="max-w-[55%] text-ink-2">
-          {invoice.note && <p>Catatan: {invoice.note}</p>}
-          {shop?.invoiceBankText && (
-            <p className="mt-1 whitespace-pre-line">
-              Pembayaran ke: <span className="text-ink">{shop.invoiceBankText}</span>
-            </p>
-          )}
-        </div>
-        <dl className="grid min-w-56 grid-cols-[1fr_auto] gap-x-4 gap-y-0.5 tabular-nums">
-          <dt>Subtotal</dt>
-          <dd className="text-right">{money(invoice.subtotal)}</dd>
-          {invoice.discountAmount > 0 && (
-            <>
-              <dt>Diskon</dt>
-              <dd className="text-right">− {money(invoice.discountAmount)}</dd>
-            </>
-          )}
-          <dt className="border-t border-ink pt-1 font-semibold">Total</dt>
-          <dd className="border-t border-ink pt-1 text-right font-semibold">{money(invoice.total)}</dd>
-          {invoice.paid > 0 && (
-            <>
-              <dt>Dibayar</dt>
-              <dd className="text-right">{money(invoice.paid)}</dd>
-              <dt>Sisa</dt>
-              <dd className="text-right">{money(invoice.state.outstanding)}</dd>
-            </>
-          )}
-        </dl>
-      </div>
-      <Signatures roles={[["Penerima"], ["Hormat kami", shop?.invoiceSigner || undefined]]} />
+      <Signatures roles={[["Penerima"], ["Hormat Kami", shop?.invoiceSigner]]} />
+      <p className="font-bold">{RETURN_POLICY}</p>
     </PrintLayout>
   );
 }
@@ -96,43 +75,41 @@ export function InvoicePrintPage() {
 /** Delivery note: what left the shop, no prices. Number `SO-…` becomes `SJ-…`. */
 export function DeliveryNotePrintPage() {
   const { data: invoice, error } = usePrintedInvoice();
+  const { data: shop } = useQuery(settingsQuery);
   if (error) return <EmptyState title={error.message} />;
   if (!invoice) return null;
   return (
     <PrintLayout
-      title="Surat jalan"
+      title="Surat Jalan"
+      numberLabel="NO Surat Jalan"
       number={invoice.number.replace(/^SO-/, "SJ-")}
-      meta={[
-        ["Tanggal", formatDate(invoice.date)],
-        ["Faktur", invoice.number],
-      ]}
+      date={formatDate(invoice.date)}
+      meta={partyMeta("Kepada", invoice.customer)}
     >
-      <PartyBlock label="Dikirim ke" party={invoice.customer} />
       <table className={t.table}>
         <thead>
           <tr>
-            <th className={cx(t.th, "w-6")}>No</th>
-            <th className={t.th}>Barang</th>
-            <th className={cx(t.th, "text-right")}>Jumlah</th>
-            <th className={t.th}>Satuan</th>
+            <th className={cx(t.th, "py-0")}>Nama Barang</th>
+            <th className={cx(t.th, "py-0")}>Ket</th>
+            <th className={cx(t.th, "py-0")}>Qty</th>
           </tr>
         </thead>
         <tbody>
-          {invoice.lines.map((line, i) => (
+          {invoice.lines.map((line) => (
             <tr key={line.id} className="break-inside-avoid">
-              <td className={cx(t.td, "tabular-nums")}>{i + 1}</td>
               <td className={t.td}>
                 {line.productName} {line.variant}
-                {line.note && <div className="text-xs text-ink-2">{line.note}</div>}
               </td>
-              <td className={cx(t.td, "text-right tabular-nums")}>{line.qty}</td>
-              <td className={t.td}>{line.unit}</td>
+              <td className={t.td}>{line.note}</td>
+              <td className={t.td}>
+                {line.qty} {line.unit}
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
-      <p className="text-ink-2">Barang diterima dalam keadaan baik dan cukup.</p>
-      <Signatures roles={[["Penerima"], ["Pengirim"]]} />
+      <Signatures roles={[["Penerima"], ["Hormat Kami", shop?.invoiceSigner]]} />
+      <p className="font-bold">{RETURN_POLICY}</p>
     </PrintLayout>
   );
 }
