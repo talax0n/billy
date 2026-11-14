@@ -1,9 +1,11 @@
 import {
   addDays,
+  applyBasisPoints,
   type ApprovalInput,
   type ApprovalRequestInput,
   businessDate,
   computeTotals,
+  daysBetween,
   type DiscountKind,
   DomainError,
   fieldErrors,
@@ -49,11 +51,13 @@ interface Line {
   qty: number;
   unitPrice: number;
   discountAmount: number;
+  /** Set while the line discount is typed as a percent ("2,5"); null when typed in rupiah. */
+  discountPercent: string | null;
   note: string;
 }
 
 let nextKey = 1;
-const blankLine = (): Line => ({ key: nextKey++, product: null, qty: 1, unitPrice: 0, discountAmount: 0, note: "" });
+const blankLine = (): Line => ({ key: nextKey++, product: null, qty: 1, unitPrice: 0, discountAmount: 0, discountPercent: null, note: "" });
 
 /** Focus after React has rendered the element (a new line, or the qty cell after picking a product). */
 const focusLater = (id: string) =>
@@ -75,16 +79,21 @@ const linesOf = (invoice: InvoiceDetail): Line[] =>
     qty: l.qty,
     unitPrice: l.unitPrice,
     discountAmount: l.discountAmount,
+    discountPercent: null,
     note: l.note,
   }));
 
 /** "2,5" → 250 basis points. */
 const parsePercent = (text: string) => Math.round(Number(text.replace(",", ".")) * 100) || 0;
 
+/** The line discount in rupiah, which is all the server stores; a percent follows qty and price. */
+const lineDiscount = (l: Line) =>
+  l.discountPercent === null ? l.discountAmount : applyBasisPoints(rupiah(l.qty * l.unitPrice), parsePercent(l.discountPercent));
+
 function tryTotals(lines: Line[], kind: DiscountKind, value: number): { totals: Totals | null; error: string | null } {
   if (lines.length === 0) return { totals: null, error: null };
   try {
-    return { totals: computeTotals(lines.map((l) => ({ ...l, unitPrice: rupiah(l.unitPrice), discountAmount: rupiah(l.discountAmount) })), { kind, value }), error: null };
+    return { totals: computeTotals(lines.map((l) => ({ qty: l.qty, unitPrice: rupiah(l.unitPrice), discountAmount: rupiah(lineDiscount(l)) })), { kind, value }), error: null };
   } catch (err) {
     if (err instanceof DomainError) return { totals: null, error: err.message };
     throw err;
@@ -112,6 +121,8 @@ export function InvoiceForm({
   );
   const [date, setDate] = useState(edit?.date ?? businessDate());
   const [termsDays, setTermsDays] = useState(edit?.termsDays ?? 0);
+  /** Ubah sets the due date itself, like the old app; the terms follow from it. */
+  const [dueDate, setDueDate] = useState(edit?.dueDate ?? "");
   const [validUntil, setValidUntil] = useState(() => addDays(businessDate(), QUOTATION_VALID_DAYS));
   const [lines, setLines] = useState<Line[]>(() => (edit ? linesOf(edit) : [blankLine()]));
   const [showLineDiscount, setShowLineDiscount] = useState(() => edit?.lines.some((l) => l.discountAmount > 0) ?? false);
@@ -155,16 +166,18 @@ export function InvoiceForm({
         productId: l.product!.id,
         qty: l.qty,
         unitPrice: l.unitPrice,
-        discountAmount: l.discountAmount,
+        discountAmount: lineDiscount(l),
         note: l.note,
       })),
     };
     const invoice = salesInvoiceInput.safeParse({ ...base, termsDays, payment });
     const quotation = quotationInput.safeParse({ ...base, validUntil });
-    const change = salesInvoiceEditInput.safeParse({ ...base, termsDays, reason });
+    const change = salesInvoiceEditInput.safeParse({ ...base, termsDays: date && dueDate ? daysBetween(date, dueDate) : 0, reason });
     const parsed = quote ? quotation : edit ? change : invoice;
     if (!parsed.success) {
-      setErrors(fieldErrors(parsed.error));
+      const errs = fieldErrors(parsed.error);
+      if (edit && errs.termsDays) errs.termsDays = dueDate < date ? "Jatuh tempo tidak boleh sebelum tanggal faktur" : "Jatuh tempo maksimal 365 hari";
+      setErrors(errs);
       return;
     }
     setErrors({});
@@ -235,7 +248,10 @@ export function InvoiceForm({
               placeholder="Cari pelanggan…"
               onChange={(c) => {
                 setCustomer(c);
-                if (c) setTermsDays(c.paymentTermsDays);
+                if (c) {
+                  setTermsDays(c.paymentTermsDays);
+                  if (date) setDueDate(addDays(date, c.paymentTermsDays));
+                }
               }}
             />
           )}
@@ -255,6 +271,10 @@ export function InvoiceForm({
         {quote ? (
           <Field label="Berlaku sampai" error={errors.validUntil}>
             {(p) => <DateInput {...p} value={validUntil} onChange={(e) => setValidUntil(e.target.value)} />}
+          </Field>
+        ) : edit ? (
+          <Field label="Jatuh tempo" error={errors.termsDays}>
+            {(p) => <DateInput {...p} value={dueDate} min={date} onChange={(e) => setDueDate(e.target.value)} />}
           </Field>
         ) : (
           <>
@@ -287,7 +307,7 @@ export function InvoiceForm({
                 <th className="px-2 py-2 font-normal">Barang</th>
                 <th className="w-20 px-2 py-2 text-right font-normal">Jumlah</th>
                 <th className="w-36 px-2 py-2 text-right font-normal">Harga</th>
-                {showLineDiscount && <th className="w-32 px-2 py-2 text-right font-normal">Diskon</th>}
+                {showLineDiscount && <th className="w-48 px-2 py-2 text-right font-normal">Diskon</th>}
                 <th className="w-32 px-3 py-2 text-right font-normal">Total</th>
                 <th className="w-10" />
               </tr>
@@ -361,6 +381,7 @@ export function InvoiceForm({
         </div>
         <TotalsPanel
           totals={totals}
+          paid={edit?.paid}
           error={totalsError}
           discountKind={discountKind}
           discountInput={
@@ -521,13 +542,39 @@ function LineRow({
       </td>
       {showDiscount && (
         <td data-label="Diskon" className={cx("px-2 py-1.5", lineTable.field)}>
-          <MoneyInput
-            aria-label={`Diskon baris ${index + 1}`}
-            className="[&_input]:h-8"
-            value={line.discountAmount}
-            onChange={(discountAmount) => onChange({ discountAmount })}
-            onKeyDown={enterTo(onNext)}
-          />
+          <div className="flex gap-1">
+            <Select
+              className="h-8 w-14 shrink-0 px-1.5"
+              aria-label={`Jenis diskon baris ${index + 1}`}
+              value={line.discountPercent === null ? "amount" : "percent"}
+              onChange={(e) => onChange(e.target.value === "percent" ? { discountPercent: "" } : { discountPercent: null, discountAmount: 0 })}
+            >
+              <option value="amount">Rp</option>
+              <option value="percent">%</option>
+            </Select>
+            {line.discountPercent === null ? (
+              <MoneyInput
+                aria-label={`Diskon baris ${index + 1}`}
+                className="flex-1 [&_input]:h-8"
+                value={line.discountAmount}
+                onChange={(discountAmount) => onChange({ discountAmount })}
+                onKeyDown={enterTo(onNext)}
+              />
+            ) : (
+              <div className="relative flex-1">
+                <input
+                  aria-label={`Diskon persen baris ${index + 1}`}
+                  inputMode="decimal"
+                  className={cx(cellInput, "pr-6")}
+                  placeholder="0"
+                  value={line.discountPercent}
+                  onChange={(e) => onChange({ discountPercent: e.target.value.replace(/[^\d,]/g, "") })}
+                  onKeyDown={enterTo(onNext)}
+                />
+                <span className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 text-faint">%</span>
+              </div>
+            )}
+          </div>
         </td>
       )}
       <td data-label="Total" className={cx("px-3 py-2.5 text-right tabular-nums", lineTable.field)}>{lineTotal === null ? <span className="text-faint">—</span> : formatRupiah(rupiah(lineTotal))}</td>
@@ -544,11 +591,14 @@ function LineRow({
 
 function TotalsPanel({
   totals,
+  paid,
   error,
   discountKind,
   discountInput,
 }: {
   totals: Totals | null;
+  /** Ubah: payments already on the faktur, which move to the corrected one. */
+  paid: number | undefined;
   error: string | null;
   discountKind: DiscountKind;
   discountInput: ReactNode;
@@ -565,6 +615,16 @@ function TotalsPanel({
       <div className="border-t border-line pt-3">
         <Row label="Total" value={money(totals?.total)} strong />
       </div>
+      {paid !== undefined && (
+        <>
+          <Row label="Terbayar" value={money(paid)} />
+          {totals && totals.total < paid ? (
+            <Row label="Lebih bayar" value={money(paid - totals.total)} />
+          ) : (
+            <Row label="Sisa tagihan" value={totals ? money(totals.total - paid) : "—"} />
+          )}
+        </>
+      )}
       {error && <p className="text-xs text-down">{error}</p>}
     </aside>
   );

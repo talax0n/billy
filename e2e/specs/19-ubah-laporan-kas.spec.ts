@@ -30,19 +30,30 @@ test("Ubah a paid faktur, follow both links, then find its payment in Laporan Ka
   await pay.getByRole("button", { name: "Simpan pembayaran" }).click();
   await expect(original.getByText("Sebagian")).toBeVisible();
 
-  // Ubah: three thinners instead of two; the 50.000 already paid moves to the new faktur.
+  // Ubah: three thinners instead of two at 10% off; the 50.000 already paid moves to the new faktur.
   await original.getByRole("button", { name: "Ubah" }).click();
   const edit = page.getByRole("dialog", { name: `Ubah ${number}` });
   await expect(edit.getByLabel("Jumlah baris 1")).toHaveValue("2");
   await edit.getByLabel("Jumlah baris 1").fill("3");
+  const due = new Date(`${today()}T00:00:00Z`);
+  due.setUTCDate(due.getUTCDate() + 20);
+  await edit.getByLabel("Jatuh tempo").fill(due.toISOString().slice(0, 10));
+  const totals = edit.getByRole("complementary", { name: "Total" });
+  await expect(totals).toContainText(`Terbayar${rp(50_000)}`);
+  await expect(totals).toContainText(`Sisa tagihan${rp(46_000)}`);
+  await edit.getByRole("button", { name: "+ diskon baris" }).click();
+  await edit.getByLabel("Jenis diskon baris 1").selectOption("%");
+  await edit.getByLabel("Diskon persen baris 1").fill("10");
+  await expect(totals).toContainText(`Sisa tagihan${rp(36_400)}`);
   await edit.getByRole("button", { name: "Simpan perubahan" }).click();
   await expect(edit.getByText("Alasan perubahan wajib diisi")).toBeVisible();
   await edit.getByLabel("Alasan perubahan").fill("Pelanggan tambah satu");
   await edit.getByRole("button", { name: "Simpan perubahan" }).click();
 
   const revised = page.getByRole("dialog", { name: `${number}/R1` });
-  await expect(revised.getByRole("row", { name: `Total ${rp(96_000)}`, exact: true })).toBeVisible();
+  await expect(revised.getByRole("row", { name: `Total ${rp(86_400)}`, exact: true })).toBeVisible();
   await expect(revised.getByText(`Terbayar${rp(50_000)}`)).toBeVisible();
+  await expect(revised.getByText("tempo 20 hari")).toBeVisible();
   await revised.getByRole("link", { name: `Perubahan dari ${number}` }).click();
 
   const replaced = page.getByRole("dialog", { name: number, exact: true });

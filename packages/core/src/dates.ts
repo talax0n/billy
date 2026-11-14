@@ -21,6 +21,10 @@ export function addDays(date: BusinessDate, days: number): BusinessDate {
   return d.toISOString().slice(0, 10);
 }
 
+/** Whole days from `from` to `to`; negative when `to` is earlier. */
+export const daysBetween = (from: BusinessDate, to: BusinessDate): number =>
+  Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
+
 /** The instant a business date starts. Asia/Jakarta keeps UTC+7 all year, without daylight saving. */
 export const dayStart = (date: BusinessDate): Date => new Date(`${date}T00:00:00+07:00`);
 
