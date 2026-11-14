@@ -78,7 +78,7 @@ test("leaves a second invoice open for tukar faktur", async ({ page }) => {
   await expect(page.getByRole("dialog", { name: docNumber("SO", 2) }).getByText("Belum bayar")).toBeVisible();
   await page.getByRole("dialog", { name: docNumber("SO", 2) }).getByRole("button", { name: "Tutup" }).click();
 
-  await page.getByLabel("Status").selectOption({ label: "Lunas" });
+  await page.getByRole("group", { name: "Status faktur" }).getByRole("button", { name: /^Lunas/ }).click();
   await expect(page.getByRole("row", { name: new RegExp(docNumber("SO", 1)) })).toBeVisible();
   await expect(page.getByRole("row", { name: new RegExp(docNumber("SO", 2)) })).toBeHidden();
 });
