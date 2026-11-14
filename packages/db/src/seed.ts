@@ -49,7 +49,7 @@ export async function seed(db: Db, options: { adminPasswordHash: string }): Prom
       .returning({ id: users.id });
 
     await tx.insert(settings).values({
-      shopName: "Toko Cat Contoh Jaya",
+      shopName: "Toko Cat Sumber Karya",
       address: "Jl. Contoh No. 1, Kota Contoh",
       phone: "0000-000000",
       invoiceSigner: "Pemilik",

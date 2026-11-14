@@ -86,7 +86,7 @@ export async function seedInsightDemo(
         sourceId,
         category,
         createdBy: userId,
-        note: "Data contoh Billy",
+        note: "Data contoh",
       });
     };
     const movement = async (
