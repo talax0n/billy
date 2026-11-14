@@ -29,3 +29,16 @@ it("flags lines under cost only when the cost is known and below-cost sales are 
     "Diskon 12,5% melebihi batas kasir 5% per nota. Harga jual di bawah modal tidak diizinkan.",
   );
 });
+
+it("counts a unit price under the catalog price as discount, and a higher price as none", () => {
+  const priced = (qty: number, unitPrice: number, listPrice: number, discountAmount = 0) => ({ ...line(qty, unitPrice, discountAmount), listPrice: rupiah(listPrice) });
+  const none = { kind: "none", value: 0 } as const;
+  // 2 × (100.000 − 94.000) = 12.000 off a 200.000 gross = 6%
+  expect(saleLimitBreaches([priced(2, 94_000, 100_000)], none, limits)).toEqual([{ kind: "discount", bp: 600, maxBp: 500 }]);
+  expect(saleLimitBreaches([priced(2, 95_000, 100_000)], none, limits)).toEqual([]);
+  // 3.000 price cut + 3.000 line discount on 100.000 = 6%
+  expect(saleLimitBreaches([priced(1, 97_000, 100_000, 3_000)], none, limits)).toEqual([{ kind: "discount", bp: 600, maxBp: 500 }]);
+  // tinted mix at 250.000 on a 185.000 base: gross is 250.000, a 12.500 line discount is exactly 5%
+  expect(saleLimitBreaches([priced(1, 250_000, 185_000, 12_500)], none, limits)).toEqual([]);
+  expect(combinedDiscountBp([priced(1, 250_000, 185_000, 12_501)], none)).toBe(501);
+});
