@@ -9,14 +9,16 @@ export const SESSION_TTL_SECONDS = 7 * 24 * 60 * 60;
 /** Only the hash is stored, so a leaked sessions table cannot be replayed as cookies. */
 const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
 
-export async function createSession(db: Db, userId: string): Promise<string> {
+export async function createSession(db: Db, userId: string) {
   const token = randomBytes(32).toString("base64url");
+  const createdAt = new Date();
   await db.insert(sessions).values({
     tokenHash: hashToken(token),
     userId,
-    expiresAt: new Date(Date.now() + SESSION_TTL_SECONDS * 1000),
+    expiresAt: new Date(createdAt.getTime() + SESSION_TTL_SECONDS * 1000),
+    createdAt,
   });
-  return token;
+  return { token, sessionStartedAt: createdAt.toISOString() };
 }
 
 /** The active user behind a live session token, or null. */

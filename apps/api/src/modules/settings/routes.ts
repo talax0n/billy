@@ -38,7 +38,8 @@ export const settingsRoutes = new Hono<AppEnv>()
       }
       const [row] = await tx
         .update(settings)
-        .set({ announcement, announcementUpdatedAt: new Date() })
+        // Clearing is not news: the time stays, so nobody is shown the notice again for it.
+        .set({ announcement, ...(announcement && { announcementUpdatedAt: new Date() }) })
         .returning({ announcement: settings.announcement, announcementUpdatedAt: settings.announcementUpdatedAt });
       await audit(tx, c.var.actor, {
         action: "settings.announcement.update",

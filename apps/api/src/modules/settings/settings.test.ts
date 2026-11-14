@@ -32,5 +32,5 @@ it("lets only admin update the shop settings, and every role read them", async (
   expect(first.announcement).toBe("Stok opname Sabtu");
   expect(await (await announce(admin.cookie, "Stok opname Sabtu")).json()).toEqual(first);
   expect(await (await call("/api/settings", { cookie: kasir.cookie })).json()).toMatchObject(first);
-  expect(await (await announce(admin.cookie, "")).json()).toMatchObject({ announcement: "" });
+  expect(await (await announce(admin.cookie, "")).json()).toEqual({ announcement: "", announcementUpdatedAt: first.announcementUpdatedAt });
 });

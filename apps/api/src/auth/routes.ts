@@ -30,10 +30,10 @@ export const authRoutes = new Hono<AppEnv>()
       });
       throw new HTTPException(401, { message: "Nama pengguna atau kata sandi salah" });
     }
-    const token = await c.var.db.transaction(async (tx) => {
-      const token = await createSession(tx, user.id);
+    const { token, sessionStartedAt } = await c.var.db.transaction(async (tx) => {
+      const session = await createSession(tx, user.id);
       await audit(tx, { id: user.id, role: user.role, source: sourceOf(user.role) }, { action: "auth.login", entityId: user.id, summary: `${user.name} masuk` });
-      return token;
+      return session;
     });
     setCookie(c, SESSION_COOKIE, token, {
       httpOnly: true,
@@ -42,7 +42,7 @@ export const authRoutes = new Hono<AppEnv>()
       path: "/",
       maxAge: SESSION_TTL_SECONDS,
     });
-    return c.json({ id: user.id, username: user.username, name: user.name, role: user.role });
+    return c.json({ id: user.id, username: user.username, name: user.name, role: user.role, sessionStartedAt });
   })
   .post("/logout", async (c) => {
     const token = getCookie(c, SESSION_COOKIE);
