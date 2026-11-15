@@ -1,12 +1,14 @@
 import { agingBuckets, agingLabels, formatDate, formatRupiah, rupiah } from "@billy/core";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import { Button } from "../../components/ui/button.tsx";
 import { ExportButton } from "../../components/export-button.tsx";
 import { StatusTag } from "../../components/ui/badge.tsx";
 import { Sheet } from "../../components/ui/dialog.tsx";
 import { EmptyState, Loading, PageBody, PageHeader, StatTile } from "../../components/ui/page.tsx";
 import { api, unwrap } from "../../lib/api.ts";
 import { cx } from "../../lib/cx.ts";
+import { BulkPaymentDialog } from "./bulk-payment-dialog.tsx";
 import { InvoiceSheet } from "../sales/invoice-sheet.tsx";
 
 const money = (value: number) => (value ? formatRupiah(rupiah(value)) : "—");
@@ -108,21 +110,48 @@ export function ReceivablesPage() {
 
 function CustomerInvoicesSheet({ customer, onClose }: { customer: { id: string; name: string }; onClose: () => void }) {
   const [invoiceId, setInvoiceId] = useState<string | null>(null);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [paying, setPaying] = useState(false);
   const invoices = useQuery({
     queryKey: ["sales", "list", "open", customer.id],
     queryFn: () => unwrap(api.sales.$get({ query: { customerId: customer.id, status: "open", pageSize: "100" } })),
   });
+  const rows = invoices.data?.rows ?? [];
+  const chosen = rows.filter((inv) => picked.has(inv.id));
+  const chosenTotal = chosen.reduce((sum, inv) => sum + inv.state.outstanding, 0);
+  const toggle = (id: string) =>
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
+
   if (invoiceId) return <InvoiceSheet invoiceId={invoiceId} onOpenInvoice={setInvoiceId} onClose={() => setInvoiceId(null)} />;
+  if (paying) {
+    return (
+      <BulkPaymentDialog
+        customerName={customer.name}
+        invoices={chosen.map((inv) => ({ id: inv.id, number: inv.number, date: inv.date, dueDate: inv.dueDate, outstanding: rupiah(inv.state.outstanding) }))}
+        onClose={() => {
+          setPaying(false);
+          setPicked(new Set());
+        }}
+      />
+    );
+  }
   return (
-    <Sheet open onClose={onClose} title={customer.name} description="Faktur belum lunas">
+    <Sheet open onClose={onClose} title={customer.name} description="Faktur belum lunas · centang untuk bayar sekaligus">
       <ul className="flex flex-col">
-        {invoices.data?.rows.map((inv) => (
-          <li key={inv.id}>
-            <button
-              type="button"
-              onClick={() => setInvoiceId(inv.id)}
-              className="flex w-full items-center gap-3 border-b border-line-2 py-2.5 text-left hover:bg-line-2"
-            >
+        {rows.map((inv) => (
+          <li key={inv.id} className="flex items-center gap-3 border-b border-line-2">
+            <input
+              type="checkbox"
+              aria-label={`Pilih ${inv.number}`}
+              className="size-4 shrink-0 accent-ink"
+              checked={picked.has(inv.id)}
+              onChange={() => toggle(inv.id)}
+            />
+            <button type="button" onClick={() => setInvoiceId(inv.id)} className="flex flex-1 items-center gap-3 py-2.5 text-left hover:bg-line-2">
               <div className="flex-1">
                 <div className="font-medium">{inv.number}</div>
                 <div className={cx("text-xs", inv.state.overdue ? "text-down" : "text-muted")}>
@@ -135,6 +164,16 @@ function CustomerInvoicesSheet({ customer, onClose }: { customer: { id: string; 
           </li>
         ))}
       </ul>
+      {rows.length > 0 && (
+        <div className="sticky bottom-0 mt-4 flex items-center gap-3 border-t border-line bg-panel pt-3">
+          <button type="button" className="text-sm text-muted underline" onClick={() => setPicked(picked.size === rows.length ? new Set() : new Set(rows.map((r) => r.id)))}>
+            {picked.size === rows.length ? "Batal pilih" : "Pilih semua"}
+          </button>
+          <Button variant="primary" className="ml-auto" disabled={chosen.length === 0} onClick={() => setPaying(true)}>
+            {chosen.length === 0 ? "Bayar" : `Bayar ${chosen.length} faktur · ${formatRupiah(rupiah(chosenTotal))}`}
+          </Button>
+        </div>
+      )}
     </Sheet>
   );
 }

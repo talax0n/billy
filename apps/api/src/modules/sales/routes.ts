@@ -1,4 +1,4 @@
-import { businessDate, idParam, salesInvoiceEditInput, salesInvoiceInput, salesListQuery, salesPaymentInput, voidInput } from "@billy/core";
+import { bulkSalesPaymentInput, businessDate, idParam, salesInvoiceEditInput, salesInvoiceInput, salesListQuery, salesPaymentInput, voidInput } from "@billy/core";
 import { Hono } from "hono";
 import { z } from "zod";
 import { backOffice } from "../../auth/require-role.ts";
@@ -13,6 +13,7 @@ import {
   getInvoice,
   listInvoices,
   listReceivables,
+  recordBulkPayment,
   recordPayment,
   voidInvoice,
   voidPayment,
@@ -29,6 +30,9 @@ export const salesRoutes = new Hono<AppEnv>()
     const query = c.req.valid("query");
     return xlsxResponse(await exportInvoices(c.var.db, query), exportFileName("penjualan", query));
   })
+  .post("/payments", validate("json", bulkSalesPaymentInput), async (c) =>
+    c.json(await recordBulkPayment(c.var.db, c.req.valid("json"), c.var.actor), 201),
+  )
   .post("/", validate("json", salesInvoiceInput), async (c) =>
     c.json(await createInvoice(c.var.db, c.req.valid("json"), c.var.actor), 201),
   )

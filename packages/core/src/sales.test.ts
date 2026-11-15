@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { DomainError } from "./errors.ts";
 import { rupiah } from "./money.ts";
 import {
+  allocatePayment,
   ageReceivables,
   agingBucket,
   assertInvoiceVoidable,
@@ -71,5 +72,39 @@ describe("assertInvoiceVoidable", () => {
     expect(() => assertInvoiceVoidable({ voided: false, activePayments: 0 })).not.toThrow();
     expect(() => assertInvoiceVoidable({ voided: false, activePayments: 1 })).toThrow("Batalkan dulu semua pembayaran faktur ini");
     expect(() => assertInvoiceVoidable({ voided: true, activePayments: 0 })).toThrow("Faktur sudah dibatalkan");
+  });
+});
+
+describe("allocatePayment", () => {
+  const inv = (number: string, dueDate: string, outstanding: number) => ({
+    id: number,
+    number,
+    date: "2026-10-01",
+    dueDate,
+    outstanding: rupiah(outstanding),
+  });
+  const a = inv("SO-A", "2026-11-20", 300_000);
+  const b = inv("SO-B", "2026-11-01", 500_000);
+  const c = inv("SO-C", "2026-11-10", 200_000);
+  const split = (amount: number) => allocatePayment([a, b, c], rupiah(amount)).map((s) => [s.invoice.number, s.amount]);
+
+  it("pays the earliest due faktur first and leaves the last one reached partly paid", () => {
+    expect(split(600_000)).toEqual([
+      ["SO-B", 500_000],
+      ["SO-C", 100_000],
+    ]);
+  });
+
+  it("pays every faktur in full when the amount covers them all", () => {
+    expect(split(1_000_000)).toEqual([
+      ["SO-B", 500_000],
+      ["SO-C", 200_000],
+      ["SO-A", 300_000],
+    ]);
+  });
+
+  it("refuses zero and more than what is owed", () => {
+    expect(() => split(0)).toThrow("Jumlah pembayaran harus lebih dari 0");
+    expect(() => split(1_000_001)).toThrow("Pembayaran melebihi sisa tagihan Rp 1.000.000");
   });
 });

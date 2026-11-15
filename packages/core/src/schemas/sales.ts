@@ -54,6 +54,12 @@ export type SalesInvoiceEditInput = z.input<typeof salesInvoiceEditInput>;
 export const salesPaymentInput = z.object({ ...paymentFields, date: businessDateInput });
 export type SalesPaymentInput = z.input<typeof salesPaymentInput>;
 
+/** One payment from one customer spread over several of their faktur, earliest due first. */
+export const bulkSalesPaymentInput = salesPaymentInput.extend({
+  invoiceIds: z.array(z.uuid()).min(1, "Pilih minimal satu faktur").max(200),
+});
+export type BulkSalesPaymentInput = z.input<typeof bulkSalesPaymentInput>;
+
 export const salesSortKeys = ["number", "customer", "date", "dueDate", "total", "paid", "outstanding", "status"] as const;
 export type SalesSortKey = (typeof salesSortKeys)[number];
 

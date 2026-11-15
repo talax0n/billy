@@ -80,6 +80,36 @@ export function assertPaymentAllowed(state: InvoiceState, amount: Rupiah): void 
   }
 }
 
+export interface PayableInvoice {
+  id: string;
+  number: string;
+  date: BusinessDate;
+  dueDate: BusinessDate;
+  outstanding: Rupiah;
+}
+
+/**
+ * Splits one payment over several faktur: earliest due date first (then oldest date, then
+ * number), each paid off before the next. The last one reached may be left partly paid.
+ */
+export function allocatePayment(invoices: readonly PayableInvoice[], amount: Rupiah): { invoice: PayableInvoice; amount: Rupiah }[] {
+  const owed = invoices.reduce((sum, inv) => sum + inv.outstanding, 0);
+  if (amount <= 0) throw new DomainError("invalid", "Jumlah pembayaran harus lebih dari 0");
+  if (amount > owed) throw new DomainError("invalid", `Pembayaran melebihi sisa tagihan ${formatRupiah(rupiah(owed))}`);
+  const ordered = invoices
+    .filter((inv) => inv.outstanding > 0)
+    .toSorted((a, b) => a.dueDate.localeCompare(b.dueDate) || a.date.localeCompare(b.date) || a.number.localeCompare(b.number));
+  const split: { invoice: PayableInvoice; amount: Rupiah }[] = [];
+  let left = amount as number;
+  for (const invoice of ordered) {
+    if (left === 0) break;
+    const pay = Math.min(left, invoice.outstanding);
+    split.push({ invoice, amount: rupiah(pay) });
+    left -= pay;
+  }
+  return split;
+}
+
 export function assertInvoiceVoidable(invoice: { voided: boolean; activePayments: number }): void {
   if (invoice.voided) throw new DomainError("conflict", "Faktur sudah dibatalkan");
   if (invoice.activePayments > 0) {

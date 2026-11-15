@@ -3,6 +3,7 @@ import {
   addDays,
   agingBucket,
   agingLabels,
+  allocatePayment,
   daysOverdue,
   type ApprovalKind,
   approvalKindLabels,
@@ -23,6 +24,7 @@ import {
   type salesInvoiceEditInput,
   type salesInvoiceInput,
   type salesListQuery,
+  type bulkSalesPaymentInput,
   type salesPaymentInput,
   type voidInput,
 } from "@billy/core";
@@ -513,6 +515,37 @@ export async function recordPayment(db: Db, invoiceId: string, input: z.output<t
     const invoice = await lockInvoice(tx, invoiceId);
     await insertPayment(tx, invoice, input, actor);
     return getInvoice(tx, invoiceId);
+  });
+}
+
+/**
+ * "Bayar beberapa faktur": one amount split over the chosen faktur of one customer, earliest
+ * due first, as one payment row and cash entry per faktur. All or nothing.
+ */
+export async function recordBulkPayment(db: Db, input: z.output<typeof bulkSalesPaymentInput>, actor: Actor) {
+  const { invoiceIds, amount, ...fields } = input;
+  return db.transaction(async (tx) => {
+    // Locked in id order so two concurrent bulk payments cannot deadlock each other.
+    for (const id of [...new Set(invoiceIds)].sort()) await lockInvoice(tx, id);
+    const invoices = await Promise.all([...new Set(invoiceIds)].map((id) => getInvoice(tx, id)));
+    if (new Set(invoices.map((inv) => inv.customer.id)).size > 1) {
+      throw new DomainError("invalid", "Faktur yang dipilih harus dari pelanggan yang sama");
+    }
+    const voided = invoices.find((inv) => inv.voidedAt);
+    if (voided) throw new DomainError("conflict", `Faktur ${voided.number} sudah dibatalkan`);
+    const split = allocatePayment(
+      invoices.map((inv) => ({ id: inv.id, number: inv.number, date: inv.date, dueDate: inv.dueDate, outstanding: inv.state.outstanding })),
+      amount,
+    );
+    for (const part of split) await insertPayment(tx, part.invoice, { ...fields, amount: part.amount }, actor);
+    return {
+      paid: await Promise.all(
+        split.map(async (part) => {
+          const after = await getInvoice(tx, part.invoice.id);
+          return { id: after.id, number: after.number, amount: part.amount, outstanding: after.state.outstanding };
+        }),
+      ),
+    };
   });
 }
 

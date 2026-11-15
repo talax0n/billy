@@ -327,3 +327,52 @@ it("logs a faktur price changed from the catalog as old → new", async () => {
     .where(and(eq(auditEvents.action, "sales.invoice.price_change"), eq(auditEvents.entityId, created.body.id)));
   expect(event).toEqual({ summary: `Harga diubah ${created.body.number} · Warnaku Tembok Putih 5 kg Rp 185.000 → Rp 170.000` });
 });
+
+describe("paying several faktur at once", () => {
+  const oneLine = (customer: string, date: string, unitPrice: number) =>
+    invoiceBody({ customerId: customer, date, termsDays: 30, discountKind: "none", discountValue: 0, lines: [{ productId: thinnerId, qty: 1, unitPrice }] });
+
+  it("splits one amount earliest due first, leaves the rest owed, and writes one cash entry per faktur", async () => {
+    const [toko] = await db.insert(contacts).values({ code: "P-BULK", name: "Toko Cicil", kind: "customer" }).returning();
+    const older = await post("/api/sales", oneLine(toko!.id, addDays(today, -20), 50_000));
+    const newer = await post("/api/sales", oneLine(toko!.id, addDays(today, -5), 40_000));
+
+    const res = await post("/api/sales/payments", {
+      invoiceIds: [newer.body.id, older.body.id],
+      accountId,
+      amount: 70_000,
+      method: "cash",
+      date: today,
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.paid).toEqual([
+      { id: older.body.id, number: older.body.number, amount: 50_000, outstanding: 0 },
+      { id: newer.body.id, number: newer.body.number, amount: 20_000, outstanding: 20_000 },
+    ]);
+    const cash = await db.select({ amount: cashEntries.amount, note: cashEntries.note }).from(cashEntries).where(eq(cashEntries.sourceType, "sales_payment"));
+    expect(cash).toEqual(
+      expect.arrayContaining([
+        { amount: 50_000, note: `Pembayaran ${older.body.number}` },
+        { amount: 20_000, note: `Pembayaran ${newer.body.number}` },
+      ]),
+    );
+  });
+
+  it("refuses faktur of two customers and an amount over what is owed, writing nothing", async () => {
+    const [x, y] = await db
+      .insert(contacts)
+      .values([
+        { code: "P-X", name: "Toko X", kind: "customer" },
+        { code: "P-Y", name: "Toko Y", kind: "customer" },
+      ])
+      .returning();
+    const ofX = await post("/api/sales", oneLine(x!.id, today, 30_000));
+    const ofY = await post("/api/sales", oneLine(y!.id, today, 30_000));
+    const pay = (invoiceIds: string[], amount: number) => post("/api/sales/payments", { invoiceIds, accountId, amount, method: "cash", date: today });
+
+    expect((await pay([ofX.body.id, ofY.body.id], 10_000)).body).toEqual({ error: "Faktur yang dipilih harus dari pelanggan yang sama" });
+    expect((await pay([ofX.body.id], 30_001)).body).toEqual({ error: "Pembayaran melebihi sisa tagihan Rp 30.000" });
+    const after = (await (await call(`/api/sales/${ofX.body.id}`, { cookie })).json()) as Json;
+    expect(after.state.outstanding).toBe(30_000);
+  });
+});
