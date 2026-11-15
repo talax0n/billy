@@ -1,6 +1,6 @@
 import { uuidv7 } from "@billy/core";
-import { accounts, cashEntries, contacts, posLines, posSales, products, settings, stockMovements } from "@billy/db";
-import { asc, eq } from "drizzle-orm";
+import { accounts, auditEvents, cashEntries, contacts, posLines, posSales, products, settings, stockMovements } from "@billy/db";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 import { createTestApp } from "../../testing.ts";
 
@@ -361,4 +361,32 @@ describe("GET /api/pos/catalog", () => {
   it("requires a session", async () => {
     expect((await call("/api/pos/catalog")).status).toBe(401);
   });
+});
+
+it("logs a price changed on the nota as old → new, and nothing when prices match the catalog", async () => {
+  const changed = saleBody({
+    number: "K1-261113-0090",
+    lines: [
+      { productId: enamel, qty: 2, unitPrice: 78_000, discountAmount: 6_000 },
+      { productId: thinner, qty: 3, unitPrice: 30_000 },
+    ],
+    total: 216_000,
+  });
+  expect((await post(kasir, changed)).status).toBe(201);
+  const untouched = saleBody({ number: "K1-261113-0091" });
+  expect((await post(kasir, untouched)).status).toBe(201);
+
+  const events = await db
+    .select({ entityId: auditEvents.entityId, actorId: auditEvents.actorId, summary: auditEvents.summary, before: auditEvents.before, after: auditEvents.after })
+    .from(auditEvents)
+    .where(and(eq(auditEvents.action, "pos.sale.price_change"), inArray(auditEvents.entityId, [changed.id, untouched.id])));
+  expect(events).toEqual([
+    {
+      entityId: changed.id,
+      actorId: kasirId,
+      summary: "Harga diubah K1-261113-0090 · Thinner Super 1 L Rp 32.000 → Rp 30.000",
+      before: { prices: [{ productId: thinner, name: "Thinner Super 1 L", price: 32_000 }] },
+      after: { prices: [{ productId: thinner, name: "Thinner Super 1 L", price: 30_000 }] },
+    },
+  ]);
 });

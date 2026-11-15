@@ -1,6 +1,7 @@
 import { addDays, businessDate, rupiah } from "@billy/core";
-import { accounts, cashEntries, contacts, products, stockMovements } from "@billy/db";
-import { asc, eq } from "drizzle-orm";
+import { accounts, auditEvents, cashEntries, contacts, products, stockMovements } from "@billy/db";
+import { and, asc, eq } from "drizzle-orm";
+import ExcelJS from "exceljs";
 import { beforeAll, describe, expect, it } from "vitest";
 import { createTestApp } from "../../testing.ts";
 
@@ -223,6 +224,21 @@ describe("lists", () => {
     ]);
   });
 
+  it("exports piutang to Excel, one row per unpaid faktur, with a totals row", async () => {
+    const res = await call("/api/sales/receivables.xlsx", { cookie });
+    expect(res.headers.get("content-disposition")).toBe(`attachment; filename="piutang-${today}.xlsx"`);
+    const book = new ExcelJS.Workbook();
+    await book.xlsx.load(await res.arrayBuffer());
+    const rows = book.getWorksheet("Piutang")!.getSheetValues().slice(2) as unknown[][];
+    expect(rows).toHaveLength(3);
+    expect(rows.slice(0, 2).map((r) => [r[1], r[6], r[9]])).toEqual([
+      ["CV Bangun Jaya", "Belum jatuh tempo", expect.any(Number)],
+      ["CV Bangun Jaya", "Belum jatuh tempo", expect.any(Number)],
+    ]);
+    expect(rows[2]![2]).toBe("2 faktur, 1 pelanggan");
+    expect(rows[2]![9]).toBe(1_575_200);
+  });
+
   it("returns exactly the rows whose status tag matches each filter", async () => {
     const late = await post("/api/sales", invoiceBody({ date: addDays(today, -40), termsDays: 30 }));
     const partial = await post("/api/sales", invoiceBody());
@@ -295,9 +311,19 @@ describe("priority order", () => {
 
 it("refuses the kasir role", async () => {
   const kasir = await signIn("kasir");
-  for (const path of ["/api/sales", "/api/sales/receivables"]) {
+  for (const path of ["/api/sales", "/api/sales/receivables", "/api/sales/receivables.xlsx"]) {
     expect((await call(path, { cookie: kasir.cookie })).status).toBe(403);
   }
   const res = await call("/api/sales", { method: "POST", cookie: kasir.cookie, body: invoiceBody() });
   expect(res.status).toBe(403);
+});
+
+it("logs a faktur price changed from the catalog as old → new", async () => {
+  const created = await post("/api/sales", invoiceBody({ lines: [{ productId: paintId, qty: 1, unitPrice: 170_000 }] }));
+  expect(created.status).toBe(201);
+  const [event] = await db
+    .select({ summary: auditEvents.summary })
+    .from(auditEvents)
+    .where(and(eq(auditEvents.action, "sales.invoice.price_change"), eq(auditEvents.entityId, created.body.id)));
+  expect(event).toEqual({ summary: `Harga diubah ${created.body.number} · Warnaku Tembok Putih 5 kg Rp 185.000 → Rp 170.000` });
 });

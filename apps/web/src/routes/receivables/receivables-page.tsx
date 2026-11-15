@@ -1,6 +1,7 @@
 import { agingBuckets, agingLabels, formatDate, formatRupiah, rupiah } from "@billy/core";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import { ExportButton } from "../../components/export-button.tsx";
 import { StatusTag } from "../../components/ui/badge.tsx";
 import { Sheet } from "../../components/ui/dialog.tsx";
 import { EmptyState, Loading, PageBody, PageHeader, StatTile } from "../../components/ui/page.tsx";
@@ -20,7 +21,7 @@ export function ReceivablesPage() {
 
   return (
     <>
-      <PageHeader title="Piutang" />
+      <PageHeader title="Piutang" actions={<ExportButton path="/api/sales/receivables.xlsx" disabled={!data?.rows.length} />} />
       <PageBody>
         <div className="grid grid-cols-3 gap-3.5 max-md:grid-cols-2 max-md:gap-2 max-md:[&>:last-child:nth-child(odd)]:col-span-2">
           <StatTile label="Total piutang" value={formatRupiah(rupiah(data?.totals?.total ?? 0))} note={`${asOf} · semua faktur belum lunas`} />

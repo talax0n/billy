@@ -80,3 +80,20 @@ it("stops an admin from locking themselves out", async () => {
   });
   expect(res.status).toBe(409);
 });
+
+it("keeps a staff account on one device but lets the owner use several", async () => {
+  const login = async (username: string) =>
+    (await call("/api/auth/login", { method: "POST", body: { username, password: "rahasia123" } })).headers.get("set-cookie")!.split(";")[0]!;
+
+  await signIn("staff", "admin1");
+  const laptop = await login("admin1");
+  const phone = await login("admin1");
+  expect((await call("/api/auth/me", { cookie: laptop })).status).toBe(401);
+  expect((await call("/api/auth/me", { cookie: phone })).status).toBe(200);
+
+  await signIn("admin", "emak");
+  const ownerLaptop = await login("emak");
+  const ownerPhone = await login("emak");
+  expect((await call("/api/auth/me", { cookie: ownerLaptop })).status).toBe(200);
+  expect((await call("/api/auth/me", { cookie: ownerPhone })).status).toBe(200);
+});

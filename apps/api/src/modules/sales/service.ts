@@ -1,6 +1,9 @@
 import {
   ageReceivables,
   addDays,
+  agingBucket,
+  agingLabels,
+  daysOverdue,
   type ApprovalKind,
   approvalKindLabels,
   assertInvoiceVoidable,
@@ -43,6 +46,7 @@ import type { z } from "zod";
 import type { Actor } from "../../env.ts";
 import { authorize, pinApprover, type Requirement } from "../../lib/approval.ts";
 import { audit } from "../../lib/audit.ts";
+import { logPriceChanges } from "../../lib/price-changes.ts";
 import { costAsOf } from "../../lib/cost-as-of.ts";
 import { getLimits } from "../pos/service.ts";
 import { allocateDocNumber } from "../../lib/doc-number.ts";
@@ -435,6 +439,7 @@ export async function insertInvoice(tx: Db, input: InvoiceInput, actor: Actor, a
     after: invoice.snapshot,
     approvalId,
   });
+  await logPriceChanges(tx, actor, { action: "sales.invoice.price_change", entityId: invoice.id, number: invoice.number }, input.lines);
   if (input.payment) await insertPayment(tx, invoice, { ...input.payment, date: input.date }, actor);
   return invoice;
 }
@@ -660,6 +665,7 @@ export async function editInvoice(db: Db, invoiceId: string, input: InvoiceEditI
       reason: input.reason,
       approvalId,
     });
+    await logPriceChanges(tx, actor, { action: "sales.invoice.price_change", entityId: invoice.id, number: invoice.number }, input.lines);
     return getInvoice(tx, invoice.id);
   });
 }
@@ -681,4 +687,43 @@ export async function listReceivables(db: Db) {
     today,
   ).get("all");
   return { asOf: today, rows, totals: totals ?? null };
+}
+
+/** Piutang as Excel: one row per unpaid faktur, grouped by customer (largest balance first) for chasing payment. */
+export async function exportReceivables(db: Db) {
+  const today = businessDate();
+  const open = (await invoicesWithState(db, isNull(salesInvoices.voidedAt))).filter((row) => row.state.outstanding > 0);
+  assertExportable(open.length);
+  const owed = new Map<string, number>();
+  for (const row of open) owed.set(row.customerId, (owed.get(row.customerId) ?? 0) + row.state.outstanding);
+  const rows = open.toSorted(
+    (a, b) => owed.get(b.customerId)! - owed.get(a.customerId)! || a.customerId.localeCompare(b.customerId) || a.dueDate.localeCompare(b.dueDate),
+  );
+  const sum = (pick: (row: (typeof rows)[number]) => number) => rows.reduce((acc, row) => acc + pick(row), 0);
+  return xlsxFile(
+    "Piutang",
+    [
+      { header: "Pelanggan", width: 30, kind: "text" },
+      { header: "Nomor", width: 22, kind: "text" },
+      { header: "Tanggal", width: 13, kind: "date" },
+      { header: "Jatuh tempo", width: 13, kind: "date" },
+      { header: "Lewat (hari)", width: 12, kind: "text" },
+      { header: "Umur", width: 18, kind: "text" },
+      { header: "Total", width: 18, kind: "money" },
+      { header: "Dibayar", width: 18, kind: "money" },
+      { header: "Sisa", width: 18, kind: "money" },
+    ],
+    rows.map((r) => [
+      r.customerName,
+      r.number,
+      r.date,
+      r.dueDate,
+      Math.max(0, daysOverdue(r.dueDate, today)),
+      agingLabels[agingBucket(r.dueDate, today)],
+      r.total,
+      r.paid,
+      r.state.outstanding,
+    ]),
+    [`Per ${today}`, `${rows.length} faktur, ${owed.size} pelanggan`, null, null, null, null, sum((r) => r.total), sum((r) => r.paid), sum((r) => r.state.outstanding)],
+  );
 }

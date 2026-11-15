@@ -36,6 +36,7 @@ import { alias } from "drizzle-orm/pg-core";
 import type { z } from "zod";
 import type { Actor } from "../../env.ts";
 import { authorize, pinApprover, type Requirement } from "../../lib/approval.ts";
+import { logPriceChanges } from "../../lib/price-changes.ts";
 import { audit } from "../../lib/audit.ts";
 import { costAsOf } from "../../lib/cost-as-of.ts";
 import { likePattern } from "../../lib/search.ts";
@@ -260,6 +261,10 @@ export async function recordSale(db: Db, input: PosSale, actor: Actor, draftId?:
         lines: lines.length,
       },
       approvalId,
+      deviceCode,
+      ...(offline && { source: "kasir_offline" as const }),
+    });
+    await logPriceChanges(tx, actor, { action: "pos.sale.price_change", entityId: input.id, number: input.number }, lines, {
       deviceCode,
       ...(offline && { source: "kasir_offline" as const }),
     });
@@ -634,6 +639,7 @@ export async function reviseSale(db: Db, originalId: string, input: PosRevision,
       approvalId,
       deviceCode,
     });
+    await logPriceChanges(tx, actor, { action: "pos.sale.price_change", entityId: input.id, number: input.number }, lines, { deviceCode });
     return getSale(tx, input.id);
   });
 }

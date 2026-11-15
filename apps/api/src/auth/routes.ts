@@ -9,7 +9,7 @@ import { audit } from "../lib/audit.ts";
 import { validate } from "../lib/validate.ts";
 import { hashPassword, verifyPassword } from "./password.ts";
 import { anySignedIn } from "./require-role.ts";
-import { createSession, deleteSession, findSessionUser, SESSION_COOKIE, SESSION_TTL_SECONDS } from "./session.ts";
+import { createSession, deleteSession, deleteUserSessions, findSessionUser, SESSION_COOKIE, SESSION_TTL_SECONDS } from "./session.ts";
 
 /** A kasir only ever signs in to the Kasir screen; admin and staff land in the back office. */
 const sourceOf = (role: Role) => (role === "kasir" ? "kasir" : "web");
@@ -31,6 +31,9 @@ export const authRoutes = new Hono<AppEnv>()
       throw new HTTPException(401, { message: "Nama pengguna atau kata sandi salah" });
     }
     const { token, sessionStartedAt } = await c.var.db.transaction(async (tx) => {
+      // Staff and kasir accounts stay on one device, so every entry is tied to the person at it.
+      // The owner (admin) may watch from several devices.
+      if (user.role !== "admin") await deleteUserSessions(tx, user.id);
       const session = await createSession(tx, user.id);
       await audit(tx, { id: user.id, role: user.role, source: sourceOf(user.role) }, { action: "auth.login", entityId: user.id, summary: `${user.name} masuk` });
       return session;
