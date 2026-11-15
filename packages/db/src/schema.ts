@@ -4,6 +4,7 @@ import {
   approvalStatuses,
   auditSources,
   cashSourceTypes,
+  deliveryCouriers,
   deliveryStatuses,
   discountKinds,
   opnameStatuses,
@@ -77,6 +78,7 @@ export const posDraftStatus = pgEnum("pos_draft_status", ["open", "paid", "cance
 export const quotationStatus = pgEnum("quotation_status", quotationStatuses);
 export const opnameStatus = pgEnum("opname_status", opnameStatuses);
 export const deliveryStatus = pgEnum("delivery_status", deliveryStatuses);
+export const deliveryCourier = pgEnum("delivery_courier", deliveryCouriers);
 
 /** A document line kept as jsonb on a document that moves no stock (nota sementara, penawaran). */
 export interface DocumentLine {
@@ -471,6 +473,9 @@ export const posSales = pgTable(
     customerId: uuid().references(() => contacts.id),
     subtotal: money().notNull(),
     ...documentDiscount(),
+    /** Ongkir when the goods are delivered, paid with the nota. Not sales revenue. */
+    shippingFee: money().notNull().default(0 as Rupiah),
+    /** Goods after discount, plus `shippingFee`: what the customer pays. */
     total: money().notNull(),
     method: posMethod().notNull(),
     accountId: uuid()
@@ -685,6 +690,7 @@ export const deliveries = pgTable(
   {
     id: id(),
     status: deliveryStatus().notNull().default("waiting"),
+    courier: deliveryCourier().notNull().default("toko"),
     customerName: text().notNull(),
     address: text().notNull(),
     phone: text().notNull().default(""),

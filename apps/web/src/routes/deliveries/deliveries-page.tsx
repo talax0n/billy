@@ -1,4 +1,4 @@
-import { deliveryCreateInput, type DeliveryCreateInput } from "@billy/core";
+import { deliveryCourierLabels, deliveryCreateInput, type DeliveryCreateInput, formatRupiah } from "@billy/core";
 import { queryOptions, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import type { InferResponseType } from "hono/client";
@@ -283,7 +283,12 @@ function DeliveryInfo({ delivery: d, backOffice, compact }: { delivery: Delivery
       )}
       {d.items.length > 0 && <span className="text-muted">{d.items.join(", ")}</span>}
       {d.note && <span className="text-ink-2">Catatan: {d.note}</span>}
-      {doc && <span className="text-xs text-muted">{doc}</span>}
+      <span className="text-xs text-muted">
+        {doc}
+        {doc && " · "}
+        {deliveryCourierLabels[d.courier]}
+        {!!d.shippingFee && ` · ongkir ${formatRupiah(d.shippingFee)}`}
+      </span>
     </div>
   );
 }

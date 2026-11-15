@@ -2,6 +2,7 @@ import {
   type ApprovalRequestInput,
   breachMessage,
   cartTotals,
+  type DeliveryCourier,
   type DeliveryDetailsInput,
   emptyCartTotals,
   type PosMethod,
@@ -61,7 +62,7 @@ import {
   type UploadResult,
   useOutbox,
 } from "../pos/outbox.ts";
-import { PayPanel } from "../pos/pay-panel.tsx";
+import { type CartDelivery, PayPanel } from "../pos/pay-panel.tsx";
 import { accountFor, usePosPreferences } from "../pos/preferences.ts";
 import { countedReprint, printReceipt, type ReceiptData, ReceiptPrinter } from "../pos/receipt.tsx";
 import { exactMatch, SearchBox, searchProducts } from "../pos/search.tsx";
@@ -136,10 +137,13 @@ function Register({ catalog }: { catalog: Catalog }) {
   /** The nota sementara loaded in the cart: paying it pays that draft. */
   const [activeDraft, setActiveDraft] = useState<{ id: string; number: string } | null>(null);
   /** A revisi in progress: the cart holds the new lines of `original`. */
-  const [revising, setRevising] = useState<{ original: { id: string; number: string; total: Rupiah }; reason: string } | null>(null);
+  const [revising, setRevising] = useState<{
+    original: { id: string; number: string; total: Rupiah; shippingFee: Rupiah; courier: DeliveryCourier | null };
+    reason: string;
+  } | null>(null);
   const [revisiOf, setRevisiOf] = useState<SaleDetail | null>(null);
   /** "Diantar ke alamat" for this sale; null while off. */
-  const [delivery, setDelivery] = useState<Required<DeliveryDetailsInput> | null>(null);
+  const [delivery, setDelivery] = useState<CartDelivery | null>(null);
   const drafts = useQuery(openDraftsQuery);
   const paying = useRef(false);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -147,16 +151,19 @@ function Register({ catalog }: { catalog: Catalog }) {
 
   const { shop } = catalog;
   /** Fills the delivery from the customer's contact card; a catalog cached by an older app version has no address. */
-  const withCustomer = (details: Required<DeliveryDetailsInput>, c: CatalogCustomer | null | undefined) =>
+  const withCustomer = <T extends Required<DeliveryDetailsInput>>(details: T, c: CatalogCustomer | null | undefined): T =>
     c ? { ...details, customerName: c.name, address: c.address ?? "", phone: c.phone ?? "" } : details;
   const results = searchProducts(catalog.products, query);
   const computed = cartTotals(cart.lines, cart.discount);
   const totals = computed.ok ? computed.totals : emptyCartTotals;
+  // A revisi keeps the original's ongkir: the goods are still delivered as before.
+  const shippingFee = revising ? revising.original.shippingFee : (delivery?.fee ?? rupiah(0));
+  const total = rupiah(totals.total + shippingFee);
   const account = accountFor(method, prefs, catalog.accounts);
-  const due = rupiah(Math.max(totals.total - (revising?.original.total ?? 0), 0));
+  const due = rupiah(Math.max(total - (revising?.original.total ?? 0), 0));
   const short = method === "cash" && tendered > 0 && tendered < due;
   const drawer = accountFor("cash", prefs, catalog.accounts);
-  const canPay = cart.lines.length > 0 && computed.ok && !short && account !== undefined && (!delivery || delivery.address.trim() !== "");
+  const canPay = cart.lines.length > 0 && computed.ok && !short && account !== undefined && (!delivery || (delivery.address.trim() !== "" && delivery.fee !== null));
   const line = cart.lines[cart.selected];
 
   useEffect(() => {
@@ -252,7 +259,7 @@ function Register({ catalog }: { catalog: Catalog }) {
 
   function buildSale(account: { id: string; name: string }, number: string): QueuedSale {
     // A revisi collects or refunds only the difference; a refund is always cash from the drawer.
-    const difference = totals.total - (revising?.original.total ?? 0);
+    const difference = total - (revising?.original.total ?? 0);
     const saleMethod = difference < 0 ? "cash" : method;
     const paid = saleMethod === "cash" && tendered > 0 ? tendered : due;
     const soldAt = new Date().toISOString();
@@ -266,9 +273,9 @@ function Register({ catalog }: { catalog: Catalog }) {
       method: saleMethod,
       accountId: saleMethod === method ? account.id : (drawer?.id ?? account.id),
       tendered: paid,
-      total: totals.total,
+      total,
       cashierId: me?.id,
-      ...(delivery && !revising && { delivery }),
+      ...(delivery && !revising && { delivery: { ...delivery, fee: delivery.fee ?? rupiah(0) } }),
     };
     const receipt: ReceiptData = {
       number,
@@ -280,7 +287,9 @@ function Register({ catalog }: { catalog: Catalog }) {
       gross: totals.gross,
       lineDiscount: totals.lineDiscount,
       discountAmount: totals.discountAmount,
-      total: totals.total,
+      shippingFee,
+      courier: revising ? revising.original.courier : (delivery?.courier ?? null),
+      total,
       tendered: paid,
       change: rupiah(paid - difference),
       saleId: sale.id,
@@ -364,7 +373,7 @@ function Register({ catalog }: { catalog: Catalog }) {
 
   function startRevisi(sale: SaleDetail, reason: string) {
     dispatch({ type: "load", cart: cartFromSale(sale, catalog) });
-    setRevising({ original: { id: sale.id, number: sale.number, total: sale.total }, reason });
+    setRevising({ original: { id: sale.id, number: sale.number, total: sale.total, shippingFee: sale.shippingFee, courier: sale.courier }, reason });
     setMethod(sale.method);
     focusSearch();
   }
@@ -515,6 +524,7 @@ function Register({ catalog }: { catalog: Catalog }) {
         <aside className="flex min-h-0 flex-col overflow-y-auto rounded-[14px] border border-line bg-panel max-md:overflow-visible">
           <PayPanel
             totals={totals}
+            shippingFee={shippingFee}
             error={computed.ok ? null : computed.error}
             discount={cart.discount}
             method={method}
@@ -541,7 +551,7 @@ function Register({ catalog }: { catalog: Catalog }) {
           onClose={focusSearch}
           onSave={(customer) => {
             dispatch({ type: "customer", customer });
-            if (delivery) setDelivery(withCustomer({ customerName: "", address: "", phone: "", note: delivery.note }, customer));
+            if (delivery) setDelivery(withCustomer({ ...delivery, customerName: "", address: "", phone: "" }, customer));
             focusSearch();
           }}
         />

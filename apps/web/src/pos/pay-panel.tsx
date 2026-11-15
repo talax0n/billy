@@ -1,8 +1,22 @@
-import { type CartTotals, type DeliveryDetailsInput, type Discount, type PosMethod, posMethods, quickTenderAmounts, rupiah, type Rupiah } from "@billy/core";
+import {
+  type CartTotals,
+  type DeliveryCourier,
+  type DeliveryDetailsInput,
+  type Discount,
+  FLAT_SHIPPING_FEE,
+  type PosMethod,
+  posMethods,
+  quickTenderAmounts,
+  rupiah,
+  type Rupiah,
+} from "@billy/core";
 import type { Ref } from "react";
 import { cx } from "../lib/cx.ts";
 import { methodLabels } from "./receipt.tsx";
 import { money } from "./ui.tsx";
+
+/** "Diantar ke alamat" in the cart. `fee` is null until the kasir types the ojol price. */
+export type CartDelivery = Required<DeliveryDetailsInput> & { courier: DeliveryCourier; fee: Rupiah | null };
 
 export function discountLabel(discount: Discount) {
   if (discount.kind === "percent") return `${(discount.value / 100).toLocaleString("id-ID")}%`;
@@ -12,6 +26,7 @@ export function discountLabel(discount: Discount) {
 /** Totals, method, tendered cash and change. Computed values are text, never inputs. */
 export function PayPanel({
   totals,
+  shippingFee,
   error,
   discount,
   method,
@@ -30,6 +45,8 @@ export function PayPanel({
   onDelivery,
 }: {
   totals: CartTotals;
+  /** Ongkir, added to the goods total. */
+  shippingFee: Rupiah;
   error: string | null;
   discount: Discount;
   method: PosMethod;
@@ -47,11 +64,12 @@ export function PayPanel({
   /** A revisi: what the replaced nota already collected. Only the difference is paid or refunded. */
   paidBefore?: Rupiah | undefined;
   /** "Diantar ke alamat": null while off. Not offered on a revisi. */
-  delivery: Required<DeliveryDetailsInput> | null;
-  onDelivery: (delivery: Required<DeliveryDetailsInput> | null) => void;
+  delivery: CartDelivery | null;
+  onDelivery: (delivery: CartDelivery | null) => void;
 }) {
   const cash = method === "cash";
-  const due = totals.total - (paidBefore ?? 0);
+  const total = totals.total + shippingFee;
+  const due = total - (paidBefore ?? 0);
   const collect = Math.max(due, 0);
   const received = cash && tendered > 0 ? tendered : collect;
   const change = received - due;
@@ -73,12 +91,18 @@ export function PayPanel({
         </span>
         <span className="tabular-nums">{totals.discountAmount ? `−${money(totals.discountAmount)}` : 0}</span>
       </div>
+      {shippingFee > 0 && (
+        <div className="flex justify-between text-ink-2">
+          <span>Ongkir</span>
+          <span className="tabular-nums">{money(shippingFee)}</span>
+        </div>
+      )}
 
       <div className="border-t border-line pt-3">
         <div className="text-muted">Total</div>
         <div className="text-[38px] leading-[1.1] font-semibold tracking-[-0.03em] tabular-nums" data-testid="pos-total">
           <span className="mr-1 text-[22px] font-medium text-faint">Rp</span>
-          {money(totals.total)}
+          {money(total)}
         </div>
         {error && <p className="mt-1 text-down">{error}</p>}
         {paidBefore !== undefined && (
@@ -185,9 +209,13 @@ export function PayPanel({
 
 const fieldClass = "w-full rounded-lg border border-line bg-panel px-2.5 py-2 placeholder:text-faint focus:border-ink focus:outline-none";
 
-/** The toggle and, when on, where the goods go. The address is required to pay. */
-function DeliveryFields({ delivery, onDelivery }: { delivery: Required<DeliveryDetailsInput> | null; onDelivery: (delivery: Required<DeliveryDetailsInput> | null) => void }) {
+/** The toggle and, when on, who takes the goods where. The address, and an ojol's ongkir, are required to pay. */
+function DeliveryFields({ delivery, onDelivery }: { delivery: CartDelivery | null; onDelivery: (delivery: CartDelivery | null) => void }) {
   const set = (key: keyof DeliveryDetailsInput, value: string) => delivery && onDelivery({ ...delivery, [key]: value });
+  const couriers = [
+    { courier: "toko", label: `Sopir toko · Rp ${money(FLAT_SHIPPING_FEE)}`, fee: FLAT_SHIPPING_FEE },
+    { courier: "ojol", label: "Ojol", fee: null },
+  ] as const;
   return (
     <div className={cx("rounded-[10px] border", delivery ? "border-ink" : "border-line")}>
       <label className="flex cursor-pointer items-center gap-2.5 px-3 py-2.5 font-medium">
@@ -195,13 +223,48 @@ function DeliveryFields({ delivery, onDelivery }: { delivery: Required<DeliveryD
           type="checkbox"
           className="size-[18px] accent-ink"
           checked={delivery !== null}
-          onChange={(e) => onDelivery(e.target.checked ? { customerName: "", address: "", phone: "", note: "" } : null)}
+          onChange={(e) =>
+            onDelivery(e.target.checked ? { customerName: "", address: "", phone: "", note: "", courier: "toko", fee: FLAT_SHIPPING_FEE } : null)
+          }
         />
         Diantar ke alamat
         {delivery && <span className="ml-auto text-xs font-normal text-muted">masuk Antrian Antar</span>}
       </label>
       {delivery && (
         <div className="flex flex-col gap-2 border-t border-line px-3 pt-2.5 pb-3">
+          <div role="radiogroup" aria-label="Pengantar" className="grid grid-cols-2 gap-1.5">
+            {couriers.map((c) => (
+              <button
+                key={c.courier}
+                type="button"
+                role="radio"
+                aria-checked={c.courier === delivery.courier}
+                onClick={() => c.courier !== delivery.courier && onDelivery({ ...delivery, courier: c.courier, fee: c.fee })}
+                className={cx(
+                  "rounded-[9px] border px-2.5 py-2 text-xs",
+                  c.courier === delivery.courier ? "border-[1.5px] border-ink font-medium" : "border-line text-ink-2",
+                )}
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
+          {delivery.courier === "ojol" && (
+            <label className={cx("flex items-center gap-2 rounded-lg border border-line bg-panel px-2.5 py-2 focus-within:border-ink", delivery.fee === null && "border-warn")}>
+              <span className="text-faint">Rp</span>
+              <input
+                inputMode="numeric"
+                aria-label="Ongkir ojol"
+                placeholder="Ongkir ojol (wajib)"
+                value={delivery.fee === null ? "" : money(delivery.fee)}
+                onChange={(e) => {
+                  const digits = e.target.value.replace(/\D/g, "").slice(0, 9);
+                  onDelivery({ ...delivery, fee: digits ? rupiah(Number(digits)) : null });
+                }}
+                className="min-w-0 flex-1 bg-transparent tabular-nums outline-none placeholder:text-faint"
+              />
+            </label>
+          )}
           <input aria-label="Nama penerima" placeholder="Nama penerima" className={fieldClass} value={delivery.customerName} onChange={(e) => set("customerName", e.target.value)} />
           <textarea
             aria-label="Alamat antar"
@@ -216,6 +279,7 @@ function DeliveryFields({ delivery, onDelivery }: { delivery: Required<DeliveryD
             <input aria-label="Catatan antar" placeholder="Catatan untuk sopir" className={fieldClass} value={delivery.note} onChange={(e) => set("note", e.target.value)} />
           </div>
           {!delivery.address.trim() && <p className="text-xs text-warn">Isi alamat dulu supaya bisa dibayar.</p>}
+          {delivery.fee === null && <p className="text-xs text-warn">Isi ongkir ojol dulu supaya bisa dibayar.</p>}
         </div>
       )}
     </div>

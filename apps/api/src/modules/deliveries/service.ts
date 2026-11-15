@@ -2,6 +2,7 @@ import {
   businessDate,
   changedFields,
   type DeliveryAction,
+  type DeliveryCourier,
   type deliveryCreateInput,
   type DeliveryDetailsInput,
   DomainError,
@@ -34,12 +35,14 @@ export async function getBoard(db: Db, now = new Date()) {
     .select({
       id: deliveries.id,
       status: deliveries.status,
+      courier: deliveries.courier,
       customerName: deliveries.customerName,
       address: deliveries.address,
       phone: deliveries.phone,
       note: deliveries.note,
       posSaleId: deliveries.posSaleId,
       posSaleNumber: posSales.number,
+      shippingFee: posSales.shippingFee,
       salesInvoiceId: deliveries.salesInvoiceId,
       salesInvoiceNumber: salesInvoices.number,
       driverId: deliveries.driverId,
@@ -112,7 +115,7 @@ export async function getBoard(db: Db, now = new Date()) {
  */
 export async function queueDelivery(
   tx: Db,
-  details: Required<DeliveryDetailsInput>,
+  details: Required<DeliveryDetailsInput> & { courier?: DeliveryCourier },
   link: { posSaleId?: string; salesInvoiceId?: string; customerId?: string | null; queuedAt?: Date },
   actor: Actor,
   auditExtra: Pick<AuditEntry, "source" | "deviceCode"> = {},

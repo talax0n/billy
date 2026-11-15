@@ -1,5 +1,5 @@
 import { uuidv7 } from "@billy/core";
-import { accounts, auditEvents, cashEntries, contacts, posLines, posSales, products, settings, stockMovements } from "@billy/db";
+import { accounts, auditEvents, cashEntries, contacts, deliveries, posLines, posSales, products, settings, stockMovements } from "@billy/db";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 import { createTestApp } from "../../testing.ts";
@@ -389,4 +389,53 @@ it("logs a price changed on the nota as old → new, and nothing when prices mat
       after: { prices: [{ productId: thinner, name: "Thinner Super 1 L", price: 30_000 }] },
     },
   ]);
+});
+
+describe("ongkir on a delivered nota", () => {
+  const delivery = { customerName: "Bu Rina", address: "Jl. Melati 4", phone: "", note: "", courier: "ojol", fee: 15_000 };
+
+  it("adds the fee to the total and the cash entry, and queues the delivery with its courier", async () => {
+    const body = saleBody({ number: "K1-261113-0100", delivery, total: 236_400 });
+    const res = await post(kasir, body);
+    expect(res.status).toBe(201);
+    expect(await res.json()).toMatchObject({ subtotal: 246_000, discountAmount: 24_600, shippingFee: 15_000, total: 236_400, change: 13_600, courier: "ojol" });
+    expect((await sideEffects(body.id)).cash).toEqual([
+      { accountId: cashAccount, direction: "in", amount: 236_400, category: "sale", sourceType: "pos_sale", date: "2026-11-13" },
+    ]);
+    expect(await db.select({ courier: deliveries.courier, address: deliveries.address }).from(deliveries).where(eq(deliveries.posSaleId, body.id))).toEqual([
+      { courier: "ojol", address: "Jl. Melati 4" },
+    ]);
+
+    const voided = await call(`/api/pos/sales/${body.id}/void`, { method: "POST", cookie: admin, body: { reason: "Batal antar" } });
+    expect(voided.status).toBe(200);
+    expect((await sideEffects(body.id)).cash.map(({ direction, amount }) => ({ direction, amount }))).toEqual([
+      { direction: "in", amount: 236_400 },
+      { direction: "out", amount: 236_400 },
+    ]);
+  });
+
+  it("refuses a device total that leaves the fee out with 422", async () => {
+    const res = await post(kasir, saleBody({ number: "K1-261113-0101", delivery, total: 221_400 }));
+    expect([res.status, await res.json()]).toEqual([422, { error: "Total struk Rp 221.400 tidak sama dengan hitungan server Rp 236.400" }]);
+  });
+
+  it("uploads a sale queued before ongkir existed as Sopir toko with no fee", async () => {
+    const { courier: _, fee: _f, ...old } = delivery;
+    const body = saleBody({ number: "K1-261113-0102", delivery: old });
+    expect((await post(kasir, body)).status).toBe(201);
+    const [row] = await db.select({ shippingFee: posSales.shippingFee }).from(posSales).where(eq(posSales.id, body.id));
+    const [queued] = await db.select({ courier: deliveries.courier }).from(deliveries).where(eq(deliveries.posSaleId, body.id));
+    expect([row, queued]).toEqual([{ shippingFee: 0 }, { courier: "toko" }]);
+  });
+
+  it("still asks approval for a discount over the cap, whatever the fee", async () => {
+    await db.update(settings).set({ kasirMaxDiscountBp: 500 });
+    try {
+      const res = await post(kasir, saleBody({ number: "K1-261113-0103", delivery: { ...delivery, fee: 200_000 }, tendered: 421_400, total: 421_400 }));
+      expect(res.status).toBe(403);
+      expect(await res.json()).toMatchObject({ approval: { kind: "discount" } });
+    } finally {
+      await db.update(settings).set({ kasirMaxDiscountBp: 10_000 });
+    }
+  });
 });

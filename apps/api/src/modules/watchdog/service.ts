@@ -117,6 +117,8 @@ async function pricing(db: Db, { from, to }: Range, maxBp: number): Promise<Watc
   const invoiceGross = sql<number>`sum(${salesLines.qty} * ${salesLines.unitPrice})`.mapWith(Number);
   const invoiceBelow = sql<number>`count(*) filter (where ${salesLines.lineTotal} < ${salesLines.qty} * ${salesLines.unitCost})`.mapWith(Number);
   const invoiceNet = sql<number>`${salesInvoices.subtotal} - ${salesInvoices.discountAmount}`.mapWith(Number);
+  // Goods only: ongkir in the total would hide a discount of the same size.
+  const posNet = sql<number>`${posSales.total} - ${posSales.shippingFee}`.mapWith(Number);
   const [sales, invoices] = await Promise.all([
     db
       .select({
@@ -124,7 +126,7 @@ async function pricing(db: Db, { from, to }: Range, maxBp: number): Promise<Watc
         number: posSales.number,
         at: posSales.soldAt,
         date: posSales.date,
-        net: posSales.total,
+        net: posNet,
         gross: posGross,
         below: posBelow,
         whoId: users.id,
@@ -135,7 +137,7 @@ async function pricing(db: Db, { from, to }: Range, maxBp: number): Promise<Watc
       .innerJoin(users, eq(users.id, posSales.cashierId))
       .where(and(gte(posSales.date, from), lte(posSales.date, to), isNull(posSales.voidedAt), ne(users.role, "admin")))
       .groupBy(posSales.id, users.id)
-      .having(or(gt(posBelow, 0), sql`${posGross} > ${posSales.total}`)),
+      .having(or(gt(posBelow, 0), sql`${posGross} > ${posNet}`)),
     db
       .select({
         id: salesInvoices.id,

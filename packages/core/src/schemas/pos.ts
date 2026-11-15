@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { approvalInput } from "../approvals.ts";
+import { deliveryCouriers } from "../deliveries.ts";
 import { discountKinds } from "../invoice.ts";
 import { rupiah } from "../money.ts";
 import { rupiahInput, text } from "./common.ts";
@@ -32,7 +33,7 @@ export const posSaleInput = z.object({
   method: z.enum(posMethods),
   accountId: z.uuid(),
   tendered: rupiahInput,
-  /** What the device charged; compared with the server's own computation. */
+  /** What the device charged, ongkir included; compared with the server's own computation. */
   total: rupiahInput,
   /**
    * The cashier signed in when the sale was made. A kasir may only upload their own sales;
@@ -41,8 +42,13 @@ export const posSaleInput = z.object({
   cashierId: z.uuid().optional(),
   /** Only when the sale breaks a limit; never stored on the device, since it may hold the admin's PIN. */
   approval: approvalInput.optional(),
-  /** "Diantar ke alamat": queues the goods in Antrian Antar with the sale. */
-  delivery: deliveryDetailsInput.optional(),
+  /**
+   * "Diantar ke alamat": queues the goods in Antrian Antar with the sale. `fee` (ongkir) is paid
+   * with the nota; a sale queued before ongkir existed has none.
+   */
+  delivery: deliveryDetailsInput
+    .extend({ courier: z.enum(deliveryCouriers).default("toko"), fee: rupiahInput.default(rupiah(0)) })
+    .optional(),
 });
 export type PosSaleInput = z.input<typeof posSaleInput>;
 

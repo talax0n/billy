@@ -1,7 +1,16 @@
 import { DomainError } from "./errors.ts";
+import { rupiah } from "./money.ts";
 
 export const deliveryStatuses = ["waiting", "on_the_way", "delivered", "cancelled"] as const;
 export type DeliveryStatus = (typeof deliveryStatuses)[number];
+
+export const deliveryCouriers = ["toko", "ojol"] as const;
+export type DeliveryCourier = (typeof deliveryCouriers)[number];
+
+/** Ongkir for the shop's own driver; an ojol is whatever the app charges. */
+export const FLAT_SHIPPING_FEE = rupiah(20_000);
+
+export const deliveryCourierLabels: Record<DeliveryCourier, string> = { toko: "Sopir toko", ojol: "Ojol" };
 
 export const deliveryStatusLabels: Record<DeliveryStatus, string> = {
   waiting: "Menunggu",

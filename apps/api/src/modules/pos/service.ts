@@ -15,6 +15,7 @@ import {
   type posSaleInput,
   type posVoidInput,
   rupiah,
+  type Rupiah,
   saleLimitBreaches,
 } from "@billy/core";
 import {
@@ -23,6 +24,7 @@ import {
   categories,
   contacts,
   type Db,
+  deliveries,
   posDrafts,
   posLines,
   posSales,
@@ -31,7 +33,7 @@ import {
   stockMovements,
   users,
 } from "@billy/db";
-import { and, asc, count, desc, eq, getTableColumns, ilike, inArray, isNull, like, ne, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, getTableColumns, ilike, inArray, isNull, like, ne, or, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { z } from "zod";
 import type { Actor } from "../../env.ts";
@@ -207,7 +209,7 @@ export async function recordSale(db: Db, input: PosSale, actor: Actor, draftId?:
     const soldAt = new Date(input.soldAt);
     const date = businessDate(soldAt);
     const lines = await priceLines(tx, input);
-    const totals = checkedTotals(lines, input);
+    const totals = checkedTotals(lines, input, input.delivery?.fee ?? rupiah(0));
     if (input.tendered < totals.total) throw new DomainError("invalid", "Uang diterima kurang dari total");
     const approvalId = await authorize(tx, actor, await saleRequirement(tx, input, lines, actor), input.approval, pinAdmin);
 
@@ -257,6 +259,7 @@ export async function recordSale(db: Db, input: PosSale, actor: Actor, draftId?:
         subtotal: totals.subtotal,
         discountAmount: totals.discountAmount,
         discountBp: combinedDiscountBp(lines, input.discount),
+        shippingFee: totals.shippingFee,
         total: totals.total,
         lines: lines.length,
       },
@@ -269,7 +272,8 @@ export async function recordSale(db: Db, input: PosSale, actor: Actor, draftId?:
       ...(offline && { source: "kasir_offline" as const }),
     });
     if (input.delivery) {
-      await queueDelivery(tx, input.delivery, { posSaleId: input.id, customerId: input.customerId, queuedAt: soldAt }, actor, {
+      const { fee: _fee, ...details } = input.delivery;
+      await queueDelivery(tx, details, { posSaleId: input.id, customerId: input.customerId, queuedAt: soldAt }, actor, {
         deviceCode,
         ...(offline && { source: "kasir_offline" as const }),
       });
@@ -300,9 +304,13 @@ async function assertSellable(tx: Db, input: Pick<PosSale, "id" | "number" | "ac
 
 type PricedLines = Awaited<ReturnType<typeof priceLines>>;
 
-/** The server's own totals; a device total that disagrees is refused. */
-function checkedTotals(lines: PricedLines, input: Pick<PosSale, "discount" | "total">) {
-  const totals = computeTotals(lines, input.discount);
+/**
+ * The server's own totals, ongkir added after the goods so discounts and limits never see it;
+ * a device total that disagrees is refused.
+ */
+function checkedTotals(lines: PricedLines, input: Pick<PosSale, "discount" | "total">, shippingFee: Rupiah) {
+  const goods = computeTotals(lines, input.discount);
+  const totals = { ...goods, shippingFee, total: rupiah(goods.total + shippingFee) };
   if (totals.total !== input.total) {
     throw new DomainError(
       "invalid",
@@ -316,12 +324,12 @@ function checkedTotals(lines: PricedLines, input: Pick<PosSale, "discount" | "to
 async function insertSale(
   tx: Db,
   lines: PricedLines,
-  totals: ReturnType<typeof computeTotals>,
-  sale: Omit<typeof posSales.$inferInsert, "subtotal" | "discountAmount" | "total">,
+  totals: ReturnType<typeof checkedTotals>,
+  sale: Omit<typeof posSales.$inferInsert, "subtotal" | "discountAmount" | "shippingFee" | "total">,
 ) {
   const [inserted] = await tx
     .insert(posSales)
-    .values({ ...sale, subtotal: totals.subtotal, discountAmount: totals.discountAmount, total: totals.total })
+    .values({ ...sale, subtotal: totals.subtotal, discountAmount: totals.discountAmount, shippingFee: totals.shippingFee, total: totals.total })
     .onConflictDoNothing({ target: posSales.id })
     .returning({ id: posSales.id });
   if (!inserted) return false;
@@ -409,13 +417,16 @@ const selectSales = (db: Db) =>
       revisedById: revision.id,
       revisedByNumber: revision.number,
       draftNumber: posDrafts.number,
+      courier: deliveries.courier,
     })
     .from(posSales)
     .innerJoin(users, eq(users.id, posSales.cashierId))
     .innerJoin(accounts, eq(accounts.id, posSales.accountId))
     .leftJoin(original, eq(original.id, posSales.revisionOf))
     .leftJoin(revision, eq(revision.revisionOf, posSales.id))
-    .leftJoin(posDrafts, eq(posDrafts.saleId, posSales.id));
+    .leftJoin(posDrafts, eq(posDrafts.saleId, posSales.id))
+    // A revisi has no delivery of its own: the goods still go out on the original's.
+    .leftJoin(deliveries, or(eq(deliveries.posSaleId, posSales.id), eq(deliveries.posSaleId, posSales.revisionOf)));
 
 export async function listSales(db: Db, user: Viewer, { q, page, pageSize }: PaginationQuery) {
   const where = and(visibleTo(user), q ? ilike(posSales.number, likePattern(q)) : undefined);
@@ -585,7 +596,8 @@ export async function reviseSale(db: Db, originalId: string, input: PosRevision,
     const soldAt = new Date();
     const date = businessDate(soldAt);
     const lines = await priceLines(tx, { soldAt: soldAt.toISOString(), lines: input.lines });
-    const totals = checkedTotals(lines, input);
+    // The goods are still delivered as on the original, so its ongkir carries over.
+    const totals = checkedTotals(lines, input, sale.shippingFee);
     const difference = rupiah(totals.total - sale.total);
     if (input.tendered < difference) throw new DomainError("invalid", "Uang diterima kurang dari selisih revisi");
     const refund = difference < 0;

@@ -113,6 +113,19 @@ describe("revisi nota kasir", () => {
     expect(event!.approvalId).not.toBeNull();
   });
 
+  it("keeps the original's ongkir in the new nota's total; only the goods difference moves", async () => {
+    const delivered = { ...sale(3), delivery: { customerName: "", address: "Jl. Mawar 1", phone: "", note: "", courier: "toko", fee: 20_000 }, tendered: 50_000, total: 50_000 };
+    const first = await sell(kasir, delivered);
+
+    const up = revision(4, { total: 60_000, tendered: 10_000 });
+    expect((await revise(kasir, first, up)).status).toBe(201);
+    expect(await getSale(up.id)).toMatchObject({ shippingFee: 20_000, total: 60_000, courier: "toko" });
+    expect(await cashOf([first, up.id])).toEqual([
+      { accountId: kas, direction: "in", amount: 50_000 },
+      { accountId: kas, direction: "in", amount: 10_000 },
+    ]);
+  });
+
   it("a QRIS original: the difference is collected as chosen, a refund always comes out of the drawer in cash", async () => {
     const first = await sell(kasir, sale(4, "qris", qris));
 

@@ -1,4 +1,4 @@
-import type { PosMethod, Rupiah } from "@billy/core";
+import { type DeliveryCourier, deliveryCourierLabels, type PosMethod, type Rupiah } from "@billy/core";
 import type { InferResponseType } from "hono/client";
 import { useEffect, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
@@ -16,6 +16,10 @@ export interface ReceiptData {
   gross: Rupiah;
   lineDiscount: Rupiah;
   discountAmount: Rupiah;
+  /** Ongkir, already in `total`. A receipt saved by an older version has none. */
+  shippingFee?: Rupiah;
+  /** Who carries it; unknown on a reprint of a nota whose delivery was not found. */
+  courier?: DeliveryCourier | null;
   total: Rupiah;
   tendered: Rupiah;
   change: Rupiah;
@@ -55,6 +59,8 @@ export function receiptFromSale(sale: StoredSale): ReceiptData {
     gross: (sale.subtotal + lineDiscount) as Rupiah,
     lineDiscount,
     discountAmount: sale.discountAmount,
+    shippingFee: sale.shippingFee,
+    courier: sale.courier,
     total: sale.total,
     tendered: sale.tendered,
     change: sale.change,
@@ -146,6 +152,12 @@ export function Receipt({ receipt: r, shop, width = 80 }: { receipt: ReceiptData
         <div className={row}>
           <span>Diskon transaksi</span>
           <span>-{n(r.discountAmount)}</span>
+        </div>
+      )}
+      {!!r.shippingFee && (
+        <div className={row}>
+          <span>Ongkir{r.courier && ` (${deliveryCourierLabels[r.courier]})`}</span>
+          <span>{n(r.shippingFee)}</span>
         </div>
       )}
       <div className={`${row} text-[13px] font-bold`}>
