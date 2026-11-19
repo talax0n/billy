@@ -98,7 +98,7 @@ export function PurchasesPage() {
             label="Telat bayar"
             value={<Amount value={rupiah(summary?.overdue ?? 0)} className={cx(summary?.overdue && "text-down")} />}
             tone="warn"
-            delta={summary?.dueSoon ? `${formatRupiah(summary.dueSoon, { compact: true })} jatuh tempo ≤7 hari` : undefined}
+            delta={summary?.dueSoon ? `${formatRupiah(summary.dueSoon)} jatuh tempo ≤7 hari` : undefined}
             note={`${windowLabel} · lewat jatuh tempo per hari ini`}
           />
         </div>
