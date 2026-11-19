@@ -29,6 +29,7 @@ export const auditActions = {
   "approval_pin.set": { entity: "user", label: "PIN persetujuan diatur" },
   "category.create": { entity: "category", label: "Kategori dibuat" },
   "category.update": { entity: "category", label: "Kategori diubah" },
+  "category.auto_assign": { entity: "category", label: "Brand diisi otomatis" },
   "product.create": { entity: "product", label: "Produk dibuat" },
   "product.update": { entity: "product", label: "Produk diubah" },
   "stock.adjust": { entity: "product", label: "Penyesuaian stok" },

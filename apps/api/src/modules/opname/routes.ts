@@ -1,8 +1,11 @@
 import { idParam, opnameCountInput, opnameCreateInput, opnameLinesQuery, paginationQuery } from "@billy/core";
 import { Hono } from "hono";
+import { z } from "zod";
 import { adminOnly, backOffice } from "../../auth/require-role.ts";
 import type { AppEnv } from "../../env.ts";
 import { validate } from "../../lib/validate.ts";
+import { xlsxResponse } from "../../lib/xlsx.ts";
+import { countTemplate, importCounts } from "./count-sheet.ts";
 import { createOpname, getOpname, listOpnameLines, listOpnames, postOpname, saveCounts } from "./service.ts";
 
 /** Stok opname: admin and staff count, only admin posts. */
@@ -16,5 +19,12 @@ export const opnameRoutes = new Hono<AppEnv>()
   )
   .put("/:id/lines", validate("param", idParam), validate("json", opnameCountInput), async (c) =>
     c.json(await saveCounts(c.var.db, c.req.valid("param").id, c.req.valid("json"), c.var.actor)),
+  )
+  .get("/:id/template.xlsx", validate("param", idParam), async (c) => {
+    const { number, body } = await countTemplate(c.var.db, c.req.valid("param").id);
+    return xlsxResponse(body, `template-${number}.xlsx`);
+  })
+  .post("/:id/import", validate("param", idParam), validate("form", z.object({ file: z.instanceof(File, { message: "Pilih file Excel" }) })), async (c) =>
+    c.json(await importCounts(c.var.db, c.req.valid("param").id, c.req.valid("form").file, c.var.actor)),
   )
   .post("/:id/post", adminOnly(), validate("param", idParam), async (c) => c.json(await postOpname(c.var.db, c.req.valid("param").id, c.var.actor)));

@@ -42,8 +42,8 @@ export function YearlyOverview() {
                 <span className="size-2.5 rounded-[3px]" style={{ background: series[key].color }} />
                 {series[key].label}
               </div>
-              <div className="mt-1.5 text-xl font-medium tracking-tight tabular-nums" title={formatRupiah(data.totals[key])}>
-                {compact(data.totals[key])}
+              <div className="mt-1.5 text-lg font-medium tracking-tight tabular-nums whitespace-nowrap">
+                {formatRupiah(data.totals[key])}
               </div>
             </div>
           ))}

@@ -1,7 +1,7 @@
-import { formatDate, formatRupiah, type opnameLineFilters, rupiah } from "@billy/core";
+import { countSheetColumns, formatDate, formatRupiah, type opnameLineFilters, rupiah } from "@billy/core";
 import { useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { ArrowLeft, Plus } from "lucide-react";
+import { ArrowLeft, Download, FileUp, Plus } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { Badge } from "../../components/ui/badge.tsx";
 import { Button } from "../../components/ui/button.tsx";
@@ -13,6 +13,7 @@ import { toast } from "../../components/ui/toast.tsx";
 import { api, ApiError, unwrap } from "../../lib/api.ts";
 import { meQuery } from "../../lib/auth.ts";
 import { cx } from "../../lib/cx.ts";
+import { downloadFile } from "../../lib/download.ts";
 
 type Filter = (typeof opnameLineFilters)[number];
 const filterLabels: Record<Filter, string> = { all: "Semua barang", counted: "Sudah dihitung", uncounted: "Belum dihitung", difference: "Ada selisih" };
@@ -126,6 +127,7 @@ function OpnameDetail({ id }: { id: string }) {
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [importing, setImporting] = useState(false);
   const header = useQuery({ queryKey: ["opnames", id], queryFn: () => unwrap(api.opnames[":id"].$get({ param: { id } })) });
   const paged = usePagedQuery(
     ["opnames", id, "lines", filter],
@@ -178,6 +180,18 @@ function OpnameDetail({ id }: { id: string }) {
               <ArrowLeft className="size-4" />
               Semua opname
             </Button>
+            {draft && (
+              <>
+                <Button disabled={saving} onClick={() => void run(() => downloadFile(`/api/opnames/${id}/template.xlsx`))}>
+                  <Download className="size-4" />
+                  Unduh template
+                </Button>
+                <Button disabled={saving} onClick={() => setImporting(true)}>
+                  <FileUp className="size-4" />
+                  Impor Excel
+                </Button>
+              </>
+            )}
             {draft && (
               <Button
                 disabled={saving || dirty === 0}
@@ -288,6 +302,9 @@ function OpnameDetail({ id }: { id: string }) {
           ]}
         />
       </PageBody>
+      <Dialog open={importing} onClose={() => setImporting(false)} title="Impor hitungan dari Excel">
+        {importing && <ImportCounts id={id} unsaved={dirty} onDone={() => setImporting(false)} />}
+      </Dialog>
       <Dialog open={confirming} onClose={() => setConfirming(false)} title="Posting opname?">
         {confirming && opname && (
           <div className="flex flex-col gap-4">
@@ -312,4 +329,88 @@ function OpnameDetail({ id }: { id: string }) {
 function difference(edit: string | undefined, line: { systemQty: number; countedQty: number | null }): number | null {
   const counted = edit === undefined ? line.countedQty : edit === "" ? null : Number(edit);
   return counted === null ? null : counted - line.systemQty;
+}
+
+type ImportResult = { applied: number; skipped: { row: number; reason: string }[] };
+
+/** Explains the accepted sheet, uploads it, and lists what was filled and which rows were skipped and why. */
+function ImportCounts({ id, unsaved, onDone }: { id: string; unsaved: number; onDone: () => void }) {
+  const queryClient = useQueryClient();
+  const [file, setFile] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<ImportResult | null>(null);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    if (!file) return;
+    setBusy(true);
+    try {
+      setResult(await unwrap(api.opnames[":id"].import.$post({ param: { id }, form: { file } })));
+      await queryClient.invalidateQueries({ queryKey: ["opnames"] });
+    } catch (err) {
+      if (!(err instanceof ApiError)) throw err;
+      toast(err.message, "down");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (result) {
+    return (
+      <div className="flex flex-col gap-4 text-sm">
+        <p>
+          <span className="font-medium">{result.applied} barang</span> terisi dari file.
+          {result.skipped.length > 0 && ` ${result.skipped.length} baris dilewati:`}
+        </p>
+        {result.skipped.length > 0 && (
+          <ul className="flex max-h-64 flex-col overflow-y-auto rounded-[10px] border border-line">
+            {result.skipped.map((s) => (
+              <li key={s.row} className="flex gap-3 border-b border-line-2 px-3 py-2 last:border-b-0">
+                <span className="w-16 shrink-0 text-muted">Baris {s.row}</span>
+                <span>{s.reason}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="flex justify-end">
+          <Button variant="primary" onClick={onDone}>
+            Selesai
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <form onSubmit={submit} noValidate className="flex flex-col gap-4 text-sm">
+      <p className="text-ink-2">
+        Paling mudah: klik <span className="font-medium text-ink">Unduh template</span>, isi kolom Stok fisik, lalu unggah di sini. File buatan
+        sendiri juga diterima selama memakai kolom berikut di sheet pertama. Urutan kolom bebas, kolom lain diabaikan, dan baris kolom harus ada di
+        10 baris teratas.
+      </p>
+      <table className="w-full border-collapse text-left">
+        <tbody>
+          {countSheetColumns.map((c) => (
+            <tr key={c.header} className="border-b border-line-2 align-top last:border-b-0">
+              <th className="w-28 py-1.5 pr-3 font-medium">{c.header}</th>
+              <td className="py-1.5 text-ink-2">{c.note}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="text-ink-2">
+        Barang dicari lewat ID, lalu Kode, lalu Nama barang, dan harus termasuk opname ini. Hasilnya masuk sebagai hitungan draf, jadi masih bisa
+        dicek dan diubah sebelum posting.{unsaved > 0 && ` Simpan dulu ${unsaved} hitungan yang belum disimpan, karena isi file bisa menimpanya.`}
+      </p>
+      <Field label="File Excel (.xlsx)">
+        {(p) => <Input {...p} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />}
+      </Field>
+      <div className="flex justify-end gap-2">
+        <Button onClick={onDone}>Batal</Button>
+        <Button type="submit" variant="primary" disabled={!file || busy}>
+          Impor
+        </Button>
+      </div>
+    </form>
+  );
 }

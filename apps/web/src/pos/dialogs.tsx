@@ -10,8 +10,7 @@ import { toast } from "../components/ui/toast.tsx";
 import { api, unwrap } from "../lib/api.ts";
 import { cx } from "../lib/cx.ts";
 import { desktop } from "../lib/desktop.ts";
-import type { CartLine } from "./cart.ts";
-import type { Catalog, CatalogCustomer, OutboxItem, ParkedCart, SyncProblem } from "./local.ts";
+import type { Catalog, OutboxItem, ParkedCart, SyncProblem } from "./local.ts";
 import { dismissProblem, retryProblem } from "./outbox.ts";
 import { accountFor, type PosPreferences } from "./preferences.ts";
 import { countedReprint, methodLabels, type ReceiptData } from "./receipt.tsx";
@@ -36,53 +35,6 @@ function DialogForm({ onSubmit, children, submitLabel }: { onSubmit: () => void;
         </Button>
       </div>
     </form>
-  );
-}
-
-export function LineDiscountDialog({ line, onSave, onClose }: { line: CartLine; onSave: (amount: Rupiah) => void; onClose: () => void }) {
-  const [amount, setAmount] = useState(line.discountAmount);
-  const gross = line.qty * line.unitPrice;
-  const error = amount > gross ? `Maksimal ${money(gross)}` : undefined;
-  return (
-    <Dialog open onClose={onClose} title="Diskon baris" description={`${productLabel(line)} · ${line.qty} × ${money(line.unitPrice)}`}>
-      <DialogForm submitLabel="Simpan diskon" onSubmit={() => !error && onSave(amount)}>
-        <Field label="Potongan untuk baris ini" error={error}>
-          {(p) => <MoneyInput {...p} autoFocus value={amount} onChange={setAmount} onFocus={(e) => e.target.select()} />}
-        </Field>
-      </DialogForm>
-    </Dialog>
-  );
-}
-
-export function NoteDialog({ line, onSave, onClose }: { line: CartLine; onSave: (note: string) => void; onClose: () => void }) {
-  const [note, setNote] = useState(line.note);
-  return (
-    <Dialog open onClose={onClose} title="Catatan baris" description={productLabel(line)}>
-      <DialogForm submitLabel="Simpan catatan" onSubmit={() => onSave(note)}>
-        <Field label="Kode warna tinting" hint="Tercetak di struk dengan “Cat tinting tidak bisa diretur”.">
-          {(p) => <Input {...p} autoFocus maxLength={200} placeholder="Kode warna: RAL 7035" value={note} onChange={(e) => setNote(e.target.value)} />}
-        </Field>
-      </DialogForm>
-    </Dialog>
-  );
-}
-
-/** The tinting machine mixes per customer and shows the price; the cashier types it here with the colour code. */
-export function PriceDialog({ line, onSave, onClose }: { line: CartLine; onSave: (unitPrice: Rupiah, note: string) => void; onClose: () => void }) {
-  const [price, setPrice] = useState(line.unitPrice);
-  const [note, setNote] = useState(line.note);
-  const error = price <= 0 ? "Isi harga lebih dari 0" : line.discountAmount > line.qty * price ? `Diskon baris ${money(line.discountAmount)} melebihi harga` : undefined;
-  return (
-    <Dialog open onClose={onClose} title="Ubah harga (harga mesin)" description={`${productLabel(line)}${line.listPrice ? ` · harga katalog ${money(line.listPrice)}` : ""}`}>
-      <DialogForm submitLabel="Simpan harga" onSubmit={() => !error && onSave(price, note)}>
-        <Field label="Harga per item" hint="Masukkan harga dari mesin tinting" error={error}>
-          {(p) => <MoneyInput {...p} autoFocus className="[&_input]:h-14 [&_input]:text-2xl" value={price} onChange={setPrice} onFocus={(e) => e.target.select()} />}
-        </Field>
-        <Field label="Kode warna tinting (boleh kosong)">
-          {(p) => <Input {...p} maxLength={200} placeholder="Kode warna: RAL 7035" value={note} onChange={(e) => setNote(e.target.value)} />}
-        </Field>
-      </DialogForm>
-    </Dialog>
   );
 }
 
@@ -370,60 +322,3 @@ export function HistoryDialog({
  * F3: the customer on this receipt, searched from the customers cached with the catalog so it
  * works offline. The first row is always "Umum", the walk-in default.
  */
-export function CustomerDialog({
-  customers,
-  onSave,
-  onClose,
-}: {
-  customers: CatalogCustomer[];
-  onSave: (customer: CatalogCustomer | null) => void;
-  onClose: () => void;
-}) {
-  const [query, setQuery] = useState("");
-  const [highlight, setHighlight] = useState(0);
-  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
-  const matches = customers.filter((c) => terms.every((t) => `${c.name} ${c.code}`.toLowerCase().includes(t))).slice(0, 8);
-  const options: (CatalogCustomer | null)[] = [null, ...matches];
-  return (
-    <Dialog open onClose={onClose} title="Pelanggan" description="Kosongkan untuk pelanggan umum.">
-      <div className="flex flex-col gap-3">
-        <Input
-          autoFocus
-          aria-label="Cari pelanggan"
-          placeholder="Cari nama atau kode pelanggan"
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setHighlight(e.target.value.trim() ? 1 : 0);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-              e.preventDefault();
-              const step = e.key === "ArrowDown" ? 1 : -1;
-              setHighlight((h) => (h + step + options.length) % options.length);
-            } else if (e.key === "Enter") {
-              e.preventDefault();
-              onSave(options[highlight] ?? null);
-            }
-          }}
-        />
-        <ul role="listbox" aria-label="Pelanggan" className="flex flex-col">
-          {options.map((c, i) => (
-            <li key={c?.id ?? "umum"} role="option" aria-selected={i === highlight}>
-              <button
-                type="button"
-                onClick={() => onSave(c)}
-                onMouseEnter={() => setHighlight(i)}
-                className={cx("flex w-full justify-between rounded-lg px-3 py-2 text-left", i === highlight && "bg-line-2")}
-              >
-                <span>{c?.name ?? "Umum"}</span>
-                <span className="text-muted">{c?.code ?? "tanpa nama"}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-        {terms.length > 0 && matches.length === 0 && <p className="text-muted">Tidak ada pelanggan yang cocok.</p>}
-      </div>
-    </Dialog>
-  );
-}

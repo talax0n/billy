@@ -25,13 +25,10 @@ import { meQuery, useLogout } from "../lib/auth.ts";
 import { cx } from "../lib/cx.ts";
 import { setTheme } from "../lib/theme.ts";
 import { cartReducer, emptyCart, plainLineOf } from "../pos/cart.ts";
-import { CartTable } from "../pos/cart-table.tsx";
+import { CartTable, focusCell } from "../pos/cart-table.tsx";
+import { CustomerPicker } from "../pos/customer-picker.tsx";
 import {
-  CustomerDialog,
   HistoryDialog,
-  LineDiscountDialog,
-  NoteDialog,
-  PriceDialog,
   ParkedDialog,
   PreferencesDialog,
   ProblemsDialog,
@@ -65,11 +62,11 @@ import {
 import { type CartDelivery, PayPanel } from "../pos/pay-panel.tsx";
 import { accountFor, usePosPreferences } from "../pos/preferences.ts";
 import { countedReprint, printReceipt, type ReceiptData, ReceiptPrinter } from "../pos/receipt.tsx";
-import { exactMatch, SearchBox, searchProducts } from "../pos/search.tsx";
+import { browseProducts, exactMatch, ProductList, SearchBox, searchProducts } from "../pos/search.tsx";
 import { cacheAppShell } from "../pos/shell.ts";
 import { Chip } from "../pos/ui.tsx";
 
-type DialogName = "customer" | "lineDiscount" | "price" | "note" | "txDiscount" | "parked" | "history" | "problems" | "prefs" | "drafts" | "revisi";
+type DialogName = "txDiscount" | "parked" | "history" | "problems" | "prefs" | "drafts" | "revisi";
 
 type SaleDetail = Awaited<ReturnType<typeof fetchSale>>;
 const fetchSale = (id: string) => unwrap(api.pos.sales[":id"].$get({ param: { id } }));
@@ -126,7 +123,8 @@ function Register({ catalog }: { catalog: Catalog }) {
   const [highlight, setHighlight] = useState(0);
   /** ↑/↓ on an empty search moves to the cart: D and N then act on the row instead of typing. */
   const [rowMode, setRowMode] = useState(false);
-  const [qtyEdit, setQtyEdit] = useState<number | null>(null);
+  /** The left panel: the nota being rung up, or the whole catalog to pick from. */
+  const [view, setView] = useState<"nota" | "produk">("nota");
   const [method, setMethod] = useState<PosMethod>("cash");
   const [tendered, setTendered] = useState<Rupiah>(rupiah(0));
   const [dialog, setDialog] = useState<DialogName | null>(null);
@@ -148,12 +146,13 @@ function Register({ catalog }: { catalog: Catalog }) {
   const paying = useRef(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const tenderRef = useRef<HTMLInputElement>(null);
+  const customerRef = useRef<HTMLInputElement>(null);
 
   const { shop } = catalog;
   /** Fills the delivery from the customer's contact card; a catalog cached by an older app version has no address. */
   const withCustomer = <T extends Required<DeliveryDetailsInput>>(details: T, c: CatalogCustomer | null | undefined): T =>
     c ? { ...details, customerName: c.name, address: c.address ?? "", phone: c.phone ?? "" } : details;
-  const results = searchProducts(catalog.products, query);
+  const results = view === "produk" ? browseProducts(catalog.products, query) : searchProducts(catalog.products, query);
   const computed = cartTotals(cart.lines, cart.discount);
   const totals = computed.ok ? computed.totals : emptyCartTotals;
   // A revisi keeps the original's ongkir: the goods are still delivered as before.
@@ -197,7 +196,8 @@ function Register({ catalog }: { catalog: Catalog }) {
     setQuery("");
     setHighlight(0);
     setRowMode(false);
-    if (thenQty) setQtyEdit(existing >= 0 ? existing : cart.lines.length);
+    if (thenQty) setView("nota");
+    if (thenQty) focusCell(existing >= 0 ? existing : cart.lines.length, "qty");
   };
 
   /**
@@ -395,7 +395,7 @@ function Register({ catalog }: { catalog: Catalog }) {
   const onGlobalKey = useEffectEvent((e: globalThis.KeyboardEvent) => {
     if (dialog || blocked) return;
     if (e.key === "F2") focusSearch();
-    else if (e.key === "F3") setDialog("customer");
+    else if (e.key === "F3") customerRef.current?.focus();
     else if (e.key === "F4") setDialog("txDiscount");
     else if (e.key === "F5") {
       setMethod("cash");
@@ -424,21 +424,22 @@ function Register({ catalog }: { catalog: Catalog }) {
       Delete: () => line && dispatch({ type: "remove", index: cart.selected }),
     };
     if (rowMode) {
-      rowKeys.d = rowKeys.D = () => line && setDialog("lineDiscount");
-      rowKeys.n = rowKeys.N = () => line && setDialog("note");
-      rowKeys.h = rowKeys.H = () => line && setDialog("price");
+      rowKeys.d = rowKeys.D = () => line && focusCell(cart.selected, "discount");
+      rowKeys.n = rowKeys.N = () => line && focusCell(cart.selected, "note");
+      rowKeys.h = rowKeys.H = () => line && focusCell(cart.selected, "price");
     }
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       const step = e.key === "ArrowDown" ? 1 : -1;
-      if (searching) setHighlight((h) => (h + step + results.length) % Math.max(results.length, 1));
+      if (searching || view === "produk") setHighlight((h) => (h + step + results.length) % Math.max(results.length, 1));
       else if (cart.lines.length) {
         dispatch({ type: "select", index: cart.selected + step });
         setRowMode(true);
       }
     } else if (e.key === "Enter") {
-      if (searching) add(highlight, e.shiftKey);
+      if (searching || (view === "produk" && results.length)) add(highlight, e.shiftKey);
       else void pay();
     } else if (e.key === "Escape") {
+      if (!searching) setView("nota");
       setQuery("");
       setRowMode(false);
     } else if (!searching && !e.ctrlKey && rowKeys[e.key]) {
@@ -455,8 +456,19 @@ function Register({ catalog }: { catalog: Catalog }) {
       <TopBar
         catalog={catalog}
         nextNumber={nextNumber}
-        customerName={cart.customer?.name ?? "Umum"}
-        onCustomer={() => setDialog("customer")}
+        customer={
+          <CustomerPicker
+            inputRef={customerRef}
+            // A catalog cached by an older version of the app has no customers yet.
+            customers={catalog.customers ?? []}
+            customer={cart.customer ?? null}
+            onPick={(customer) => {
+              dispatch({ type: "customer", customer });
+              if (delivery) setDelivery(withCustomer({ ...delivery, customerName: "", address: "", phone: "" }, customer));
+            }}
+            onDone={focusSearch}
+          />
+        }
         cashierName={me?.name ?? ""}
         outbox={outbox}
         backOffice={me?.role !== "kasir"}
@@ -473,14 +485,9 @@ function Register({ catalog }: { catalog: Catalog }) {
             <Chip onClick={() => window.confirm(`Batalkan revisi ${revising.original.number}?`) && reset()} title="Batalkan revisi" className="border-transparent bg-warn-bg text-warn">
               Revisi <strong className="font-medium">{revising.original.number}</strong> · batal
             </Chip>
-          ) : (
-            activeDraft && (
-              <Chip>
-                Nota sementara <strong className="font-medium text-ink">{activeDraft.number}</strong>
-              </Chip>
-            )
-          )
+          ) : null
         }
+        activeDraft={activeDraft?.number ?? null}
       />
       <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_380px] gap-2.5 px-2.5 pb-2.5 max-md:grid-cols-1">
         <section className="flex min-h-0 flex-col rounded-[14px] border border-line bg-panel max-md:min-h-[45dvh]">
@@ -494,10 +501,32 @@ function Register({ catalog }: { catalog: Catalog }) {
               setHighlight(0);
             }}
             onKeyDown={onSearchKey}
+            dropdown={view === "nota"}
             onPick={(p) => {
               dispatch({ type: "add", product: p });
               setQuery("");
             }}
+            view={
+              <div role="tablist" aria-label="Tampilan" className="flex shrink-0 rounded-lg bg-line-2 p-0.5">
+                {(["nota", "produk"] as const).map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    role="tab"
+                    aria-selected={view === v}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      setView(v);
+                      setHighlight(0);
+                      setQuery("");
+                    }}
+                    className={cx("rounded-md px-3 py-1.5 text-muted", view === v && "bg-panel font-medium text-ink shadow-sm")}
+                  >
+                    {v === "nota" ? `Nota${cart.lines.length ? ` · ${cart.lines.length}` : ""}` : "Produk"}
+                  </button>
+                ))}
+              </div>
+            }
             onBlur={() =>
               // Always focused: give focus back unless it moved to another control on purpose.
               // Not on touch screens, where refocusing would keep reopening the on-screen keyboard.
@@ -506,20 +535,22 @@ function Register({ catalog }: { catalog: Catalog }) {
               })
             }
           />
+          {view === "produk" ? (
+            <ProductList
+              products={results}
+              highlight={highlight}
+              inCart={cart.lines.reduce((m, l) => m.set(l.productId, (m.get(l.productId) ?? 0) + l.qty), new Map<string, number>())}
+              onPick={(p) => dispatch({ type: "add", product: p })}
+            />
+          ) : (
           <CartTable
             cart={cart}
             lineTotals={computed.ok ? totals.lineTotals : []}
             dispatch={dispatch}
-            onPrice={() => setDialog("price")}
-            onDiscount={() => setDialog("lineDiscount")}
-            onNote={() => setDialog("note")}
             onCancel={cancelSale}
-            qtyEdit={qtyEdit}
-            onQtyEditDone={() => {
-              setQtyEdit(null);
-              focusSearch();
-            }}
+            onDone={focusSearch}
           />
+          )}
         </section>
         <aside className="flex min-h-0 flex-col overflow-y-auto rounded-[14px] border border-line bg-panel max-md:overflow-visible">
           <PayPanel
@@ -544,49 +575,6 @@ function Register({ catalog }: { catalog: Catalog }) {
           />
         </aside>
       </div>
-      {dialog === "customer" && (
-        <CustomerDialog
-          // A catalog cached by an older version of the app has no customers yet.
-          customers={catalog.customers ?? []}
-          onClose={focusSearch}
-          onSave={(customer) => {
-            dispatch({ type: "customer", customer });
-            if (delivery) setDelivery(withCustomer({ ...delivery, customerName: "", address: "", phone: "" }, customer));
-            focusSearch();
-          }}
-        />
-      )}
-      {dialog === "lineDiscount" && line && (
-        <LineDiscountDialog
-          line={line}
-          onClose={focusSearch}
-          onSave={(amount) => {
-            dispatch({ type: "discount", index: cart.selected, amount });
-            focusSearch();
-          }}
-        />
-      )}
-      {dialog === "price" && line && (
-        <PriceDialog
-          line={line}
-          onClose={focusSearch}
-          onSave={(unitPrice, note) => {
-            dispatch({ type: "price", index: cart.selected, unitPrice });
-            dispatch({ type: "note", index: cart.selected, note });
-            focusSearch();
-          }}
-        />
-      )}
-      {dialog === "note" && line && (
-        <NoteDialog
-          line={line}
-          onClose={focusSearch}
-          onSave={(note) => {
-            dispatch({ type: "note", index: cart.selected, note });
-            focusSearch();
-          }}
-        />
-      )}
       {dialog === "txDiscount" && (
         <TxDiscountDialog
           discount={cart.discount}
@@ -643,8 +631,7 @@ function Register({ catalog }: { catalog: Catalog }) {
 function TopBar({
   catalog,
   nextNumber,
-  customerName,
-  onCustomer,
+  customer,
   cashierName,
   outbox,
   backOffice,
@@ -657,11 +644,12 @@ function TopBar({
   draftCount,
   onDrafts,
   mode,
+  activeDraft,
 }: {
   catalog: Catalog;
   nextNumber: string;
-  customerName: string;
-  onCustomer: () => void;
+  /** The customer picker, typed into in place. */
+  customer: ReactNode;
   cashierName: string;
   outbox: OutboxSnapshot;
   backOffice: boolean;
@@ -674,8 +662,10 @@ function TopBar({
   /** Open nota sementara on the server; null offline. */
   draftCount: number | null;
   onDrafts: () => void;
-  /** What the cart holds besides a new sale: a loaded nota sementara or a revisi. */
+  /** A revisi in progress, shown after the actions. */
   mode: ReactNode;
+  /** Number of the nota sementara loaded in the cart: the drafts chip shows it instead of the count. */
+  activeDraft: string | null;
 }) {
   const logout = useLogout();
   const initials = catalog.shop.shopName
@@ -698,11 +688,14 @@ function TopBar({
       <Chip>
         No. <strong className="font-medium text-ink tabular-nums">{nextNumber}</strong>
       </Chip>
-      <Chip onClick={onCustomer} title="Ganti pelanggan">
-        Pelanggan <strong className="font-medium text-ink">{customerName}</strong>
-      </Chip>
-      <Chip onClick={onDrafts} title="Nota sementara">
-        Nota sementara{draftCount ? <strong className="font-medium text-ink">{draftCount}</strong> : null}
+      {customer}
+      <Chip onClick={onDrafts} title="Nota sementara" className={cx(activeDraft && "border-ink text-ink")}>
+        Nota sementara
+        {activeDraft ? (
+          <strong className="font-medium text-ink tabular-nums">{activeDraft}</strong>
+        ) : draftCount ? (
+          <strong className="font-medium text-ink">{draftCount}</strong>
+        ) : null}
       </Chip>
       <Link to="/kasir/antar" title="Antrian Antar" aria-label="Antrian Antar" className="flex items-center gap-1.5 rounded-full border border-line bg-panel px-2.5 py-1 text-ink-2 hover:text-ink">
         <Truck className="size-3.5" />

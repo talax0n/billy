@@ -24,15 +24,16 @@ import { ActionLink, ActionStatus, actionDescription, linkButton } from "./actio
 
 type Dashboard = InferResponseType<typeof api.insights.dashboard.$get, 200>;
 const card = "min-w-0 rounded-xl border border-line px-5 py-[18px] [&_h2]:text-sm [&_h2]:font-medium";
-const bigValue = "mt-2 mb-1 text-[27px] font-medium tracking-[-0.02em] tabular-nums max-[1200px]:text-[23px]";
+const bigValue = "mt-2 mb-1 text-[24px] font-medium tracking-[-0.02em] tabular-nums max-[1500px]:text-[21px] max-[1200px]:text-[18px] max-[900px]:text-[21px]";
 const short = (n: number) => formatRupiah(rupiah(n), { compact: true });
-/** Compact amount with the decimals and unit dimmed: `Rp 51,5 jt`. */
-function ShortMoney({ value }: { value: number }) {
-  const [, main, rest] = /^(.*?)((?:,\d+)?(?: jt| M)?)$/.exec(short(value))!;
+/** Exact amount, `Rp` dimmed: owners reconcile to the rupiah, so never round. */
+function Money({ value }: { value: number }) {
+  const full = formatRupiah(rupiah(value));
+  const at = full.indexOf("Rp") + 2;
   return (
-    <span title={formatRupiah(rupiah(value))}>
-      {main}
-      <span className="text-faint">{rest}</span>
+    <span className="whitespace-nowrap">
+      <span className="text-faint">{full.slice(0, at)}</span>
+      {full.slice(at)}
     </span>
   );
 }
@@ -241,7 +242,7 @@ export function DashboardPage() {
                   <section aria-label={kpi.title}>
                     <h2 className="text-ink-2">{kpi.title}</h2>
                     <div className={bigValue}>
-                      <ShortMoney value={kpi.value} />
+                      <Money value={kpi.value} />
                     </div>
                     <p className="sr-only">{kpi.note}</p>
                     {kpi.share !== null && (
@@ -283,7 +284,7 @@ export function DashboardPage() {
                 <section className={card}>
                   <h2>Saldo per akun</h2>
                   <div className={bigValue}>
-                    <ShortMoney
+                    <Money
                       value={data.balances.reduce((n, a) => n + a.balance, 0)}
                     />
                   </div>
