@@ -4,10 +4,14 @@ import { and, eq, gt } from "drizzle-orm";
 import { z } from "zod";
 import type { Actor } from "../../env.ts";
 import type { StockAgentImage, StockAgentInput } from "./agent.ts";
+import { cleanReply, formatDeliveries, formatReceivables, formatSummary, HELP, menuAction, menuKeyboard, optionButtons, type ReplyMarkup, STOCK_PROMPT } from "./bot-format.ts";
+import { dailySummary, deliveriesToday, receivables } from "./query-tools.ts";
 
-/** How the bot reaches the outside: Telegram for replies, Claude for the stock agent. Tests pass fakes. */
+/** How the bot reaches the outside: Telegram for replies, ChatGPT for the stock agent. Tests pass fakes. */
 export interface BotDeps {
-  send: (chatId: string, text: string) => Promise<void>;
+  send: (chatId: string, text: string, markup?: ReplyMarkup) => Promise<void>;
+  /** Stops the spinner on a tapped button. */
+  answerCallback: (callbackId: string) => Promise<void>;
   typing: (chatId: string) => Promise<void>;
   agent: (input: StockAgentInput) => Promise<string>;
   /** Fetches a photo or image file the user sent, as base64 for Claude. */
@@ -37,6 +41,8 @@ export const telegramUpdate = z.object({
       document: z.object({ file_id: z.string(), mime_type: z.string().optional(), file_size: z.number().optional() }).optional(),
     })
     .optional(),
+  /** A tap on a button under a message; `data` is `pilih:<n>` for a numbered option. */
+  callback_query: z.object({ id: z.string(), data: z.string().optional(), message: z.object({ chat: z.object({ id: z.number().int() }) }).optional() }).optional(),
 });
 export type TelegramUpdate = z.infer<typeof telegramUpdate>;
 
@@ -59,33 +65,44 @@ async function link(db: Db, chatId: string, code: string) {
     await tx.delete(telegramChats).where(eq(telegramChats.userId, found.userId));
     await tx.delete(telegramChats).where(eq(telegramChats.chatId, chatId));
     await tx.insert(telegramChats).values({ chatId, userId: found.userId });
-    const [user] = await tx.select({ name: users.name }).from(users).where(eq(users.id, found.userId));
-    return user!.name;
+    const [user] = await tx.select({ name: users.name, role: users.role }).from(users).where(eq(users.id, found.userId));
+    return user!;
   });
 }
 
-const HELP =
-  "Bot ini mencatat sisa stok dari laporan SPB ke draf stok opname di billy.\n\nHubungkan dulu: buka billy, Pengaturan, Telegram, lalu kirim kode yang muncul di sana, misalnya: /start ABCD2345";
+const NOT_LINKED = "Hubungkan dulu: buka billy, menu Bot Telegram, lalu kirim kode yang muncul di sana, misalnya /start ABCD2345";
+
+/** What one update asks: its chat, its text (a tapped option becomes its number), an image, a tapped button's id. */
+function readUpdate(update: TelegramUpdate) {
+  const tap = update.callback_query;
+  if (tap?.message) {
+    const option = /^pilih:(\d+)$/.exec(tap.data ?? "");
+    return { chatId: String(tap.message.chat.id), text: option ? option[1]! : "", image: null, callbackId: tap.id };
+  }
+  const message = update.message;
+  if (!message) return null;
+  return { chatId: String(message.chat.id), text: (message.text ?? message.caption ?? "").trim(), image: imageOf(message), callbackId: null };
+}
 
 /**
- * Handles one Telegram update: links a chat with `/start <code>`, otherwise hands a linked admin's or
- * staff's message to the stock agent and sends its reply. An update seen before is skipped, because
- * Telegram resends updates it thinks failed.
+ * Handles one Telegram update: links a chat with `/start <code>`, answers the menu buttons straight from
+ * billy, and hands anything else from a linked admin or staff to the stock agent. A reply that offers
+ * numbered options gets one button per option. An update seen before is skipped, because Telegram
+ * resends updates it thinks failed.
  */
 export async function handleUpdate(db: Db, update: TelegramUpdate, deps: BotDeps) {
   const [fresh] = await db.insert(telegramUpdates).values({ updateId: update.update_id }).onConflictDoNothing().returning();
-  const message = update.message;
-  if (!fresh || !message) return;
-  const text = (message.text ?? message.caption ?? "").trim();
-  const image = imageOf(message);
+  const incoming = fresh ? readUpdate(update) : null;
+  if (!incoming) return;
+  const { chatId, text, image, callbackId } = incoming;
+  if (callbackId) await deps.answerCallback(callbackId).catch(() => undefined);
   if (!text && !image) return;
-  const chatId = String(message.chat.id);
 
-  const start = /^\/start(?:@\w+)?(?:\s+(\S+))?$/i.exec(text);
+  const start = /^\/start(?:@\w+)?\s+(\S+)$/i.exec(text);
   if (start) {
-    const name = start[1] ? await link(db, chatId, start[1]) : null;
-    if (start[1] && !name) return deps.send(chatId, "Kode tidak dikenal atau sudah kedaluwarsa. Buat kode baru di billy, Pengaturan, Telegram.");
-    return deps.send(chatId, name ? `Terhubung sebagai ${name}. Teruskan laporan SPB ke sini, misalnya:\nDulux weathershield base A galon sisa 6, pentalite base B pail 3` : HELP);
+    const user = await link(db, chatId, start[1]!);
+    if (!user) return deps.send(chatId, "Kode tidak dikenal atau sudah kedaluwarsa. Buat kode baru di billy, menu Bot Telegram.");
+    return deps.send(chatId, `Terhubung sebagai ${user.name}.\n\n${HELP}`, menuKeyboard(user.role));
   }
 
   const [chat] = await db
@@ -93,23 +110,43 @@ export async function handleUpdate(db: Db, update: TelegramUpdate, deps: BotDeps
     .from(telegramChats)
     .innerJoin(users, eq(users.id, telegramChats.userId))
     .where(eq(telegramChats.chatId, chatId));
-  if (!chat || !chat.active) return deps.send(chatId, HELP);
-  if (chat.role === "kasir") return deps.send(chatId, "Akun kasir tidak bisa mencatat stok opname. Minta admin atau staf kantor.");
+  if (!chat || !chat.active) return deps.send(chatId, NOT_LINKED);
+  if (chat.role === "kasir") return deps.send(chatId, "Akun kasir tidak bisa memakai bot ini.");
 
-  if (image && "tooBig" in image) return deps.send(chatId, "Gambarnya terlalu besar (maksimal 5 MB). Kirim sebagai foto biasa, bukan file.");
+  const respond = async (reply: string, markup?: ReplyMarkup) => {
+    await db.update(telegramChats).set({ lastReply: reply }).where(eq(telegramChats.chatId, chatId));
+    await deps.send(chatId, reply.slice(0, MAX_REPLY), markup ?? optionButtons(reply) ?? undefined);
+  };
+
+  // `/start` without a code and `/menu` bring the menu back for a linked chat.
+  switch (/^\/(start|menu)(@\w+)?$/i.test(text) ? "help" : menuAction(text)) {
+    case "help":
+      return respond(HELP, menuKeyboard(chat.role));
+    case "stock":
+      return respond(STOCK_PROMPT);
+    case "receivables":
+      return respond(formatReceivables(await receivables(db)));
+    case "deliveries":
+      return respond(formatDeliveries(await deliveriesToday(db)));
+    case "summary":
+      return respond(chat.role === "admin" ? formatSummary(await dailySummary(db, chat.role)) : "Ringkasan hanya untuk admin.");
+    case null:
+      break;
+  }
+
+  if (image && "tooBig" in image) return deps.send(chatId, "Gambar terlalu besar (maks 5 MB). Kirim sebagai foto biasa.");
 
   const actor: Actor = { id: chat.userId, role: chat.role, source: "telegram" };
   await deps.typing(chatId).catch(() => undefined);
   let reply: string;
   try {
     const images = image ? [await deps.download(image.fileId, image.mediaType)] : [];
-    reply = (await deps.agent({ db, actor, text, lastReply: chat.lastReply, images })).slice(0, MAX_REPLY);
+    reply = cleanReply(await deps.agent({ db, actor, text, lastReply: chat.lastReply, images }));
   } catch (err) {
     console.error("telegram stock agent failed", err);
-    reply = "Maaf, sistem sedang bermasalah dan laporan ini belum tercatat. Coba kirim lagi sebentar lagi.";
+    reply = "Sistem sedang bermasalah, laporan ini belum tercatat. Coba kirim lagi sebentar lagi.";
   }
-  await db.update(telegramChats).set({ lastReply: reply }).where(eq(telegramChats.chatId, chatId));
-  await deps.send(chatId, reply);
+  await respond(reply);
 }
 
 type IncomingMessage = NonNullable<TelegramUpdate["message"]>;

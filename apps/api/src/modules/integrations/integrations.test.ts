@@ -120,11 +120,14 @@ describe("connections set in the web", () => {
 
   it("points Telegram at the webhook with a fresh secret, https only", async () => {
     vi.stubEnv("BILLY_SECRET_KEY", "kunci-uji");
-    const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ ok: true, result: true })));
+    const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(JSON.stringify({ ok: true, result: true })));
     const webhook = (url: string) => call("/api/integrations/telegram/webhook", { method: "PUT", cookie: admin, body: { url } });
     expect((await webhook("http://localhost:8787/api/telegram/webhook")).status).toBe(422);
     expect((await webhook("https://billy.example.com/api/telegram/webhook")).status).toBe(200);
-    const body = JSON.parse(String(fetch.mock.calls.at(-1)![1]!.body)) as { url: string; secret_token: string };
+    const setWebhook = fetch.mock.calls.find(([url]) => String(url).endsWith("/setWebhook"))!;
+    const body = JSON.parse(String(setWebhook[1]!.body)) as { url: string; secret_token: string; allowed_updates: string[] };
+    expect(body.allowed_updates).toEqual(["message", "callback_query"]);
+    expect(fetch.mock.calls.some(([url]) => String(url).endsWith("/setMyCommands"))).toBe(true);
     expect(body.url).toBe("https://billy.example.com/api/telegram/webhook");
     expect((await loadIntegrations(db)).telegram.webhookSecret).toBe(body.secret_token);
   });

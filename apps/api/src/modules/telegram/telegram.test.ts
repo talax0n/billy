@@ -126,13 +126,24 @@ describe("the bot's read-only answers", () => {
 
 describe("the Telegram bot", () => {
   const sent: [string, string][] = [];
+  const markups: unknown[] = [];
   const agent = vi.fn<BotDeps["agent"]>(async () => "✓ WEATHERSHIELD BASE A GALON: 6\nMasuk draf OP-1");
   const download = vi.fn<BotDeps["download"]>(async (fileId, mediaType) => ({ mediaType, data: `base64-of-${fileId}` }));
-  const deps: BotDeps = { send: async (chatId, text) => void sent.push([chatId, text]), typing: async () => undefined, agent, download };
+  const deps: BotDeps = {
+    send: async (chatId, text, markup) => {
+      sent.push([chatId, text]);
+      markups.push(markup);
+    },
+    answerCallback: async () => undefined,
+    typing: async () => undefined,
+    agent,
+    download,
+  };
   let updateId = 1000;
   const message = (chatId: number, text: string) => handleUpdate(db, { update_id: updateId++, message: { chat: { id: chatId }, text } }, deps);
   afterEach(() => {
     sent.length = 0;
+    markups.length = 0;
     agent.mockClear();
     download.mockClear();
   });
@@ -148,6 +159,7 @@ describe("the Telegram bot", () => {
     const { code } = await createLinkCode(db, staffId);
     await message(11, `/start ${code.toLowerCase()}`);
     expect(sent[2]).toEqual(["11", expect.stringContaining("Terhubung sebagai Uji staff")]);
+    expect(markups[2]).toMatchObject({ keyboard: expect.any(Array), is_persistent: true });
     await message(12, `/start ${code}`);
     expect(sent[3]![1]).toContain("Kode tidak dikenal");
   });
@@ -184,6 +196,32 @@ describe("the Telegram bot", () => {
     expect(sent.at(-1)![1]).toContain("terlalu besar");
     await doc("application/pdf", 1000);
     expect(agent).toHaveBeenCalledTimes(1);
+  });
+
+  it("brings the menu back with /start or /menu once linked", async () => {
+    await message(11, "/start");
+    await message(11, "/menu");
+    expect(sent.map(([, text]) => text.split("\n")[0])).toEqual(["Lapor sisa stok dari SPB, misalnya:", "Lapor sisa stok dari SPB, misalnya:"]);
+    expect(markups[1]).toMatchObject({ is_persistent: true });
+  });
+
+  it("answers menu buttons straight from billy, without the AI", async () => {
+    await message(11, "🚚 Antaran");
+    await message(11, "🧾 Piutang");
+    await message(11, "📊 Ringkasan");
+    await message(11, "📦 Cek stok");
+    expect(agent).not.toHaveBeenCalled();
+    expect(sent.map(([, text]) => text.split("\n")[0])).toEqual(["Tidak ada antaran hari ini.", expect.stringMatching(/^(Piutang Rp|Tidak ada piutang)/), "Ringkasan hanya untuk admin.", expect.stringContaining("Ketik nama barang")]);
+  });
+
+  it("puts a button under each numbered option, and a tap answers like typing the number", async () => {
+    agent.mockResolvedValueOnce("**Catylac glow 3, yang mana?**\n1. CATYLAC GLOW BASE A GALON\n2. CATYLAC GLOW BASE B GALON");
+    await message(11, "catylac glow sisa 3");
+    expect(sent[0]![1]).toBe("Catylac glow 3, yang mana?\n1. CATYLAC GLOW BASE A GALON\n2. CATYLAC GLOW BASE B GALON");
+    expect(markups[0]).toMatchObject({ inline_keyboard: [[{ callback_data: "pilih:1" }], [{ callback_data: "pilih:2" }]] });
+
+    await handleUpdate(db, { update_id: updateId++, callback_query: { id: "tap-1", data: "pilih:2", message: { chat: { id: 11 } } } }, deps);
+    expect(agent.mock.calls[1]![0]).toMatchObject({ text: "2", lastReply: expect.stringContaining("yang mana?") });
   });
 
   it("handles an update Telegram resends only once", async () => {

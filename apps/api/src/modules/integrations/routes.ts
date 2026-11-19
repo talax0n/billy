@@ -8,7 +8,7 @@ import { audit } from "../../lib/audit.ts";
 import { authorizeUrl, awaitCallback, ChatgptSignInRequired, decodeSessionCode, exchangeCode, newAttempt, refreshSession } from "../../lib/chatgpt-oauth.ts";
 import { hint, open, seal } from "../../lib/secret-box.ts";
 import { validate } from "../../lib/validate.ts";
-import { telegramCall } from "../telegram/telegram-api.ts";
+import { registerCommands, telegramCall } from "../telegram/telegram-api.ts";
 import { aiBearer, chatgptHostId, loadIntegrations, saveChatgptSession, storedIntegrations } from "./config.ts";
 
 /** Where a secret in effect comes from: saved in the web, an environment variable, or nowhere. */
@@ -161,7 +161,8 @@ export const integrationRoutes = new Hono<AppEnv>()
     if (!url.startsWith("https://")) throw new DomainError("invalid", "Telegram hanya mengirim ke alamat https://");
     const token = await requireToken(c);
     const secret = randomBytes(24).toString("hex");
-    await telegramCall(token, "setWebhook", { url, secret_token: secret, allowed_updates: ["message"] });
+    await telegramCall(token, "setWebhook", { url, secret_token: secret, allowed_updates: ["message", "callback_query"] });
+    await registerCommands(token);
     const sealed = seal(secret);
     await c.var.db
       .insert(integrationSettings)

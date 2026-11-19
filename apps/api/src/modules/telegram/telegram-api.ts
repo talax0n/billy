@@ -32,11 +32,15 @@ export async function telegramCall(token: string, method: string, body: Record<s
   }
 }
 
+/** Lists `/menu` in Telegram's command menu, so the button menu is one tap away even after it is hidden. */
+export const registerCommands = (token: string) => telegramCall(token, "setMyCommands", { commands: [{ command: "menu", description: "Tampilkan menu" }] });
+
 /** The bot's live connections for one update: this token for Telegram, the configured AI for the agent. */
 export function liveBotDeps(integrations: Integrations): BotDeps {
   const token = integrations.telegram.token!;
   return {
-    send: async (chatId, text) => void (await telegramCall(token, "sendMessage", { chat_id: chatId, text })),
+    send: async (chatId, text, markup) => void (await telegramCall(token, "sendMessage", { chat_id: chatId, text, ...(markup && { reply_markup: markup }) })),
+    answerCallback: async (callbackId) => void (await telegramCall(token, "answerCallbackQuery", { callback_query_id: callbackId }, { attempts: 1 })),
     typing: async (chatId) => void (await telegramCall(token, "sendChatAction", { chat_id: chatId, action: "typing" })),
     agent: (input) => runStockAgent(input, integrations.ai),
     download: async (fileId, mediaType) => {
@@ -67,6 +71,7 @@ export async function pollTelegram(db: Db) {
       }
       if (token !== pollingToken) {
         await telegramCall(token, "deleteWebhook", {});
+        await registerCommands(token);
         pollingToken = token;
         offset = 0;
         console.log("Telegram bot: polling for messages");
