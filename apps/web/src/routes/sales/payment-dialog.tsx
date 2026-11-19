@@ -15,7 +15,7 @@ export function PaymentDialog({ invoice, onClose }: { invoice: InvoiceDetail; on
   const outstanding = invoice.state.outstanding;
   const form = useForm(salesPaymentInput, {
     accountId: "",
-    amount: outstanding,
+    amount: 0,
     method: "transfer",
     date: businessDate(),
     proofUrl: "",
