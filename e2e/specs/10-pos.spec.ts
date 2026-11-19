@@ -23,18 +23,20 @@ test("sells online and offline; the offline sale syncs and reaches Riwayat Kasir
   await expect(page.getByTestId("sync-state")).toHaveText("Online");
 
   await page.keyboard.press("F3");
-  const picker = page.getByRole("dialog", { name: "Pelanggan" });
-  await picker.getByLabel("Cari pelanggan").fill("uji");
-  await expect(picker.getByRole("option", { name: /CV Uji Pelanggan/ })).toBeVisible();
-  await picker.getByLabel("Cari pelanggan").press("Enter");
-  await expect(page.getByText("Pelanggan CV Uji Pelanggan")).toBeVisible();
+  const picker = page.getByRole("combobox", { name: "Cari pelanggan" });
+  await expect(picker).toBeFocused();
+  await picker.fill("uji");
+  await expect(page.getByRole("listbox", { name: "Pelanggan" }).getByRole("option", { name: /CV Uji Pelanggan/ })).toBeVisible();
+  await picker.press("Enter");
+  await expect(picker).toHaveValue("CV Uji Pelanggan");
+  await expect(search(page)).toBeFocused();
 
   // 22 opening; 47 = 40 opening + 10 bought − 3 sold on the first invoice.
   await addProduct(page, "kilau enamel putih", "Kilau Enamel Putih 1 L", 22);
   await addProduct(page, "thinner super 1", "Thinner Super 1 L", 47);
   await expect(page.getByText("Total", { exact: true }).locator("..")).toContainText("110.000");
   await search(page).press("Enter");
-  await expect(page.getByText("Pelanggan Umum")).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Cari pelanggan" })).toHaveValue("Umum");
   await expect(page.getByTestId("sync-pending")).toHaveText("");
 
   // The cached stock drops as soon as the sale is made.

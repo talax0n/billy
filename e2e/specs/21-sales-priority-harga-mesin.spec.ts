@@ -69,17 +69,22 @@ test("kasir types the tinting machine price with H, the line keeps its own row a
     await search.press("Enter");
   };
   await addEnamel();
-  await expect(page.getByRole("button", { name: "Ubah harga" })).toBeVisible();
   await search.press("ArrowUp");
   await search.press("h");
 
-  const dialog = page.getByRole("dialog", { name: "Ubah harga (harga mesin)" });
-  await expect(dialog.getByText("Masukkan harga dari mesin tinting")).toBeVisible();
-  await expect(dialog.getByLabel("Harga per item")).toHaveValue("78.000");
-  await dialog.getByLabel("Harga per item").fill("245500");
-  await dialog.getByLabel("Kode warna tinting (boleh kosong)").fill("NW-1023 Hijau Daun");
-  await page.screenshot({ path: "test-results/kasir-harga-dialog.png" });
-  await dialog.getByRole("button", { name: "Simpan harga" }).click();
+  const price = page.getByLabel("Harga baris 1");
+  await expect(price).toBeFocused();
+  await expect(price).toHaveValue("78.000");
+  await price.fill("245500");
+  await expect(price).toHaveValue("245.500");
+  await price.press("Enter");
+  await expect(search).toBeFocused();
+  await search.press("n");
+  await expect(page.getByLabel("Kode warna tinting")).toBeFocused();
+  await page.getByLabel("Kode warna tinting").fill("NW-1023 Hijau Daun");
+  await page.screenshot({ path: "test-results/kasir-harga-cell.png" });
+  await page.getByLabel("Kode warna tinting").press("Enter");
+  await expect(search).toBeFocused();
 
   const lines = page.getByRole("row").filter({ hasText: "Kilau Enamel Putih" });
   await expect(lines.first()).toContainText("Harga mesin");

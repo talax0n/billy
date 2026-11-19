@@ -49,7 +49,7 @@ test("a nota sementara is saved on one device, printed, opened and paid on anoth
   const admin = await atKasir(browser, ADMIN);
   dialog = await draftsDialog(admin);
   await dialog.getByRole("button", { name: `Buka ${first}` }).click();
-  await expect(admin.getByText(`Nota sementara ${first}`)).toBeVisible();
+  await expect(admin.getByRole("button", { name: /^Nota sementara/ }).first()).toHaveText(`Nota sementara${first}`);
   await expect(admin.getByTestId("pos-total")).toContainText("32.000");
   await admin.getByRole("button", { name: "Uang pas" }).click();
   await admin.getByRole("button", { name: /Bayar & cetak struk/ }).click();
