@@ -38,11 +38,15 @@ export const liveBotDeps: BotDeps = {
  * the production bot's token.
  */
 export async function pollTelegram(db: Db) {
-  await call("deleteWebhook", {});
   let offset = 0;
-  console.log("Telegram bot: polling for messages");
+  let webhookCleared = false;
   for (;;) {
     try {
+      if (!webhookCleared) {
+        await call("deleteWebhook", {});
+        webhookCleared = true;
+        console.log("Telegram bot: polling for messages");
+      }
       const updates = (await call("getUpdates", { offset, timeout: 30 })) as { update_id: number }[];
       for (const raw of updates) {
         offset = raw.update_id + 1;

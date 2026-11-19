@@ -18,7 +18,11 @@
         "PGLITE_DIR",
         "DATABASE_URL",
         "SEED_ADMIN_PASSWORD",
-        "PORT"
+        "PORT",
+        "TELEGRAM_BOT_TOKEN",
+        "TELEGRAM_BOT_USERNAME",
+        "TELEGRAM_WEBHOOK_SECRET",
+        "ANTHROPIC_API_KEY"
       ]
     }
   }
