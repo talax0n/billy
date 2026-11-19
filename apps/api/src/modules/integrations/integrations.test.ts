@@ -4,6 +4,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { type ChatgptSession, ChatgptSignInRequired, encodeSessionCode } from "../../lib/chatgpt-oauth.ts";
 import { createTestApp } from "../../testing.ts";
 import { aiBearer, loadIntegrations, saveChatgptSession } from "./config.ts";
+import { webhookUrl } from "./routes.ts";
 
 const { call, signIn, db } = await createTestApp();
 let admin: string;
@@ -126,6 +127,12 @@ describe("connections set in the web", () => {
 
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ ok: false, description: "Unauthorized" })));
     expect((await put({ aiModel: "", telegramBotToken: "987654321:AAH-token-yang-salah-sekali-x" })).status).toBe(422);
+  });
+
+  it("suggests this API's webhook address over https when behind a proxy", () => {
+    expect(webhookUrl("http://billy-api-ashy.vercel.app/api/integrations", "https")).toBe("https://billy-api-ashy.vercel.app/api/telegram/webhook");
+    expect(webhookUrl("http://billy-api-ashy.vercel.app/api/integrations")).toBe("https://billy-api-ashy.vercel.app/api/telegram/webhook");
+    expect(webhookUrl("http://localhost:8787/api/integrations")).toBe("http://localhost:8787/api/telegram/webhook");
   });
 
   it("points Telegram at the webhook with a fresh secret, https only", async () => {

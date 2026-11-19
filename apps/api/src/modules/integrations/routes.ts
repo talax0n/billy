@@ -11,6 +11,17 @@ import { validate } from "../../lib/validate.ts";
 import { registerCommands, telegramCall } from "../telegram/telegram-api.ts";
 import { aiBearer, chatgptHostId, loadIntegrations, saveChatgptSession, storedIntegrations } from "./config.ts";
 
+/**
+ * This API's own webhook address. Behind Vercel the request arrives as http (TLS ends in front of it),
+ * so the protocol comes from x-forwarded-proto; a non-local host without that header is assumed https.
+ */
+export function webhookUrl(requestUrl: string, forwardedProto?: string) {
+  const url = new URL(requestUrl);
+  const local = ["localhost", "127.0.0.1"].includes(url.hostname);
+  const protocol = forwardedProto?.split(",")[0]?.trim() || (local ? "http" : "https");
+  return `${protocol}://${url.host}/api/telegram/webhook`;
+}
+
 /** Where a secret in effect comes from: saved in the web, an environment variable, or nowhere. */
 const source = (saved: string | null, inEffect: string | null): "web" | "env" | null => (open(saved) ? "web" : inEffect ? "env" : null);
 
@@ -85,7 +96,7 @@ export const integrationRoutes = new Hono<AppEnv>()
       },
       canStoreSecrets: Boolean(process.env.BILLY_SECRET_KEY),
       canSignInHere: canSignInHere(),
-      suggestedWebhookUrl: `${new URL(c.req.url).origin}/api/telegram/webhook`,
+      suggestedWebhookUrl: webhookUrl(c.req.url, c.req.header("x-forwarded-proto")),
     });
   })
   .put("/", validate("json", integrationsInput), async (c) => {
