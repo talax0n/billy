@@ -1,9 +1,11 @@
-import { auditEvents, categories, products, settings, stockOpnames, users } from "@billy/db";
+import { accounts, auditEvents, categories, contacts, products, settings, stockMovements, stockOpnames, users } from "@billy/db";
+import { rupiah } from "@billy/core";
 import { and, eq, like } from "drizzle-orm";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { createTestApp } from "../../testing.ts";
 import type { Actor } from "../../env.ts";
 import { type BotDeps, createLinkCode, handleUpdate } from "./bot.ts";
+import { dailySummary, deliveriesToday, receivables, stockHistory, stockLookup } from "./query-tools.ts";
 import { clearCounts, draftsSummary, findProducts, recordCounts } from "./stock-tools.ts";
 
 const { app, call, signIn, db } = await createTestApp();
@@ -75,15 +77,64 @@ describe("the stock bot's tools", () => {
   });
 });
 
+describe("the bot's read-only answers", () => {
+  it("shows current stock of the closest products, with the cost price for admin only", async () => {
+    await db.insert(stockMovements).values({
+      productId: ids["WEATHERSHIELD BASE A GALON"]!,
+      date: "2026-11-01",
+      qty: 12,
+      reason: "adjustment",
+      unitCost: rupiah(0),
+      createdBy: staffId,
+      note: "stok awal",
+    });
+    const [staffView] = await stockLookup(db, "staff", "weathershield base a galon");
+    expect(staffView).toMatchObject({ nama: "WEATHERSHIELD BASE A GALON", stok: 12 });
+    expect(staffView).not.toHaveProperty("harga_modal");
+    const [adminView] = await stockLookup(db, "admin", "weathershield base a galon", dulux);
+    expect(adminView).toHaveProperty("harga_modal");
+  });
+
+  it("lists a product's movements newest first with the stock after each", async () => {
+    const history = await stockHistory(db, ids["WEATHERSHIELD BASE A GALON"]!);
+    expect(history[0]).toMatchObject({ tanggal: "2026-11-01", jumlah: 12, jenis: "penyesuaian/opname", catatan: "stok awal", stok_setelah: 12 });
+    await expect(stockHistory(db, "00000000-0000-7000-8000-000000000000")).rejects.toThrow("Barang tidak ditemukan");
+  });
+
+  it("shows piutang per customer and the faktur of one customer", async () => {
+    await db.insert(accounts).values({ code: "KAS", name: "Kas Toko", kind: "cash" });
+    const [toko] = await db.insert(contacts).values({ code: "P-001", name: "Toko Bangun Jaya", kind: "customer", paymentTermsDays: 30 }).returning();
+    const res = await call("/api/sales", {
+      method: "POST",
+      cookie: staff,
+      body: { customerId: toko!.id, date: "2026-11-01", termsDays: 7, discountKind: "percent", discountValue: 0, note: "", lines: [{ productId: ids["PENTALITE BASE B PAIL"]!, qty: 2, unitPrice: 50_000 }] },
+    });
+    expect(res.status).toBe(201);
+    expect(await receivables(db)).toMatchObject({ total_piutang: 100_000, pelanggan: [{ pelanggan: "Toko Bangun Jaya", total: 100_000, jumlah_faktur: 1 }] });
+    expect((await receivables(db, "bangun")).pelanggan).toEqual([
+      { pelanggan: "Toko Bangun Jaya", total: 100_000, faktur: [expect.objectContaining({ tanggal: "2026-11-01", jatuh_tempo: "2026-11-08", sisa: 100_000 })] },
+    ]);
+    expect((await receivables(db, "tidak ada")).pelanggan).toEqual([]);
+  });
+
+  it("lists today's deliveries, and keeps the money summary for admin", async () => {
+    expect(await deliveriesToday(db)).toEqual([]);
+    await expect(dailySummary(db, "staff")).rejects.toThrow("hanya untuk admin");
+    expect(await dailySummary(db, "admin")).toMatchObject({ penjualan: expect.any(Number), saldo: [{ akun: "Kas Toko" }] });
+  });
+});
+
 describe("the Telegram bot", () => {
   const sent: [string, string][] = [];
   const agent = vi.fn<BotDeps["agent"]>(async () => "✓ WEATHERSHIELD BASE A GALON: 6\nMasuk draf OP-1");
-  const deps: BotDeps = { send: async (chatId, text) => void sent.push([chatId, text]), typing: async () => undefined, agent };
+  const download = vi.fn<BotDeps["download"]>(async (fileId, mediaType) => ({ mediaType, data: `base64-of-${fileId}` }));
+  const deps: BotDeps = { send: async (chatId, text) => void sent.push([chatId, text]), typing: async () => undefined, agent, download };
   let updateId = 1000;
   const message = (chatId: number, text: string) => handleUpdate(db, { update_id: updateId++, message: { chat: { id: chatId }, text } }, deps);
   afterEach(() => {
     sent.length = 0;
     agent.mockClear();
+    download.mockClear();
   });
 
   it("asks an unknown chat to link first, and links it with a fresh code", async () => {
@@ -109,6 +160,30 @@ describe("the Telegram bot", () => {
       ["1", "✓ WEATHERSHIELD BASE A GALON: 6\nMasuk draf OP-1", { id: staffId, role: "staff", source: "telegram" }],
     ]);
     expect(sent.map(([, text]) => text)).toEqual(["✓ WEATHERSHIELD BASE A GALON: 6\nMasuk draf OP-1", "✓ WEATHERSHIELD BASE A GALON: 6\nMasuk draf OP-1"]);
+  });
+
+  it("reads the largest size of a photo, with its caption as the message", async () => {
+    await handleUpdate(
+      db,
+      {
+        update_id: updateId++,
+        message: { chat: { id: 11 }, caption: "SPB dulux", photo: [{ file_id: "kecil", file_size: 900 }, { file_id: "besar", file_size: 90_000 }] },
+      },
+      deps,
+    );
+    expect(download).toHaveBeenCalledWith("besar", "image/jpeg");
+    expect(agent.mock.calls[0]![0]).toMatchObject({ text: "SPB dulux", images: [{ mediaType: "image/jpeg", data: "base64-of-besar" }] });
+  });
+
+  it("takes an image sent as a file, refuses one too big, and ignores other files", async () => {
+    const doc = (mime_type: string, file_size: number) =>
+      handleUpdate(db, { update_id: updateId++, message: { chat: { id: 11 }, document: { file_id: "dok", mime_type, file_size } } }, deps);
+    await doc("image/png", 200_000);
+    expect(agent.mock.calls[0]![0]).toMatchObject({ text: "", images: [{ mediaType: "image/png" }] });
+    await doc("image/jpeg", 8 * 1024 * 1024);
+    expect(sent.at(-1)![1]).toContain("terlalu besar");
+    await doc("application/pdf", 1000);
+    expect(agent).toHaveBeenCalledTimes(1);
   });
 
   it("handles an update Telegram resends only once", async () => {

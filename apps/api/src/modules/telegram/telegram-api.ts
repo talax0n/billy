@@ -48,6 +48,12 @@ export const liveBotDeps: BotDeps = {
   send: async (chatId, text) => void (await call("sendMessage", { chat_id: chatId, text })),
   typing: async (chatId) => void (await call("sendChatAction", { chat_id: chatId, action: "typing" })),
   agent: (input) => runStockAgent(input),
+  download: async (fileId, mediaType) => {
+    const file = (await call("getFile", { file_id: fileId })) as { file_path: string };
+    const res = await fetch(`https://api.telegram.org/file/bot${telegramConfig().token}/${file.file_path}`, { signal: AbortSignal.timeout(30_000) });
+    if (!res.ok) throw new Error(`Telegram file download: ${res.status}`);
+    return { mediaType, data: Buffer.from(await res.arrayBuffer()).toString("base64") };
+  },
 };
 
 /**
