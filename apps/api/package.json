@@ -12,6 +12,7 @@
     "seed:demo": "tsx src/modules/insights/seed-demo.ts",
     "import:legacy": "tsx src/legacy-import/import.ts",
     "import:legacy-skipped": "tsx src/legacy-import/import-skipped.ts",
+    "spb:stock": "tsx src/legacy-import/spb-stock.ts",
     "build:vercel": "tsx build-vercel.ts",
     "deploy:db": "tsx src/deploy-db.ts"
   },

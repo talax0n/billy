@@ -46,7 +46,7 @@ const inScope = (opname: Pick<Opname, "status" | "categoryId">) =>
  * Each product of the opname with its system stock (live on a draft, frozen at posting on a
  * posted one), the counted quantity (null when not counted), and the difference valued at cost.
  */
-function opnameLines(db: Db, opname: Opname, search?: SQL) {
+export function opnameLines(db: Db, opname: Opname, search?: SQL) {
   const stock = stockByProduct(db);
   const posted = opname.status === "posted";
   const systemQty = posted ? sql<number>`${stockOpnameLines.systemQty}` : sql<number>`coalesce(${stock.stock}, 0)::int`;
