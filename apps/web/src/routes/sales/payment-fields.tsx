@@ -1,4 +1,5 @@
 import { formatRupiah, paymentMethodLabels, paymentMethods, type PaymentMethod, rupiah } from "@billy/core";
+import { Button } from "../../components/ui/button.tsx";
 import { Field, Input, MoneyInput, Select } from "../../components/ui/field.tsx";
 import { AccountSelect } from "../cash/account-select.tsx";
 
@@ -50,7 +51,14 @@ export function PaymentFields({
         hint={`Sisa tagihan ${formatRupiah(rupiah(outstanding))}`}
         className="col-span-2"
       >
-        {(p) => <MoneyInput {...p} value={values.amount} onChange={(amount) => onChange({ amount })} />}
+        {(p) => (
+          <div className="flex gap-2">
+            <MoneyInput {...p} className="flex-1" value={values.amount} onChange={(amount) => onChange({ amount })} />
+            <Button disabled={!outstanding || values.amount === outstanding} onClick={() => onChange({ amount: outstanding })}>
+              Lunasi semua
+            </Button>
+          </div>
+        )}
       </Field>
       <Field label="Tautan bukti (opsional)" error={error("proofUrl")} className="col-span-2">
         {(p) => (
