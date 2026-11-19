@@ -85,6 +85,13 @@
       "when": 1795103797540,
       "tag": "0011_chatgpt_sign_in",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1795109597041,
+      "tag": "0012_telegram_pending_write",
+      "breakpoints": true
     }
   ]
 }

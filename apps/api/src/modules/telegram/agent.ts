@@ -7,7 +7,8 @@ import type { Actor } from "../../env.ts";
 import { ChatgptSignInRequired } from "../../lib/chatgpt-oauth.ts";
 import { aiBearer, type Integrations } from "../integrations/config.ts";
 import { dailySummary, deliveriesToday, receivables, stockHistory, stockLookup } from "./query-tools.ts";
-import { brandList, clearCounts, draftsSummary, findProducts, recordCounts } from "./stock-tools.ts";
+import { loadPending, pendingSummary, prepareClears, prepareCounts } from "./pending.ts";
+import { brandList, draftsSummary, findProducts } from "./stock-tools.ts";
 
 /** Stable across requests (no dates, no data), so it caches; everything that changes goes in the user message. */
 const SYSTEM = `Kamu asisten toko cat di Telegram untuk admin dan staf kantor. Ada dua jenis pekerjaan.
@@ -15,9 +16,9 @@ const SYSTEM = `Kamu asisten toko cat di Telegram untuk admin dan staf kantor. A
 A. Mencatat laporan SPB (petugas dari pabrik cat) tentang sisa stok fisik di rak, sebagai hitungan di draf stok opname brand itu. Admin memeriksa dan memposting draf di aplikasi billy; kamu tidak pernah mengubah stok langsung.
 1. Tentukan brand dari pesan dan daftar brand di konteks. Kalau brandnya tidak jelas, tanyakan.
 2. Untuk setiap barang yang disebut, panggil cari_barang dengan kata-kata staf (nama, base, warna, ukuran). Ukuran: 2,5 L / 5 KG / galon = GALON; 20 L / 25 KG / pail = PAIL; 1 L / 1 KG = LITER.
-3. Catat dengan catat_hitungan hanya barang yang cocoknya jelas: nama produk, base, warna dan ukuran sama dengan yang disebut. Kumpulkan semua yang jelas dalam satu panggilan.
+3. Siapkan dengan catat_hitungan hanya barang yang cocoknya jelas: nama produk, base, warna dan ukuran sama dengan yang disebut. Kumpulkan semua yang jelas dalam satu panggilan. Alat ini belum menyimpan: billy menampilkan daftarnya sendiri dengan tombol Simpan dan Batal, dan baru tersimpan setelah pengguna menekan Simpan.
 4. Kalau ragu (beberapa kandidat mirip, base atau ukuran tidak disebut, atau tidak ada yang cocok), jangan dicatat. Tanyakan balik dengan pilihan bernomor dari hasil cari_barang.
-5. Koreksi ("yang tadi salah", "harusnya 7"): lihat draf di konteks, lalu catat ulang dengan angka baru (menimpa) atau hapus_hitungan bila barangnya salah.
+5. Koreksi ("yang tadi salah", "harusnya 7"): lihat yang menunggu konfirmasi dan draf di konteks, lalu panggil catat_hitungan lagi dengan angka baru (menimpa) atau hapus_hitungan bila barangnya salah. Daftar konfirmasi diperbarui otomatis.
 6. Foto: kalau ada gambar catatan atau daftar stok dari SPB, baca setiap baris barang dan angkanya, lalu perlakukan seperti laporan teks. Baris yang tulisannya tidak terbaca jangan ditebak; sebutkan dan tanyakan.
 7. Jangan mengarang angka. Hanya bilangan bulat 0 atau lebih.
 
@@ -36,10 +37,7 @@ Gaya balasan: Bahasa Indonesia, teks biasa tanpa markdown, sesingkat mungkin.
 - Jangan ulangi pertanyaan pengguna. Jangan jelaskan cara kerjamu.
 
 Bentuk yang dipakai:
-Hitungan yang dicatat, tanpa baris judul:
-✓ WEATHERSHIELD BASE A GALON: 6
-✓ PENTALITE BASE C PAIL: 4
-Draf OP-261119-0002
+Setelah catat_hitungan atau hapus_hitungan: jangan tulis ulang daftar barangnya dan jangan bilang sudah tersimpan, karena billy menampilkan daftar dan tombol Simpan sendiri. Tulis hanya hal lain yang perlu (pertanyaan untuk barang yang ragu), atau kosongkan balasan.
 
 Stok, tanpa baris judul (ini stok sistem billy, bukan hitungan rak):
 CATYLAC EXTERIOR BASE A GALON: 55 galon
@@ -66,6 +64,8 @@ export interface StockAgentInput {
   db: Db;
   actor: Actor;
   text: string;
+  /** The Telegram chat, where prepared changes wait for confirmation. */
+  chatId: string;
   lastReply: string;
   images?: StockAgentImage[];
 }
@@ -95,8 +95,8 @@ const tool = <S extends z.ZodObject>(def: { name: string; description: string; i
     },
   }) as unknown as AgentTool;
 
-/** The tools this user may call: recording counts and reading for admin and staff, the money summary for admin only. */
-function agentTools(db: Db, actor: Actor) {
+/** The tools this user may call: preparing counts and reading for admin and staff, the money summary for admin only. Nothing here writes to the stock opname without the user's confirmation. */
+function agentTools(db: Db, actor: Actor, chatId: string) {
   const tools = [
     tool({
       name: "cari_barang",
@@ -111,26 +111,26 @@ function agentTools(db: Db, actor: Actor) {
     tool({
       name: "catat_hitungan",
       description:
-        "Catat sisa stok fisik ke draf opname brand ini (dibuat otomatis bila belum ada). Menimpa hitungan lama barang yang sama. Hanya untuk barang yang cocoknya jelas.",
+        "Siapkan sisa stok fisik untuk draf opname brand ini. BELUM menyimpan: pengguna harus menekan Simpan dulu. Barang yang disiapkan lagi diganti angkanya. Hanya untuk barang yang cocoknya jelas.",
       inputSchema: z.object({
         kategori_id: z.string(),
         barang: z
           .array(z.object({ product_id: z.string().describe("id dari cari_barang"), jumlah: z.number().int().min(0) }))
           .min(1),
       }),
-      run: ({ kategori_id, barang }) =>
-        recordCounts(
-          db,
-          actor,
-          kategori_id,
-          barang.map((b) => ({ productId: b.product_id, qty: b.jumlah })),
-        ),
+      run: async ({ kategori_id, barang }) => {
+        await prepareCounts(db, chatId, kategori_id, barang.map((b) => ({ productId: b.product_id, qty: b.jumlah })));
+        return "Disiapkan, belum disimpan. Billy menampilkan daftar dengan tombol Simpan.";
+      },
     }),
     tool({
       name: "hapus_hitungan",
-      description: "Hapus hitungan yang salah dari draf opname brand ini, sehingga barang itu kembali belum dihitung.",
+      description: "Siapkan penghapusan hitungan yang salah (dari draf, atau dari daftar yang belum disimpan). BELUM menghapus dari draf: pengguna harus menekan Simpan dulu.",
       inputSchema: z.object({ kategori_id: z.string(), product_ids: z.array(z.string()).min(1) }),
-      run: ({ kategori_id, product_ids }) => clearCounts(db, actor, kategori_id, product_ids),
+      run: async ({ kategori_id, product_ids }) => {
+        await prepareClears(db, chatId, kategori_id, product_ids);
+        return "Disiapkan, belum disimpan. Billy menampilkan daftar dengan tombol Simpan.";
+      },
     }),
     tool({
       name: "cek_stok",
@@ -177,12 +177,13 @@ function agentTools(db: Db, actor: Actor) {
   ];
 }
 
-async function context(db: Db, actor: Actor, text: string, lastReply: string) {
+async function context(db: Db, actor: Actor, chatId: string, text: string, lastReply: string) {
   const brands = await brandList(db);
   return [
     `Pengguna ini: ${actor.role === "admin" ? "admin (pemilik)" : "staf kantor"}.`,
     `Daftar brand (nama: id):\n${brands.map((b) => `- ${b.name}: ${b.id}`).join("\n") || "- belum ada brand"}`,
     `Draf opname yang sedang terbuka:\n${await draftsSummary(db)}`,
+    `Menunggu konfirmasi pengguna:\n${pendingSummary(await loadPending(db, chatId))}`,
     `Balasan terakhirmu ke pengguna ini:\n${lastReply || "(belum ada)"}`,
     `Pesan pengguna:\n${text || "(hanya foto, tanpa teks)"}`,
   ].join("\n\n");
@@ -206,8 +207,8 @@ export async function runStockAgent(input: StockAgentInput, ai: Integrations["ai
     throw err;
   }
   if (!token) return NOT_READY;
-  const prompt = await context(input.db, input.actor, input.text, input.lastReply);
-  return runChatgpt(new OpenAI({ apiKey: token, maxRetries: 1, timeout: 90_000 }), ai.model, prompt, input.images ?? [], agentTools(input.db, input.actor));
+  const prompt = await context(input.db, input.actor, input.chatId, input.text, input.lastReply);
+  return runChatgpt(new OpenAI({ apiKey: token, maxRetries: 1, timeout: 90_000 }), ai.model, prompt, input.images ?? [], agentTools(input.db, input.actor, input.chatId));
 }
 
 const MAX_ROUNDS = 10;
@@ -249,7 +250,8 @@ export async function runChatgpt(client: OpenAI, model: string, prompt: string, 
       const refused = response.output.some((item) => item.type === "message" && item.content.some((c) => c.type === "refusal"));
       if (refused) return "Maaf, pesan ini tidak bisa saya proses. Coba tulis ulang.";
       const text = response.output.flatMap((item) => (item.type === "message" ? item.content.flatMap((c) => (c.type === "output_text" ? [c.text] : [])) : []));
-      return text.join("\n").trim() || NO_REPLY;
+      // May be empty: after preparing a change the agent can leave the talking to billy's confirmation.
+      return text.join("\n").trim();
     }
     input.push(...(response.output as ResponseInputItem[]));
     for (const call of calls) input.push({ type: "function_call_output", call_id: call.call_id, output: await runToolCall(byName.get(call.name), call.arguments) });

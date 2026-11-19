@@ -143,6 +143,8 @@ export const telegramChats = pgTable("telegram_chats", {
     .unique()
     .references(() => users.id),
   lastReply: text().notNull().default(""),
+  /** Stock counts the bot prepared and is waiting for the user to confirm (apps/api/src/modules/telegram/pending.ts). */
+  pendingWrite: jsonb(),
   linkedAt: createdAt(),
 });
 

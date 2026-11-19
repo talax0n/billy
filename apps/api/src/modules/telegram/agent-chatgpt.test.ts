@@ -68,7 +68,7 @@ describe("the agent on ChatGPT", () => {
   });
 
   it("says what the admin must do when ChatGPT is not connected or the session ended", async () => {
-    const input = { db: {} as never, actor: { id: "u", role: "staff" as const, source: "telegram" as const }, text: "halo", lastReply: "" };
+    const input = { db: {} as never, actor: { id: "u", role: "staff" as const, source: "telegram" as const }, chatId: "11", text: "halo", lastReply: "" };
     expect(await runStockAgent(input, { model: "", auth: null })).toContain("masuk dengan ChatGPT");
     expect(await runStockAgent(input, { model: "m", auth: { kind: "chatgpt", email: null } }, async () => {
       throw new ChatgptSignInRequired("Sesi ChatGPT berakhir. Admin perlu masuk lagi.");

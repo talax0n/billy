@@ -41,6 +41,8 @@ export function liveBotDeps(integrations: Integrations): BotDeps {
   return {
     send: async (chatId, text, markup) => void (await telegramCall(token, "sendMessage", { chat_id: chatId, text, ...(markup && { reply_markup: markup }) })),
     answerCallback: async (callbackId) => void (await telegramCall(token, "answerCallbackQuery", { callback_query_id: callbackId }, { attempts: 1 })),
+    clearButtons: async (chatId, messageId) =>
+      void (await telegramCall(token, "editMessageReplyMarkup", { chat_id: chatId, message_id: messageId, reply_markup: { inline_keyboard: [] } }, { attempts: 1 })),
     typing: async (chatId) => void (await telegramCall(token, "sendChatAction", { chat_id: chatId, action: "typing" })),
     agent: (input) => runStockAgent(input, integrations.ai),
     download: async (fileId, mediaType) => {

@@ -1,10 +1,11 @@
-import { accounts, auditEvents, categories, contacts, products, settings, stockMovements, stockOpnames, users } from "@billy/db";
+import { accounts, auditEvents, categories, contacts, products, settings, stockMovements, stockOpnameLines, stockOpnames, users } from "@billy/db";
 import { rupiah } from "@billy/core";
 import { and, eq, like } from "drizzle-orm";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { createTestApp } from "../../testing.ts";
 import type { Actor } from "../../env.ts";
 import { type BotDeps, createLinkCode, handleUpdate } from "./bot.ts";
+import { confirmPending, prepareCounts } from "./pending.ts";
 import { dailySummary, deliveriesToday, receivables, stockHistory, stockLookup } from "./query-tools.ts";
 import { clearCounts, draftsSummary, findProducts, recordCounts } from "./stock-tools.ts";
 
@@ -36,6 +37,15 @@ beforeAll(async () => {
 });
 
 const actor = (): Actor => ({ id: staffId, role: "staff", source: "telegram" });
+/** The counted quantity of a product in the open Dulux draft, or null. */
+const countOf = async (productId: string) => {
+  const [line] = await db
+    .select({ qty: stockOpnameLines.countedQty })
+    .from(stockOpnameLines)
+    .innerJoin(stockOpnames, eq(stockOpnames.id, stockOpnameLines.opnameId))
+    .where(and(eq(stockOpnameLines.productId, productId), eq(stockOpnames.status, "draft")));
+  return line?.qty ?? null;
+};
 
 describe("the stock bot's tools", () => {
   it("ranks a brand's products against what the staff typed", async () => {
@@ -133,6 +143,7 @@ describe("the bot's read-only answers", () => {
 describe("the Telegram bot", () => {
   const sent: [string, string][] = [];
   const markups: unknown[] = [];
+  const cleared: number[] = [];
   const agent = vi.fn<BotDeps["agent"]>(async () => "✓ WEATHERSHIELD BASE A GALON: 6\nMasuk draf OP-1");
   const download = vi.fn<BotDeps["download"]>(async (fileId, mediaType) => ({ mediaType, data: `base64-of-${fileId}` }));
   const deps: BotDeps = {
@@ -141,6 +152,7 @@ describe("the Telegram bot", () => {
       markups.push(markup);
     },
     answerCallback: async () => undefined,
+    clearButtons: async (_chatId, messageId) => void cleared.push(messageId),
     typing: async () => undefined,
     agent,
     download,
@@ -150,6 +162,7 @@ describe("the Telegram bot", () => {
   afterEach(() => {
     sent.length = 0;
     markups.length = 0;
+    cleared.length = 0;
     agent.mockClear();
     download.mockClear();
   });
@@ -226,8 +239,56 @@ describe("the Telegram bot", () => {
     expect(sent[0]![1]).toBe("Catylac glow 3, yang mana?\n1. CATYLAC GLOW BASE A GALON\n2. CATYLAC GLOW BASE B GALON");
     expect(markups[0]).toMatchObject({ inline_keyboard: [[{ callback_data: "pilih:1" }], [{ callback_data: "pilih:2" }]] });
 
-    await handleUpdate(db, { update_id: updateId++, callback_query: { id: "tap-1", data: "pilih:2", message: { chat: { id: 11 } } } }, deps);
+    await handleUpdate(db, { update_id: updateId++, callback_query: { id: "tap-1", data: "pilih:2", message: { message_id: 501, chat: { id: 11 } } } }, deps);
     expect(agent.mock.calls[1]![0]).toMatchObject({ text: "2", lastReply: expect.stringContaining("yang mana?") });
+  });
+
+  it("saves nothing the agent prepares until the user taps Simpan, then saves it once", async () => {
+    const galon = ids["WEATHERSHIELD BASE A GALON"]!;
+    agent.mockImplementationOnce(async ({ chatId }) => {
+      await prepareCounts(db, chatId, dulux, [{ productId: galon, qty: 9 }]);
+      return "";
+    });
+    await message(11, "dulux weathershield A galon 9");
+    expect(sent.map(([, t]) => t)).toEqual(["Simpan ke draf opname Dulux?\n✓ WEATHERSHIELD BASE A GALON: 9"]);
+    const buttons = (markups[0] as { inline_keyboard: { text: string; callback_data: string }[][] }).inline_keyboard[0]!;
+    expect(buttons.map((b) => b.text)).toEqual(["✅ Simpan", "✖️ Batal"]);
+    expect(await countOf(galon)).not.toBe(9);
+
+    const tap = (data: string) => handleUpdate(db, { update_id: updateId++, callback_query: { id: "t", data, message: { message_id: 777, chat: { id: 11 } } } }, deps);
+    await tap(buttons[0]!.callback_data);
+    expect(sent[1]![1]).toMatch(/^Tersimpan di draf OP-\d{6}-\d{4}\n✓ WEATHERSHIELD BASE A GALON: 9$/);
+    expect(cleared).toEqual([777]);
+    expect(await countOf(galon)).toBe(9);
+    await tap(buttons[0]!.callback_data);
+    expect(sent[2]![1]).toContain("Tidak ada yang menunggu");
+    expect(agent).toHaveBeenCalledTimes(1);
+  });
+
+  it("updates the prepared list on a correction, takes a typed yes, and refuses an older button", async () => {
+    const galon = ids["WEATHERSHIELD BASE A GALON"]!;
+    const pail = ids["PENTALITE BASE B PAIL"]!;
+    const first = await prepareCounts(db, "11", dulux, [{ productId: galon, qty: 4 }, { productId: pail, qty: 2 }]);
+    const corrected = await prepareCounts(db, "11", dulux, [{ productId: pail, qty: 5 }]);
+    expect(corrected.counts.map((c) => [c.name, c.qty])).toEqual([["WEATHERSHIELD BASE A GALON", 4], ["PENTALITE BASE B PAIL", 5]]);
+    expect(await confirmPending(db, "11", actor(), first.nonce)).toContain("kedaluwarsa");
+    await message(11, "ya");
+    expect(sent[0]![1]).toContain("✓ PENTALITE BASE B PAIL: 5");
+    expect(await countOf(pail)).toBe(5);
+    expect(agent).not.toHaveBeenCalled();
+  });
+
+  it("saves nothing on Batal", async () => {
+    const galon = ids["WEATHERSHIELD BASE A GALON"]!;
+    const before = await countOf(galon);
+    await prepareCounts(db, "11", dulux, [{ productId: galon, qty: 1 }]);
+    await message(11, "batal");
+    expect(sent[0]![1]).toBe("Dibatalkan, tidak ada yang disimpan.");
+    expect(await countOf(galon)).toBe(before);
+  });
+
+  it("refuses to prepare a product of another brand", async () => {
+    await expect(prepareCounts(db, "11", dulux, [{ productId: ids["VINILEX 5000 PUTIH PAIL"]!, qty: 1 }])).rejects.toThrow("bukan produk aktif brand Dulux");
   });
 
   it("handles an update Telegram resends only once", async () => {

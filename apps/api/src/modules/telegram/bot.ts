@@ -5,6 +5,7 @@ import { z } from "zod";
 import type { Actor } from "../../env.ts";
 import type { StockAgentImage, StockAgentInput } from "./agent.ts";
 import { cleanReply, formatDeliveries, formatReceivables, formatSummary, HELP, menuAction, menuKeyboard, optionButtons, type ReplyMarkup, STOCK_PROMPT } from "./bot-format.ts";
+import { cancelPending, confirmation, confirmPending, loadPending } from "./pending.ts";
 import { dailySummary, deliveriesToday, receivables } from "./query-tools.ts";
 
 /** How the bot reaches the outside: Telegram for replies, ChatGPT for the stock agent. Tests pass fakes. */
@@ -12,6 +13,8 @@ export interface BotDeps {
   send: (chatId: string, text: string, markup?: ReplyMarkup) => Promise<void>;
   /** Stops the spinner on a tapped button. */
   answerCallback: (callbackId: string) => Promise<void>;
+  /** Removes the buttons from a message once they were used, so a second tap cannot repeat it. */
+  clearButtons: (chatId: string, messageId: number) => Promise<void>;
   typing: (chatId: string) => Promise<void>;
   agent: (input: StockAgentInput) => Promise<string>;
   /** Fetches a photo or image file the user sent, as base64 for Claude. */
@@ -42,7 +45,9 @@ export const telegramUpdate = z.object({
     })
     .optional(),
   /** A tap on a button under a message; `data` is `pilih:<n>` for a numbered option. */
-  callback_query: z.object({ id: z.string(), data: z.string().optional(), message: z.object({ chat: z.object({ id: z.number().int() }) }).optional() }).optional(),
+  callback_query: z
+    .object({ id: z.string(), data: z.string().optional(), message: z.object({ message_id: z.number().int(), chat: z.object({ id: z.number().int() }) }).optional() })
+    .optional(),
 });
 export type TelegramUpdate = z.infer<typeof telegramUpdate>;
 
@@ -77,12 +82,23 @@ function readUpdate(update: TelegramUpdate) {
   const tap = update.callback_query;
   if (tap?.message) {
     const option = /^pilih:(\d+)$/.exec(tap.data ?? "");
-    return { chatId: String(tap.message.chat.id), text: option ? option[1]! : "", image: null, callbackId: tap.id };
+    const decision = /^(simpan|batal):(\S+)$/.exec(tap.data ?? "");
+    return {
+      chatId: String(tap.message.chat.id),
+      text: option ? option[1]! : "",
+      image: null,
+      callbackId: tap.id,
+      tappedMessage: tap.message.message_id,
+      decision: decision ? { save: decision[1] === "simpan", nonce: decision[2]! } : null,
+    };
   }
   const message = update.message;
   if (!message) return null;
-  return { chatId: String(message.chat.id), text: (message.text ?? message.caption ?? "").trim(), image: imageOf(message), callbackId: null };
+  return { chatId: String(message.chat.id), text: (message.text ?? message.caption ?? "").trim(), image: imageOf(message), callbackId: null, tappedMessage: null, decision: null };
 }
+
+const TYPED_YES = /^(ya|iya|y|ok|oke|okay|simpan|benar|betul|sudah benar)[.!]?$/i;
+const TYPED_NO = /^(batal|tidak|enggak|nggak|gak|ga|no)[.!]?$/i;
 
 /**
  * Handles one Telegram update: links a chat with `/start <code>`, answers the menu buttons straight from
@@ -94,9 +110,9 @@ export async function handleUpdate(db: Db, update: TelegramUpdate, deps: BotDeps
   const [fresh] = await db.insert(telegramUpdates).values({ updateId: update.update_id }).onConflictDoNothing().returning();
   const incoming = fresh ? readUpdate(update) : null;
   if (!incoming) return;
-  const { chatId, text, image, callbackId } = incoming;
+  const { chatId, text, image, callbackId, tappedMessage, decision } = incoming;
   if (callbackId) await deps.answerCallback(callbackId).catch(() => undefined);
-  if (!text && !image) return;
+  if (!text && !image && !decision) return;
 
   const start = /^\/start(?:@\w+)?\s+(\S+)$/i.exec(text);
   if (start) {
@@ -118,6 +134,18 @@ export async function handleUpdate(db: Db, update: TelegramUpdate, deps: BotDeps
     await deps.send(chatId, reply.slice(0, MAX_REPLY), markup ?? optionButtons(reply) ?? undefined);
   };
 
+  const actor: Actor = { id: chat.userId, role: chat.role, source: "telegram" };
+
+  // Simpan / Batal on a prepared change, tapped or typed. Only this writes the bot's changes.
+  const pending = await loadPending(db, chatId);
+  const typed = pending && !decision ? (TYPED_YES.test(text) ? true : TYPED_NO.test(text) ? false : null) : null;
+  if (decision || typed !== null) {
+    if (tappedMessage !== null) await deps.clearButtons(chatId, tappedMessage).catch(() => undefined);
+    const save = decision ? decision.save : typed!;
+    const nonce = decision?.nonce ?? null;
+    return respond(save ? await confirmPending(db, chatId, actor, nonce) : await cancelPending(db, chatId, nonce));
+  }
+
   // `/start` without a code and `/menu` bring the menu back for a linked chat.
   switch (/^\/(start|menu)(@\w+)?$/i.test(text) ? "help" : menuAction(text)) {
     case "help":
@@ -136,17 +164,26 @@ export async function handleUpdate(db: Db, update: TelegramUpdate, deps: BotDeps
 
   if (image && "tooBig" in image) return deps.send(chatId, "Gambar terlalu besar (maks 5 MB). Kirim sebagai foto biasa.");
 
-  const actor: Actor = { id: chat.userId, role: chat.role, source: "telegram" };
   await deps.typing(chatId).catch(() => undefined);
   let reply: string;
   try {
     const images = image ? [await deps.download(image.fileId, image.mediaType)] : [];
-    reply = cleanReply(await deps.agent({ db, actor, text, lastReply: chat.lastReply, images }));
+    reply = cleanReply(await deps.agent({ db, actor, chatId, text, lastReply: chat.lastReply, images }));
   } catch (err) {
     console.error("telegram stock agent failed", err);
     reply = "Sistem sedang bermasalah, laporan ini belum tercatat. Coba kirim lagi sebentar lagi.";
   }
-  await respond(reply);
+
+  // When the agent prepared a change, billy shows it for confirmation in its own words, after any
+  // question the agent still has.
+  const prepared = await loadPending(db, chatId);
+  if (prepared && prepared.nonce !== pending?.nonce) {
+    if (reply) await deps.send(chatId, reply.slice(0, MAX_REPLY), optionButtons(reply) ?? undefined);
+    const { text: ask, markup } = confirmation(prepared);
+    await db.update(telegramChats).set({ lastReply: reply ? `${reply}\n\n${ask}` : ask }).where(eq(telegramChats.chatId, chatId));
+    return deps.send(chatId, ask, markup);
+  }
+  await respond(reply || "Maaf, saya belum bisa memproses pesan itu. Coba tulis ulang.");
 }
 
 type IncomingMessage = NonNullable<TelegramUpdate["message"]>;
