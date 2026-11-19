@@ -10,13 +10,17 @@ import {
   HandCoins,
   History,
   LayoutDashboard,
+  Lock,
   type LucideIcon,
   Package,
   Receipt,
   ScrollText,
+  Send,
   ShieldAlert,
   Settings,
   ShoppingCart,
+  Tags,
+  UserCog,
   Users,
   TriangleAlert,
   Truck,
@@ -41,7 +45,11 @@ const PayablesPage = lazyRouteComponent(() => import("./routes/payables/payables
 const PurchasesPage = lazyRouteComponent(() => import("./routes/purchases/purchases-page.tsx"), "PurchasesPage");
 const QuotationsPage = lazyRouteComponent(() => import("./routes/quotations/quotations-page.tsx"), "QuotationsPage");
 const RiwayatKasirPage = lazyRouteComponent(() => import("./routes/riwayat-kasir/riwayat-kasir-page.tsx"), "RiwayatKasirPage");
-const SettingsPage = lazyRouteComponent(() => import("./routes/settings/settings-page.tsx"), "SettingsPage");
+const ShopPage = lazyRouteComponent(() => import("./routes/settings/shop-page.tsx"), "ShopPage");
+const UsersPage = lazyRouteComponent(() => import("./routes/settings/users-page.tsx"), "UsersPage");
+const SecurityPage = lazyRouteComponent(() => import("./routes/settings/security-page.tsx"), "SecurityPage");
+const CategoriesPage = lazyRouteComponent(() => import("./routes/categories/categories-page.tsx"), "CategoriesPage");
+const TelegramPage = lazyRouteComponent(() => import("./routes/telegram/telegram-page.tsx"), "TelegramPage");
 const OpnamePage = lazyRouteComponent(() => import("./routes/opname/opname-page.tsx"), "OpnamePage");
 const StockAlertsPage = lazyRouteComponent(() => import("./routes/stock/stock-page.tsx"), "StockAlertsPage");
 const StockPage = lazyRouteComponent(() => import("./routes/stock/stock-page.tsx"), "StockPage");
@@ -91,10 +99,14 @@ export const navItems: NavItem[] = [
   { group: "hidden", section: "/produk", path: "/mutasi-stok", label: "Mutasi Stok", icon: Boxes, page: StockPage },
   { group: "hidden", section: "/produk", path: "/stok-menipis", label: "Stok Menipis", icon: TriangleAlert, page: StockAlertsPage },
   { group: "hidden", section: "/produk", path: "/stok-opname", label: "Stok Opname", icon: ClipboardList, page: OpnamePage },
+  { group: "Persediaan", path: "/kategori", label: "Kategori", icon: Tags, page: CategoriesPage },
   { group: "Persediaan", path: "/kontak", label: "Kontak", icon: Users, page: ContactsPage },
+  { group: "Persediaan", path: "/bot-telegram", label: "Bot Telegram", icon: Send, page: TelegramPage },
   // In the account menu at the bottom of the sidebar.
   { group: "hidden", path: "/log-aktivitas", label: "Log Aktivitas", icon: ScrollText, page: AuditPage, roles: ["admin"] },
-  { group: "hidden", path: "/pengaturan", label: "Pengaturan", icon: Settings, page: SettingsPage },
+  { group: "hidden", path: "/pengaturan", label: "Pengaturan", tab: "Toko", icon: Settings, page: ShopPage, roles: ["admin"] },
+  { group: "hidden", section: "/pengaturan", path: "/pengaturan/pengguna", label: "Pengguna", icon: UserCog, page: UsersPage, roles: ["admin"] },
+  { group: "hidden", section: "/pengaturan", path: "/pengaturan/keamanan", label: "Keamanan", icon: Lock, page: SecurityPage, roles: ["admin"] },
 ];
 
 export const canOpen = (item: NavItem, role: Role | undefined) => !item.roles || (!!role && item.roles.includes(role));

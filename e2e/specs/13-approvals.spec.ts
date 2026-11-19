@@ -29,8 +29,7 @@ async function sellWithDiscount(kasir: Page, percent: string) {
 
 test("a kasir discount over 5% needs the admin: by PIN at the counter, or approved from the bell", async ({ browser }) => {
   const admin = await signedIn(browser, ADMIN);
-  await admin.goto("/pengaturan");
-  await admin.getByRole("tab", { name: "Keamanan" }).click();
+  await admin.goto("/pengaturan/keamanan");
   await expect(admin.getByLabel("Diskon maksimal per nota (%)")).toHaveValue("5");
   await admin.getByLabel("PIN baru (6 angka)").fill(PIN);
   await admin.getByLabel("Kata sandi Anda").fill(ADMIN.password);

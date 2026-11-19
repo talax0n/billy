@@ -3,45 +3,38 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
 import { Button } from "../../components/ui/button.tsx";
 import { Field, Input } from "../../components/ui/field.tsx";
-import { PageBody } from "../../components/ui/page.tsx";
+import { PageBody, PageHeader } from "../../components/ui/page.tsx";
 import { toast } from "../../components/ui/toast.tsx";
 import { api, ApiError, unwrap } from "../../lib/api.ts";
 import { useForm } from "../../lib/form.ts";
+import { SettingsSection } from "./section.tsx";
 
 const limitsQuery = { queryKey: ["settings", "limits"], queryFn: () => unwrap(api.settings.limits.$get()) };
 const watchdogQuery = { queryKey: ["settings", "watchdog"], queryFn: () => unwrap(api.settings.watchdog.$get()) };
 const pinQuery = { queryKey: ["approvals", "pin"], queryFn: () => unwrap(api.approvals.pin.$get()) };
 
 /** Admin only: the limits every non-admin works under, and the admin's own approval PIN. */
-export function SecurityTab() {
+export function SecurityPage() {
   const limits = useQuery(limitsQuery);
   const watchdog = useQuery(watchdogQuery);
   return (
-    <PageBody className="max-w-2xl gap-8">
-      <section className="flex flex-col gap-3">
-        <div>
-          <h2 className="font-semibold">Batas kasir dan staf</h2>
-          <p className="text-muted">Berlaku untuk semua pengguna selain admin. Di atas batas, transaksi butuh persetujuan admin.</p>
-        </div>
-        {limits.data && <LimitsForm initial={limits.data} />}
-      </section>
-      <section className="flex flex-col gap-3 border-t border-line pt-6">
-        <div>
-          <h2 className="font-semibold">Pengawasan</h2>
-          <p className="text-muted">Kapan Peringatan di Overview dan Ringkasan harian menandai selisih kas dan aktivitas di luar jam buka.</p>
-        </div>
-        {watchdog.data && <WatchdogForm initial={watchdog.data} />}
-      </section>
-      <section className="flex flex-col gap-3 border-t border-line pt-6">
-        <div>
-          <h2 className="font-semibold">PIN persetujuan</h2>
-          <p className="text-muted">
-            6 angka yang Anda ketik di layar Kasir untuk menyetujui diskon besar, harga di bawah modal, atau void.
-          </p>
-        </div>
-        <PinForm />
-      </section>
-    </PageBody>
+    <>
+      <PageHeader title="Keamanan" />
+      <PageBody className="max-w-2xl gap-8">
+        <SettingsSection title="Batas kasir dan staf" description="Berlaku untuk semua pengguna selain admin. Di atas batas, transaksi butuh persetujuan admin.">
+          {limits.data && <LimitsForm initial={limits.data} />}
+        </SettingsSection>
+        <SettingsSection title="Pengawasan" description="Kapan Peringatan di Overview dan Ringkasan harian menandai selisih kas dan aktivitas di luar jam buka.">
+          {watchdog.data && <WatchdogForm initial={watchdog.data} />}
+        </SettingsSection>
+        <SettingsSection
+          title="PIN persetujuan"
+          description="6 angka yang Anda ketik di layar Kasir untuk menyetujui diskon besar, harga di bawah modal, atau void."
+        >
+          <PinForm />
+        </SettingsSection>
+      </PageBody>
+    </>
   );
 }
 

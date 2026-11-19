@@ -8,44 +8,47 @@ import { Button } from "../../components/ui/button.tsx";
 import { DataTable, usePagedQuery } from "../../components/ui/data-table.tsx";
 import { Sheet } from "../../components/ui/dialog.tsx";
 import { Field, Input, Select } from "../../components/ui/field.tsx";
-import { EmptyState, PageBody } from "../../components/ui/page.tsx";
+import { EmptyState, PageBody, PageHeader } from "../../components/ui/page.tsx";
 import { toast } from "../../components/ui/toast.tsx";
 import { api, unwrap } from "../../lib/api.ts";
 import { useForm } from "../../lib/form.ts";
 
 type UserRow = InferResponseType<typeof api.users.$get, 200>["rows"][number];
 
-export function UsersTab() {
+export function UsersPage() {
   const paged = usePagedQuery(["users"], (params) =>
     unwrap(api.users.$get({ query: { q: params.q, page: String(params.page), pageSize: String(params.pageSize) } })),
   );
   const [editing, setEditing] = useState<UserRow | "new" | null>(null);
 
   return (
-    <PageBody>
-      <DataTable
-        paged={paged}
-        searchPlaceholder="Cari nama atau nama pengguna…"
-        toolbar={
-          <Button variant="primary" className="ml-auto" onClick={() => setEditing("new")}>
-            <Plus className="size-4" />
-            Pengguna baru
-          </Button>
-        }
-        onRowClick={setEditing}
-        empty={<EmptyState title="Belum ada pengguna" />}
-        columns={[
-          { header: "Nama", cell: (u) => u.name },
-          { header: "Nama pengguna", cell: (u) => <span className="text-ink-2">{u.username}</span> },
-          { header: "Peran", cell: (u) => roleLabels[u.role] },
-          { header: "Status", cell: (u) => (u.active ? <Badge tone="up">Aktif</Badge> : <Badge>Nonaktif</Badge>) },
-        ]}
-      />
-      <Sheet open={editing !== null} onClose={() => setEditing(null)} title={editing === "new" ? "Pengguna baru" : "Ubah pengguna"}>
-        {editing === "new" && <CreateUserForm onDone={() => setEditing(null)} />}
-        {editing && editing !== "new" && <EditUserForm user={editing} onDone={() => setEditing(null)} />}
-      </Sheet>
-    </PageBody>
+    <>
+      <PageHeader title="Pengguna" />
+      <PageBody>
+        <DataTable
+          paged={paged}
+          searchPlaceholder="Cari nama atau nama pengguna…"
+          toolbar={
+            <Button variant="primary" className="ml-auto" onClick={() => setEditing("new")}>
+              <Plus className="size-4" />
+              Pengguna baru
+            </Button>
+          }
+          onRowClick={setEditing}
+          empty={<EmptyState title="Belum ada pengguna" />}
+          columns={[
+            { header: "Nama", cell: (u) => u.name },
+            { header: "Nama pengguna", cell: (u) => <span className="text-ink-2">{u.username}</span> },
+            { header: "Peran", cell: (u) => roleLabels[u.role] },
+            { header: "Status", cell: (u) => (u.active ? <Badge tone="up">Aktif</Badge> : <Badge>Nonaktif</Badge>) },
+          ]}
+        />
+        <Sheet open={editing !== null} onClose={() => setEditing(null)} title={editing === "new" ? "Pengguna baru" : "Ubah pengguna"}>
+          {editing === "new" && <CreateUserForm onDone={() => setEditing(null)} />}
+          {editing && editing !== "new" && <EditUserForm user={editing} onDone={() => setEditing(null)} />}
+        </Sheet>
+      </PageBody>
+    </>
   );
 }
 

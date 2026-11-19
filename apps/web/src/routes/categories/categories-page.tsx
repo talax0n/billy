@@ -7,14 +7,14 @@ import { Button } from "../../components/ui/button.tsx";
 import { DataTable, usePagedQuery } from "../../components/ui/data-table.tsx";
 import { Dialog } from "../../components/ui/dialog.tsx";
 import { Field, Input } from "../../components/ui/field.tsx";
-import { EmptyState, PageBody } from "../../components/ui/page.tsx";
+import { EmptyState, PageBody, PageHeader } from "../../components/ui/page.tsx";
 import { toast } from "../../components/ui/toast.tsx";
 import { api, unwrap } from "../../lib/api.ts";
 import { useForm } from "../../lib/form.ts";
 
 type CategoryRow = InferResponseType<typeof api.categories.$get, 200>["rows"][number];
 
-export function CategoriesTab() {
+export function CategoriesPage() {
   const paged = usePagedQuery(["categories"], (params) =>
     unwrap(api.categories.$get({ query: { q: params.q, page: String(params.page), pageSize: String(params.pageSize) } })),
   );
@@ -22,37 +22,40 @@ export function CategoriesTab() {
   const [autoAssigning, setAutoAssigning] = useState(false);
 
   return (
-    <PageBody>
-      <DataTable
-        paged={paged}
-        searchPlaceholder="Cari kategori…"
-        toolbar={
-          <>
-            <Button className="ml-auto" onClick={() => setAutoAssigning(true)}>
-              <Wand2 className="size-4" />
-              Isi brand otomatis
-            </Button>
-            <Button variant="primary" onClick={() => setEditing("new")}>
-              <Plus className="size-4" />
-              Kategori baru
-            </Button>
-          </>
-        }
-        onRowClick={setEditing}
-        empty={<EmptyState title="Belum ada kategori" />}
-        columns={[
-          { header: "Nama", cell: (c) => c.name },
-          { header: "Keterangan", cell: (c) => <span className="text-ink-2">{c.description}</span> },
-          { header: "Produk", align: "right", cell: (c) => c.productCount },
-        ]}
-      />
-      <Dialog open={editing !== null} onClose={() => setEditing(null)} title={editing === "new" ? "Kategori baru" : "Ubah kategori"}>
-        {editing && <CategoryForm category={editing === "new" ? null : editing} onDone={() => setEditing(null)} />}
-      </Dialog>
-      <Dialog open={autoAssigning} onClose={() => setAutoAssigning(false)} title="Isi brand otomatis">
-        {autoAssigning && <AutoAssign onDone={() => setAutoAssigning(false)} />}
-      </Dialog>
-    </PageBody>
+    <>
+      <PageHeader title="Kategori" />
+      <PageBody>
+        <DataTable
+          paged={paged}
+          searchPlaceholder="Cari kategori…"
+          toolbar={
+            <>
+              <Button className="ml-auto" onClick={() => setAutoAssigning(true)}>
+                <Wand2 className="size-4" />
+                Isi brand otomatis
+              </Button>
+              <Button variant="primary" onClick={() => setEditing("new")}>
+                <Plus className="size-4" />
+                Kategori baru
+              </Button>
+            </>
+          }
+          onRowClick={setEditing}
+          empty={<EmptyState title="Belum ada kategori" />}
+          columns={[
+            { header: "Nama", cell: (c) => c.name },
+            { header: "Keterangan", cell: (c) => <span className="text-ink-2">{c.description}</span> },
+            { header: "Produk", align: "right", cell: (c) => c.productCount },
+          ]}
+        />
+        <Dialog open={editing !== null} onClose={() => setEditing(null)} title={editing === "new" ? "Kategori baru" : "Ubah kategori"}>
+          {editing && <CategoryForm category={editing === "new" ? null : editing} onDone={() => setEditing(null)} />}
+        </Dialog>
+        <Dialog open={autoAssigning} onClose={() => setAutoAssigning(false)} title="Isi brand otomatis">
+          {autoAssigning && <AutoAssign onDone={() => setAutoAssigning(false)} />}
+        </Dialog>
+      </PageBody>
+    </>
   );
 }
 

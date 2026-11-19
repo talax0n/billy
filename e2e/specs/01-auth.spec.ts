@@ -5,8 +5,7 @@ test("admin creates a kasir, who only ever reaches the cashier", async ({ page }
   await login(page, ADMIN);
   await expect(page.getByRole("heading", { name: "Overview", level: 1 })).toBeVisible();
 
-  await page.goto("/pengaturan");
-  await page.getByRole("tab", { name: "Pengguna" }).click();
+  await page.goto("/pengaturan/pengguna");
   await page.getByRole("button", { name: "Pengguna baru" }).click();
   const sheet = page.getByRole("dialog", { name: "Pengguna baru" });
   await sheet.getByLabel("Nama", { exact: true }).fill("Kasir Satu");

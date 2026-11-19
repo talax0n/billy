@@ -3,27 +3,43 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Button } from "../../components/ui/button.tsx";
 import { controlClass, Field, Input } from "../../components/ui/field.tsx";
-import { PageBody } from "../../components/ui/page.tsx";
+import { PageBody, PageHeader } from "../../components/ui/page.tsx";
 import { toast } from "../../components/ui/toast.tsx";
 import { api, ApiError, unwrap } from "../../lib/api.ts";
 import { cx } from "../../lib/cx.ts";
 import { useForm } from "../../lib/form.ts";
 import { settingsQuery } from "../../lib/settings.ts";
+import { SettingsSection } from "./section.tsx";
 
-export function ShopTab() {
+export function ShopPage() {
   const { data } = useQuery(settingsQuery);
   return (
-    <PageBody>
-      {data && <AnnouncementForm initial={data.announcement} updatedAt={data.announcementUpdatedAt} />}
-      {data && <ShopForm initial={data} />}
-    </PageBody>
+    <>
+      <PageHeader title="Toko" />
+      <PageBody className="max-w-2xl gap-8">
+        <SettingsSection title="Data toko" description="Tampil di kepala faktur, struk kasir, dan menu samping.">
+          {data && <ShopForm initial={data} />}
+        </SettingsSection>
+        <SettingsSection
+          title="Pengumuman untuk semua staf"
+          description={
+            <>
+              Muncul sekali saat staf masuk aplikasi, dan muncul lagi setiap kali diubah.
+              {data?.announcementUpdatedAt && data.announcement && ` Terakhir diubah ${stamp.format(new Date(data.announcementUpdatedAt))}.`}
+            </>
+          }
+        >
+          {data && <AnnouncementForm initial={data.announcement} />}
+        </SettingsSection>
+      </PageBody>
+    </>
   );
 }
 
 const stamp = new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Jakarta" });
 
 /** Shown to every staff member when they sign in, and again after it changes. */
-function AnnouncementForm({ initial, updatedAt }: { initial: string; updatedAt: string | null }) {
+function AnnouncementForm({ initial }: { initial: string }) {
   const queryClient = useQueryClient();
   const [text, setText] = useState(initial);
   const [saving, setSaving] = useState(false);
@@ -42,16 +58,9 @@ function AnnouncementForm({ initial, updatedAt }: { initial: string; updatedAt: 
     }
   }
   return (
-    <section className="flex max-w-2xl flex-col gap-2 rounded-xl border border-line p-4">
-      <label htmlFor="announcement" className="font-medium">
-        Pengumuman untuk semua staf
-      </label>
-      <p className="text-xs text-muted">
-        Muncul sekali saat staf masuk aplikasi, dan muncul lagi setiap kali diubah.
-        {updatedAt && initial && ` Terakhir diubah ${stamp.format(new Date(updatedAt))}.`}
-      </p>
+    <>
       <textarea
-        id="announcement"
+        aria-label="Pengumuman untuk semua staf"
         rows={3}
         maxLength={1000}
         placeholder="Misal: Sabtu ini stok opname, toko tutup jam 15.00."
@@ -69,7 +78,7 @@ function AnnouncementForm({ initial, updatedAt }: { initial: string; updatedAt: 
           Simpan pengumuman
         </Button>
       </div>
-    </section>
+    </>
   );
 }
 
@@ -88,11 +97,11 @@ function ShopForm({ initial }: { initial: SettingsInput }) {
   const form = useForm(settingsInput, initial);
   const submit = form.onSubmit(async (input) => {
     queryClient.setQueryData(settingsQuery.queryKey, await unwrap(api.settings.$put({ json: input })));
-    toast("Pengaturan toko disimpan", "up");
+    toast("Data toko disimpan", "up");
   });
 
   return (
-    <form onSubmit={submit} noValidate className="grid max-w-2xl grid-cols-2 gap-x-3 gap-y-4">
+    <form onSubmit={submit} noValidate className="grid grid-cols-2 gap-x-3 gap-y-4">
       {fields.map(({ key, label, hint }) => (
         <Field key={key} label={label} hint={hint} error={form.errors[key]} className="col-span-2">
           {(p) => <Input {...p} value={form.values[key] ?? ""} onChange={(e) => form.set(key, e.target.value)} />}
@@ -103,7 +112,7 @@ function ShopForm({ initial }: { initial: SettingsInput }) {
       </Field>
       <div className="col-span-2 flex justify-end">
         <Button type="submit" variant="primary" disabled={form.submitting}>
-          Simpan pengaturan
+          Simpan data toko
         </Button>
       </div>
     </form>
