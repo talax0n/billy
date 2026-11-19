@@ -1,13 +1,11 @@
-import Anthropic from "@anthropic-ai/sdk";
-import { betaZodTool } from "@anthropic-ai/sdk/helpers/beta/zod";
-import type { BetaContentBlockParam } from "@anthropic-ai/sdk/resources/beta/messages/messages";
-import { aiProviderLabels, DomainError } from "@billy/core";
+import { DomainError } from "@billy/core";
 import type { Db } from "@billy/db";
 import OpenAI from "openai";
-import type { ChatCompletionContentPart, ChatCompletionMessageParam } from "openai/resources/chat/completions";
+import type { NamespaceTool, ResponseInputContent, ResponseInputItem } from "openai/resources/responses/responses";
 import { z } from "zod";
 import type { Actor } from "../../env.ts";
-import type { Integrations } from "../integrations/config.ts";
+import { ChatgptSignInRequired } from "../../lib/chatgpt-oauth.ts";
+import { aiBearer, type Integrations } from "../integrations/config.ts";
 import { dailySummary, deliveriesToday, receivables, stockHistory, stockLookup } from "./query-tools.ts";
 import { brandList, clearCounts, draftsSummary, findProducts, recordCounts } from "./stock-tools.ts";
 
@@ -169,76 +167,59 @@ async function context(db: Db, actor: Actor, text: string, lastReply: string) {
 }
 
 const NO_REPLY = "Maaf, saya belum bisa memproses pesan itu. Coba tulis ulang.";
+const NOT_READY = "Bot belum siap: admin perlu masuk dengan ChatGPT (atau mengisi kunci OpenAI) dan memilih model di billy, Pengaturan, Koneksi.";
 
 /**
- * One Telegram message, one agent run on the configured AI: it reads the message (and any photo) with the
- * brands and open drafts, calls the tools above, and returns the reply to send. Only the last reply text
- * carries over between messages.
+ * One Telegram message, one agent run on ChatGPT: it reads the message (and any photo) with the brands
+ * and open drafts, calls the tools above, and returns the reply to send. Only the last reply text carries
+ * over between messages. `bearer` is the ChatGPT session's access token, or an OpenAI API key.
  */
-export async function runStockAgent(input: StockAgentInput, ai: Integrations["ai"]): Promise<string> {
-  if (!ai.apiKey) return `Bot belum siap: kunci API ${aiProviderLabels[ai.provider]} belum diisi. Minta admin mengisinya di billy, Pengaturan, Koneksi.`;
-  if (!ai.model) return `Bot belum siap: model ${aiProviderLabels[ai.provider]} belum dipilih. Minta admin memilihnya di billy, Pengaturan, Koneksi.`;
+export async function runStockAgent(input: StockAgentInput, ai: Integrations["ai"], bearer: (db: Db) => Promise<string | null> = aiBearer): Promise<string> {
+  if (!ai.auth || !ai.model) return NOT_READY;
+  let token: string | null;
+  try {
+    token = await bearer(input.db);
+  } catch (err) {
+    if (err instanceof ChatgptSignInRequired) return err.message;
+    throw err;
+  }
+  if (!token) return NOT_READY;
   const prompt = await context(input.db, input.actor, input.text, input.lastReply);
-  const tools = agentTools(input.db, input.actor);
-  return ai.provider === "anthropic"
-    ? runClaude(new Anthropic({ apiKey: ai.apiKey }), ai.model, prompt, input.images ?? [], tools)
-    : runOpenAi(new OpenAI({ apiKey: ai.apiKey }), ai.model, prompt, input.images ?? [], tools);
+  return runChatgpt(new OpenAI({ apiKey: token, maxRetries: 1, timeout: 90_000 }), ai.model, prompt, input.images ?? [], agentTools(input.db, input.actor));
 }
 
-/** Claude through the Anthropic SDK's tool runner: low effort, prompt caching, and a server-side fallback model on refusal. */
-export async function runClaude(client: Anthropic, model: string, prompt: string, images: StockAgentImage[], tools: AgentTool[]) {
-  const content: BetaContentBlockParam[] = [
-    ...images.map((img): BetaContentBlockParam => ({ type: "image", source: { type: "base64", media_type: img.mediaType, data: img.data } })),
-    { type: "text", text: prompt },
-  ];
-  const final = await client.beta.messages.toolRunner({
-    model,
-    max_tokens: 16000,
-    max_iterations: 10,
-    output_config: { effort: "low" },
-    betas: ["server-side-fallback-2026-07-01"],
-    fallbacks: "default",
-    cache_control: { type: "ephemeral" },
-    system: SYSTEM,
-    tools: tools.map((t) => betaZodTool(t)),
-    messages: [{ role: "user", content }],
-  });
-  if (final.stop_reason === "refusal") return "Maaf, pesan ini tidak bisa saya proses. Coba tulis ulang.";
-  const reply = final.content
-    .flatMap((block) => (block.type === "text" ? [block.text] : []))
-    .join("\n")
-    .trim();
-  return reply || NO_REPLY;
-}
+const MAX_ROUNDS = 10;
 
-const MAX_OPENAI_ROUNDS = 10;
-
-/** ChatGPT through OpenAI's Chat Completions function calling, the same tools, looped until it answers in text. */
-export async function runOpenAi(client: OpenAI, model: string, prompt: string, images: StockAgentImage[], tools: AgentTool[]) {
+/**
+ * ChatGPT through the Responses API, in the shape ChatGPT plan usage requires: streamed, `store: false`,
+ * instructions instead of a system message, tools grouped in one namespace, and the whole history (with
+ * encrypted reasoning) sent back each round instead of `previous_response_id`.
+ */
+export async function runChatgpt(client: OpenAI, model: string, prompt: string, images: StockAgentImage[], tools: AgentTool[]) {
   const byName = new Map(tools.map((t) => [t.name, t]));
-  const content: ChatCompletionContentPart[] = [
-    ...images.map((img): ChatCompletionContentPart => ({ type: "image_url", image_url: { url: `data:${img.mediaType};base64,${img.data}` } })),
-    { type: "text", text: prompt },
+  const content: ResponseInputContent[] = [
+    ...images.map((img): ResponseInputContent => ({ type: "input_image", detail: "auto", image_url: `data:${img.mediaType};base64,${img.data}` })),
+    { type: "input_text", text: prompt },
   ];
-  const messages: ChatCompletionMessageParam[] = [
-    { role: "system", content: SYSTEM },
-    { role: "user", content },
-  ];
-  const functions = tools.map((t) => ({
-    type: "function" as const,
-    function: { name: t.name, description: t.description, parameters: z.toJSONSchema(t.inputSchema) as Record<string, unknown> },
-  }));
-  for (let round = 0; round < MAX_OPENAI_ROUNDS; round++) {
-    const response = await client.chat.completions.create({ model, messages, tools: functions });
-    const message = response.choices[0]?.message;
-    if (!message) return NO_REPLY;
-    if (message.refusal) return "Maaf, pesan ini tidak bisa saya proses. Coba tulis ulang.";
-    messages.push(message);
-    const calls = (message.tool_calls ?? []).filter((c) => c.type === "function");
-    if (calls.length === 0) return message.content?.trim() || NO_REPLY;
-    for (const call of calls) {
-      messages.push({ role: "tool", tool_call_id: call.id, content: await runToolCall(byName.get(call.function.name), call.function.arguments) });
+  const input: ResponseInputItem[] = [{ role: "user", content }];
+  const namespace: NamespaceTool = {
+    type: "namespace",
+    name: "billy",
+    description: "Alat toko: mencari dan mencatat stok opname, cek stok, riwayat, piutang, antaran, ringkasan.",
+    tools: tools.map((t) => ({ type: "function", name: t.name, description: t.description, parameters: z.toJSONSchema(t.inputSchema), strict: false })),
+  };
+  for (let round = 0; round < MAX_ROUNDS; round++) {
+    const response = await client.responses
+      .stream({ model, instructions: SYSTEM, input, tools: [namespace], store: false, include: ["reasoning.encrypted_content"] })
+      .finalResponse();
+    if (response.status !== "completed") return NO_REPLY;
+    const calls = response.output.filter((item) => item.type === "function_call");
+    if (calls.length === 0) {
+      const refused = response.output.some((item) => item.type === "message" && item.content.some((c) => c.type === "refusal"));
+      return refused ? "Maaf, pesan ini tidak bisa saya proses. Coba tulis ulang." : response.output_text.trim() || NO_REPLY;
     }
+    input.push(...(response.output as ResponseInputItem[]));
+    for (const call of calls) input.push({ type: "function_call_output", call_id: call.call_id, output: await runToolCall(byName.get(call.name), call.arguments) });
   }
   return NO_REPLY;
 }

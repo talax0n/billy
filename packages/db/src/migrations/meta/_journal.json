@@ -78,6 +78,13 @@
       "when": 1795102352863,
       "tag": "0010_integration_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1795103797540,
+      "tag": "0011_chatgpt_sign_in",
+      "breakpoints": true
     }
   ]
 }

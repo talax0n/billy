@@ -2,7 +2,6 @@ import {
   approvalKinds,
   approvalMethods,
   approvalStatuses,
-  aiProviders,
   auditSources,
   cashSourceTypes,
   deliveryCouriers,
@@ -72,7 +71,6 @@ export const paymentDirection = pgEnum("payment_direction", ["receivable", "paya
 export const paymentMethod = pgEnum("payment_method", ["cash", "transfer", "qris", "giro"]);
 export const posMethod = pgEnum("pos_method", ["cash", "qris", "transfer"]);
 export const auditSource = pgEnum("audit_source", auditSources);
-export const aiProvider = pgEnum("ai_provider", aiProviders);
 export const approvalKind = pgEnum("approval_kind", approvalKinds);
 export const approvalStatus = pgEnum("approval_status", approvalStatuses);
 export const approvalMethod = pgEnum("approval_method", approvalMethods);
@@ -118,14 +116,17 @@ export const sessions = pgTable(
 );
 
 /**
- * The AI and Telegram connections the admin sets in the web (one row). Keys and tokens are stored
- * encrypted (apps/api/src/lib/secret-box.ts); environment variables fill in what is not set here.
+ * The AI and Telegram connections the admin sets in the web (one row). Keys, tokens and the ChatGPT
+ * session are stored encrypted (apps/api/src/lib/secret-box.ts); environment variables fill in what is
+ * not set here.
  */
 export const integrationSettings = pgTable("integration_settings", {
   id: integer().primaryKey().default(1),
-  aiProvider: aiProvider().notNull().default("anthropic"),
   aiModel: text().notNull().default(""),
-  anthropicApiKey: text(),
+  /** ChatGPT sign-in: the issued client id and token set, as encrypted JSON. Refreshed in place. */
+  chatgptSession: text(),
+  /** This server's stable `ext_agent_host_id` for ChatGPT sign-in, made once. */
+  chatgptHostId: text(),
   openaiApiKey: text(),
   telegramBotToken: text(),
   telegramBotUsername: text().notNull().default(""),
