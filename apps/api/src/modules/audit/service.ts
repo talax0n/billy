@@ -8,11 +8,12 @@ import { matchAllTerms } from "../../lib/search.ts";
 const approver = alias(users, "approver");
 const day = sql`(${auditEvents.at} at time zone 'Asia/Jakarta')::date`;
 
-/** Log Aktivitas: newest first, filtered by person, action, business date and words in the summary. */
+/** Log Aktivitas: newest first, filtered by person, action, record, business date and words in the summary. */
 export async function listAuditEvents(db: Db, query: z.output<typeof auditQuery>) {
   const where = and(
     query.actorId ? eq(auditEvents.actorId, query.actorId) : undefined,
     query.action ? eq(auditEvents.action, query.action) : undefined,
+    query.entityId ? eq(auditEvents.entityId, query.entityId) : undefined,
     query.from ? sql`${day} >= ${query.from}` : undefined,
     query.to ? sql`${day} <= ${query.to}` : undefined,
     matchAllTerms(sql`${auditEvents.summary}`, query.q),

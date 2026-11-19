@@ -92,6 +92,7 @@ export const auditActionNames = Object.keys(auditActions) as [AuditAction, ...Au
 export const auditQuery = paginationQuery.extend({
   actorId: z.uuid().optional(),
   action: z.enum(auditActionNames).optional(),
+  entityId: z.string().min(1).optional(),
   from: businessDateInput.optional(),
   to: businessDateInput.optional(),
 });

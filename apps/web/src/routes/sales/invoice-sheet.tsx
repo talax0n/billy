@@ -1,5 +1,5 @@
-import { formatDate, formatRupiah, paymentMethodLabels, rupiah } from "@billy/core";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { type AuditAction, auditActions, formatDate, formatRupiah, paymentMethodLabels, rupiah } from "@billy/core";
+import { useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Ban, FileText, HandCoins, Pencil, Truck } from "lucide-react";
 import { useState } from "react";
@@ -10,6 +10,7 @@ import { Sheet } from "../../components/ui/dialog.tsx";
 import { StatTile } from "../../components/ui/page.tsx";
 import { toast } from "../../components/ui/toast.tsx";
 import { api, unwrap } from "../../lib/api.ts";
+import { meQuery } from "../../lib/auth.ts";
 import { cx } from "../../lib/cx.ts";
 import { InvoiceForm } from "./invoice-form.tsx";
 import { PaymentDialog } from "./payment-dialog.tsx";
@@ -63,6 +64,7 @@ const openPrint = (path: string) => window.open(path, "_blank", "noopener");
 
 function InvoiceDetail({ invoice, onEdit }: { invoice: Invoice; onEdit: () => void }) {
   const queryClient = useQueryClient();
+  const { data: me } = useSuspenseQuery(meQuery);
   const [dialog, setDialog] = useState<"pay" | "void" | { voidPayment: string } | null>(null);
   const voided = invoice.state.status === "void";
   const activePayments = invoice.payments.filter((p) => !p.voidedAt);
@@ -209,6 +211,7 @@ function InvoiceDetail({ invoice, onEdit }: { invoice: Invoice; onEdit: () => vo
       <p className="text-xs text-muted">
         Dibuat {invoice.createdByName} · tempo {invoice.termsDays} hari
       </p>
+      {me?.role === "admin" && <InvoiceHistory invoiceId={invoice.id} />}
 
       {dialog === "pay" && <PaymentDialog invoice={invoice} onClose={() => setDialog(null)} />}
       {dialog === "void" && (
@@ -239,6 +242,39 @@ function InvoiceDetail({ invoice, onEdit }: { invoice: Invoice; onEdit: () => vo
         />
       )}
     </div>
+  );
+}
+
+const stamp = new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Jakarta" });
+
+/** Who created, changed, repriced or voided this faktur, from Log Aktivitas (admin-only, like the log). */
+function InvoiceHistory({ invoiceId }: { invoiceId: string }) {
+  const history = useQuery({
+    queryKey: ["sales", invoiceId, "history"],
+    queryFn: () => unwrap(api.audit.$get({ query: { entityId: invoiceId, pageSize: "100" } })),
+  });
+  return (
+    <section className="flex flex-col gap-3">
+      <h3 className="font-medium">Riwayat</h3>
+      {history.data?.rows.length === 0 && <p className="text-muted">Belum ada riwayat.</p>}
+      {history.data && history.data.rows.length > 0 && (
+        <ol className="flex flex-col border-l border-line">
+          {history.data.rows.map((e) => (
+            <li key={e.id} className="relative py-2 pl-4">
+              <span className="absolute top-3.5 -left-[4px] size-[7px] rounded-full bg-faint" />
+              <div className="flex items-baseline gap-2">
+                <span className="font-medium">{auditActions[e.action as AuditAction]?.label ?? e.action}</span>
+                <span className="text-ink-2">{e.summary}</span>
+              </div>
+              <div className="text-xs text-muted">
+                {stamp.format(new Date(e.at))} · {e.actorName ?? "Sistem"}
+                {e.reason && ` · alasan: ${e.reason}`}
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
+    </section>
   );
 }
 

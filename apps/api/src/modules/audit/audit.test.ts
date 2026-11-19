@@ -246,6 +246,7 @@ describe("GET /api/audit (Log Aktivitas)", () => {
     expect((await list("q=K1-261113-0002")).rows.map((r) => r.summary)).toEqual(["Penjualan K1-261113-0002 Rp 80.000"]);
     expect((await list(`from=${today}&to=${today}&pageSize=1`)).rows).toHaveLength(1);
     expect((await list("from=2020-01-01&to=2020-01-31")).total).toBe(0);
+    expect((await list(`entityId=${staffId}&action=auth.login_failed`)).rows.map((r) => r.summary)).toEqual(["Gagal masuk sebagai staff"]);
     expect((await call("/api/audit?action=tidak.ada", { cookie: admin })).status).toBe(400);
   });
 });
