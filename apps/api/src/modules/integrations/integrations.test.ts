@@ -99,6 +99,16 @@ describe("connections set in the web", () => {
     expect((await loadIntegrations(db)).ai.auth).toBeNull();
   });
 
+  it("offers in-page ChatGPT sign-in only where the 127.0.0.1 callback can arrive, not on Vercel", async () => {
+    vi.stubEnv("VERCEL", "1");
+    expect((await get()).canSignInHere).toBe(false);
+    const refused = await call("/api/integrations/chatgpt/login", { method: "POST", cookie: admin });
+    expect(refused.status).toBe(422);
+    expect(((await refused.json()) as { error: string }).error).toContain("chatgpt:login");
+    vi.stubEnv("VERCEL", "");
+    expect((await get()).canSignInHere).toBe(true);
+  });
+
   it("signs out of ChatGPT", async () => {
     vi.stubEnv("BILLY_SECRET_KEY", "kunci-uji");
     await saveChatgptSession(db, session());

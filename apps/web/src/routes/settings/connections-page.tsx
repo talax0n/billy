@@ -68,12 +68,19 @@ function ChatgptForm({ data }: { data: Connections }) {
   const [apiKey, setApiKey] = useState("");
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["integrations"] });
 
-  // While a sign-in runs in another tab, ask the server every 2 s whether the callback arrived.
+  // While a sign-in runs in another tab, ask the server every 2 s whether the callback arrived; the
+  // server stops listening after 5 minutes, so the page stops asking then too.
   useEffect(() => {
     if (!waiting) return;
+    const startedAt = Date.now();
     const timer = setInterval(() => {
       void unwrap(api.integrations.chatgpt.login.$get()).then(async (state) => {
-        if (!state || state.status === "waiting") return;
+        if (!state || (state.status === "waiting" && Date.now() - startedAt > 5 * 60_000)) {
+          setWaiting(false);
+          toast("Tidak ada jawaban dari ChatGPT. Ulangi masuk.", "down");
+          return;
+        }
+        if (state.status === "waiting") return;
         setWaiting(false);
         if (state.status === "done") {
           await refresh();
@@ -114,9 +121,11 @@ function ChatgptForm({ data }: { data: Connections }) {
         Status: <span className="font-medium">{status}</span>
       </p>
       <div className="flex flex-wrap gap-2">
-        <Button variant="primary" disabled={busy || waiting} onClick={() => void signIn()}>
-          {waiting ? "Menunggu masuk di tab baru…" : data.chatgpt ? "Masuk ulang" : "Masuk dengan ChatGPT"}
-        </Button>
+        {data.canSignInHere && (
+          <Button variant="primary" disabled={busy || waiting} onClick={() => void signIn()}>
+            {waiting ? "Menunggu masuk di tab baru…" : data.chatgpt ? "Masuk ulang" : "Masuk dengan ChatGPT"}
+          </Button>
+        )}
         {data.chatgpt && (
           <Button
             variant="ghost"
@@ -133,11 +142,8 @@ function ChatgptForm({ data }: { data: Connections }) {
           </Button>
         )}
       </div>
-      <p className="text-ink-2">
-        Tombol ini hanya berfungsi bila billy berjalan di komputer yang sama dengan browser ini, karena ChatGPT mengembalikan hasil masuk ke 127.0.0.1.
-      </p>
-      <details className="rounded-[10px] border border-line px-4 py-3">
-        <summary className="cursor-pointer font-medium">billy berjalan di server internet?</summary>
+      <details className="rounded-[10px] border border-line px-4 py-3" open={!data.canSignInHere}>
+        <summary className="cursor-pointer font-medium">{data.canSignInHere ? "Masuk dari komputer lain" : data.chatgpt ? "Masuk ulang" : "Masuk dengan ChatGPT"}</summary>
         <div className="mt-3 flex flex-col gap-3">
           <p className="text-ink-2">
             Jalankan <code className="rounded bg-line-2 px-1">pnpm --filter @billy/api chatgpt:login</code> di komputer Anda, masuk di browser yang terbuka, lalu tempel kode

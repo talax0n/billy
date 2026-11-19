@@ -58,6 +58,13 @@ async function requireToken(c: { var: AppEnv["Variables"] }) {
 let localSignIn: { url: string; status: "waiting" | "done" | "failed"; message: string } | null = null;
 
 /**
+ * Whether this API runs where the admin's browser is, so ChatGPT's 127.0.0.1 callback can reach it.
+ * On Vercel it never can (and each request may land on another instance), so the web offers the
+ * session code instead.
+ */
+const canSignInHere = () => !process.env.VERCEL;
+
+/**
  * The AI and Telegram connections, set by the admin in the web. Secrets are write-only: they are stored
  * encrypted and only their last four characters (or the ChatGPT account's email) ever come back.
  */
@@ -77,6 +84,7 @@ export const integrationRoutes = new Hono<AppEnv>()
         username: live.telegram.username || null,
       },
       canStoreSecrets: Boolean(process.env.BILLY_SECRET_KEY),
+      canSignInHere: canSignInHere(),
       suggestedWebhookUrl: `${new URL(c.req.url).origin}/api/telegram/webhook`,
     });
   })
@@ -110,6 +118,7 @@ export const integrationRoutes = new Hono<AppEnv>()
   .get("/ai/models", async (c) => c.json({ models: await listModels(c.var.db) }))
   /** Starts a sign-in whose callback this API process receives on 127.0.0.1:1455; the web opens `url`. */
   .post("/chatgpt/login", async (c) => {
+    if (!canSignInHere()) throw new DomainError("invalid", "Di server internet, masuk lewat perintah chatgpt:login lalu tempel kode sesinya.");
     if (localSignIn?.status === "waiting") return c.json(localSignIn);
     const db = c.var.db;
     const actorId = c.var.actor.id;
