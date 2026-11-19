@@ -20,6 +20,7 @@ import { purchaseRoutes } from "./modules/purchases/routes.ts";
 import { quotationRoutes } from "./modules/quotations/routes.ts";
 import { settingsRoutes } from "./modules/settings/routes.ts";
 import { stockRoutes } from "./modules/stock/routes.ts";
+import { telegramRoutes } from "./modules/telegram/routes.ts";
 import { userRoutes } from "./modules/users/routes.ts";
 import { watchdogRoutes } from "./modules/watchdog/routes.ts";
 
@@ -57,6 +58,7 @@ export function createApp(db: Db) {
     .route("/approvals", approvalRoutes)
     .route("/audit", auditRoutes)
     .route("/watchdog", watchdogRoutes)
+    .route("/telegram", telegramRoutes)
     .route("/", insightRoutes);
 }
 

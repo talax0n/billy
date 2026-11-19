@@ -15,7 +15,8 @@ import { createDb, products } from "@billy/db";
 import { eq } from "drizzle-orm";
 import ExcelJS from "exceljs";
 import { sheetCells } from "../modules/opname/count-sheet.ts";
-import { bestMatch, spbBlocks } from "./spb-stock-parse.ts";
+import { bestMatch } from "../lib/product-match.ts";
+import { spbBlocks } from "./spb-stock-parse.ts";
 
 const [outDir, ...files] = process.argv.slice(2);
 if (!process.env.DATABASE_URL || !outDir || files.length === 0) {

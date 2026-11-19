@@ -2,7 +2,7 @@ import { z } from "zod";
 import { businessDateInput, paginationQuery } from "./schemas/common.ts";
 
 /** Where an audited change came from. `kasir_offline`: a Kasir sale made offline and synced later. */
-export const auditSources = ["web", "kasir", "kasir_offline", "system"] as const;
+export const auditSources = ["web", "kasir", "kasir_offline", "system", "telegram"] as const;
 export type AuditSource = (typeof auditSources)[number];
 
 export const auditSourceLabels: Record<AuditSource, string> = {
@@ -10,6 +10,7 @@ export const auditSourceLabels: Record<AuditSource, string> = {
   kasir: "Kasir",
   kasir_offline: "Kasir (offline)",
   system: "Sistem",
+  telegram: "Telegram",
 };
 
 /**

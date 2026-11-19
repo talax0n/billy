@@ -3,6 +3,7 @@ import { createDb, isEmpty, seed } from "@billy/db";
 import { serve } from "@hono/node-server";
 import { createApp } from "./app.ts";
 import { hashPassword } from "./auth/password.ts";
+import { pollTelegram } from "./modules/telegram/telegram-api.ts";
 
 const DEV_ADMIN_PASSWORD = "admin12345";
 
@@ -26,6 +27,9 @@ const port = Number(process.env.PORT ?? 8787);
 const server = serve({ fetch: createApp(database.db).fetch, port }, () =>
   console.log(`api on http://localhost:${port}/api`),
 );
+
+// No public URL here for Telegram's webhook: with a (test) bot token set, long-poll instead.
+if (process.env.TELEGRAM_BOT_TOKEN) void pollTelegram(database.db);
 
 // PGlite writes to disk: close it cleanly so a restart never finds a half-written data dir.
 for (const signal of ["SIGINT", "SIGTERM"] as const) {

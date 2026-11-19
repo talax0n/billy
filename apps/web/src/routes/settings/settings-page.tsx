@@ -7,6 +7,7 @@ import { cx } from "../../lib/cx.ts";
 import { CategoriesTab } from "./categories-tab.tsx";
 import { SecurityTab } from "./security-tab.tsx";
 import { ShopTab } from "./shop-tab.tsx";
+import { TelegramTab } from "./telegram-tab.tsx";
 import { UsersTab } from "./users-tab.tsx";
 
 const tabs: { label: string; roles: Role[]; component: ComponentType }[] = [
@@ -14,6 +15,7 @@ const tabs: { label: string; roles: Role[]; component: ComponentType }[] = [
   { label: "Pengguna", roles: ["admin"], component: UsersTab },
   { label: "Keamanan", roles: ["admin"], component: SecurityTab },
   { label: "Kategori", roles: ["admin", "staff"], component: CategoriesTab },
+  { label: "Telegram", roles: ["admin", "staff"], component: TelegramTab },
 ];
 
 export function SettingsPage() {

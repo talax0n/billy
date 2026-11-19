@@ -64,6 +64,13 @@
       "when": 1794722195479,
       "tag": "0008_pos_shipping_fee",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1795100674626,
+      "tag": "0009_telegram_bot",
+      "breakpoints": true
     }
   ]
 }

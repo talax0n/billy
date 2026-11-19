@@ -115,6 +115,32 @@ export const sessions = pgTable(
   (t) => [index().on(t.userId)],
 );
 
+/** A Telegram chat linked to one billy user, for the stock bot. `lastReply` lets "1" or "yang kedua" answer the bot's last question. */
+export const telegramChats = pgTable("telegram_chats", {
+  chatId: text().primaryKey(),
+  userId: uuid()
+    .notNull()
+    .unique()
+    .references(() => users.id),
+  lastReply: text().notNull().default(""),
+  linkedAt: createdAt(),
+});
+
+/** One-time code a user sends as `/start <code>` to link their Telegram chat. */
+export const telegramLinkCodes = pgTable("telegram_link_codes", {
+  code: text().primaryKey(),
+  userId: uuid()
+    .notNull()
+    .references(() => users.id),
+  expiresAt: timestamp({ withTimezone: true }).notNull(),
+});
+
+/** Telegram update ids already handled; Telegram resends an update it thinks failed. */
+export const telegramUpdates = pgTable("telegram_updates", {
+  updateId: bigint({ mode: "number" }).primaryKey(),
+  receivedAt: createdAt(),
+});
+
 export const settings = pgTable(
   "settings",
   {
