@@ -1,7 +1,7 @@
 import { type CategoryInput, categoryInput } from "@billy/core";
 import { useQueryClient } from "@tanstack/react-query";
 import type { InferResponseType } from "hono/client";
-import { Plus } from "lucide-react";
+import { Plus, Wand2 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "../../components/ui/button.tsx";
 import { DataTable, usePagedQuery } from "../../components/ui/data-table.tsx";
@@ -19,6 +19,7 @@ export function CategoriesTab() {
     unwrap(api.categories.$get({ query: { q: params.q, page: String(params.page), pageSize: String(params.pageSize) } })),
   );
   const [editing, setEditing] = useState<CategoryRow | "new" | null>(null);
+  const [autoAssigning, setAutoAssigning] = useState(false);
 
   return (
     <PageBody>
@@ -26,10 +27,16 @@ export function CategoriesTab() {
         paged={paged}
         searchPlaceholder="Cari kategori…"
         toolbar={
-          <Button variant="primary" className="ml-auto" onClick={() => setEditing("new")}>
-            <Plus className="size-4" />
-            Kategori baru
-          </Button>
+          <>
+            <Button className="ml-auto" onClick={() => setAutoAssigning(true)}>
+              <Wand2 className="size-4" />
+              Isi brand otomatis
+            </Button>
+            <Button variant="primary" onClick={() => setEditing("new")}>
+              <Plus className="size-4" />
+              Kategori baru
+            </Button>
+          </>
         }
         onRowClick={setEditing}
         empty={<EmptyState title="Belum ada kategori" />}
@@ -41,6 +48,9 @@ export function CategoriesTab() {
       />
       <Dialog open={editing !== null} onClose={() => setEditing(null)} title={editing === "new" ? "Kategori baru" : "Ubah kategori"}>
         {editing && <CategoryForm category={editing === "new" ? null : editing} onDone={() => setEditing(null)} />}
+      </Dialog>
+      <Dialog open={autoAssigning} onClose={() => setAutoAssigning(false)} title="Isi brand otomatis">
+        {autoAssigning && <AutoAssign onDone={() => setAutoAssigning(false)} />}
       </Dialog>
     </PageBody>
   );
@@ -74,5 +84,65 @@ function CategoryForm({ category, onDone }: { category: CategoryRow | null; onDo
         </Button>
       </div>
     </form>
+  );
+}
+
+type AutoAssignResult = InferResponseType<(typeof api.categories)["auto-assign"]["$post"], 200>;
+
+/** Groups products without a category by the brand their name starts with, e.g. CATYLAC → Dulux. */
+function AutoAssign({ onDone }: { onDone: () => void }) {
+  const queryClient = useQueryClient();
+  const [result, setResult] = useState<AutoAssignResult | null>(null);
+  const [running, setRunning] = useState(false);
+
+  async function run() {
+    setRunning(true);
+    try {
+      setResult(await unwrap(api.categories["auto-assign"].$post()));
+      await queryClient.invalidateQueries({ queryKey: ["categories"] });
+      await queryClient.invalidateQueries({ queryKey: ["products"] });
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  if (result) {
+    return (
+      <div className="flex flex-col gap-4 text-sm">
+        {result.assigned === 0 ? (
+          <p className="text-ink-2">Tidak ada produk baru yang bisa dikenali brandnya.</p>
+        ) : (
+          <ul className="flex flex-col rounded-[10px] border border-line">
+            {result.brands.map((b) => (
+              <li key={b.id} className="flex justify-between border-b border-line-2 px-3 py-2 last:border-b-0">
+                <span className="font-medium">{b.name}</span>
+                <span className="tabular-nums">{b.count} produk</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="flex justify-end">
+          <Button variant="primary" onClick={onDone}>
+            Selesai
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-4 text-sm">
+      <p className="text-ink-2">
+        Produk yang belum punya kategori akan dikelompokkan ke brandnya dari awal nama barang, misalnya CATYLAC dan WEATHERSHIELD masuk
+        Dulux, VINILEX dan WEATHERBOND masuk Nippon Paint. Produk yang sudah punya kategori tidak diubah. Produk yang tidak dikenali tetap
+        kosong dan bisa diisi manual.
+      </p>
+      <div className="flex justify-end gap-2">
+        <Button onClick={onDone}>Batal</Button>
+        <Button variant="primary" disabled={running} onClick={run}>
+          Isi sekarang
+        </Button>
+      </div>
+    </div>
   );
 }

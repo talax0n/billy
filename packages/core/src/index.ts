@@ -1,5 +1,6 @@
 export * from "./approvals.ts";
 export * from "./audit.ts";
+export * from "./brands.ts";
 export * from "./cash.ts";
 export * from "./contacts.ts";
 export * from "./dates.ts";
