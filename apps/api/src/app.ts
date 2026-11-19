@@ -12,6 +12,7 @@ import { contactRoutes } from "./modules/contacts/routes.ts";
 import { deliveryRoutes } from "./modules/deliveries/routes.ts";
 import { expenseRoutes } from "./modules/expenses/routes.ts";
 import { insightRoutes } from "./modules/insights/routes.ts";
+import { integrationRoutes } from "./modules/integrations/routes.ts";
 import { opnameRoutes } from "./modules/opname/routes.ts";
 import { posRoutes } from "./modules/pos/routes.ts";
 import { productRoutes } from "./modules/products/routes.ts";
@@ -59,6 +60,7 @@ export function createApp(db: Db) {
     .route("/audit", auditRoutes)
     .route("/watchdog", watchdogRoutes)
     .route("/telegram", telegramRoutes)
+    .route("/integrations", integrationRoutes)
     .route("/", insightRoutes);
 }
 

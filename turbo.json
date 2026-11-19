@@ -22,7 +22,9 @@
         "TELEGRAM_BOT_TOKEN",
         "TELEGRAM_BOT_USERNAME",
         "TELEGRAM_WEBHOOK_SECRET",
-        "ANTHROPIC_API_KEY"
+        "ANTHROPIC_API_KEY",
+        "OPENAI_API_KEY",
+        "BILLY_SECRET_KEY"
       ]
     }
   }

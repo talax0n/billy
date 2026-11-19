@@ -2,6 +2,7 @@ import {
   approvalKinds,
   approvalMethods,
   approvalStatuses,
+  aiProviders,
   auditSources,
   cashSourceTypes,
   deliveryCouriers,
@@ -71,6 +72,7 @@ export const paymentDirection = pgEnum("payment_direction", ["receivable", "paya
 export const paymentMethod = pgEnum("payment_method", ["cash", "transfer", "qris", "giro"]);
 export const posMethod = pgEnum("pos_method", ["cash", "qris", "transfer"]);
 export const auditSource = pgEnum("audit_source", auditSources);
+export const aiProvider = pgEnum("ai_provider", aiProviders);
 export const approvalKind = pgEnum("approval_kind", approvalKinds);
 export const approvalStatus = pgEnum("approval_status", approvalStatuses);
 export const approvalMethod = pgEnum("approval_method", approvalMethods);
@@ -114,6 +116,23 @@ export const sessions = pgTable(
   },
   (t) => [index().on(t.userId)],
 );
+
+/**
+ * The AI and Telegram connections the admin sets in the web (one row). Keys and tokens are stored
+ * encrypted (apps/api/src/lib/secret-box.ts); environment variables fill in what is not set here.
+ */
+export const integrationSettings = pgTable("integration_settings", {
+  id: integer().primaryKey().default(1),
+  aiProvider: aiProvider().notNull().default("anthropic"),
+  aiModel: text().notNull().default(""),
+  anthropicApiKey: text(),
+  openaiApiKey: text(),
+  telegramBotToken: text(),
+  telegramBotUsername: text().notNull().default(""),
+  telegramWebhookSecret: text(),
+  updatedBy: uuid().references(() => users.id),
+  updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+});
 
 /** A Telegram chat linked to one billy user, for the stock bot. `lastReply` lets "1" or "yang kedua" answer the bot's last question. */
 export const telegramChats = pgTable("telegram_chats", {

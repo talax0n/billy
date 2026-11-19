@@ -223,6 +223,7 @@ describe("Telegram routes", () => {
           body: JSON.stringify({ update_id: updateId }),
         })
       ).status;
+    vi.stubEnv("TELEGRAM_BOT_TOKEN", "123456789:AAH-uji-token-bot-telegram-yang-panjang");
     vi.stubEnv("TELEGRAM_WEBHOOK_SECRET", "");
     expect(await post(9000, "apa-saja")).toBe(503);
     vi.stubEnv("TELEGRAM_WEBHOOK_SECRET", "rahasia-webhook");

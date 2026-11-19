@@ -1,14 +1,15 @@
 import Anthropic from "@anthropic-ai/sdk";
-import type { BetaContentBlockParam } from "@anthropic-ai/sdk/resources/beta/messages/messages";
 import { betaZodTool } from "@anthropic-ai/sdk/helpers/beta/zod";
-import { DomainError } from "@billy/core";
+import type { BetaContentBlockParam } from "@anthropic-ai/sdk/resources/beta/messages/messages";
+import { aiProviderLabels, DomainError } from "@billy/core";
 import type { Db } from "@billy/db";
+import OpenAI from "openai";
+import type { ChatCompletionContentPart, ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import { z } from "zod";
 import type { Actor } from "../../env.ts";
+import type { Integrations } from "../integrations/config.ts";
 import { dailySummary, deliveriesToday, receivables, stockHistory, stockLookup } from "./query-tools.ts";
 import { brandList, clearCounts, draftsSummary, findProducts, recordCounts } from "./stock-tools.ts";
-
-export const STOCK_AGENT_MODEL = "claude-opus-5-5";
 
 /** Stable across requests (no dates, no data), so it caches; everything that changes goes in the user message. */
 const SYSTEM = `Kamu asisten toko cat di Telegram untuk admin dan staf kantor. Ada dua jenis pekerjaan.
@@ -49,22 +50,35 @@ export interface StockAgentInput {
   images?: StockAgentImage[];
 }
 
-/** A tool's own failure (unknown product, product outside the brand) goes back to the model as text it can act on. */
-const guarded =
-  <A>(run: (args: A) => Promise<unknown>) =>
-  async (args: A) => {
-    try {
-      return JSON.stringify(await run(args));
-    } catch (err) {
-      if (err instanceof DomainError) return `GAGAL: ${err.message}`;
-      throw err;
-    }
-  };
+/** One tool, written once and handed to whichever AI is configured. */
+interface AgentTool {
+  name: string;
+  description: string;
+  inputSchema: z.ZodObject;
+  run: (args: Record<string, unknown>) => Promise<string>;
+}
+
+/**
+ * Defines a tool whose own failure (unknown product, product outside the brand) goes back to the model
+ * as text it can act on, instead of ending the run.
+ */
+const tool = <S extends z.ZodObject>(def: { name: string; description: string; inputSchema: S; run: (args: z.infer<S>) => Promise<unknown> }): AgentTool =>
+  ({
+    ...def,
+    run: async (args: z.infer<S>) => {
+      try {
+        return JSON.stringify(await def.run(args));
+      } catch (err) {
+        if (err instanceof DomainError) return `GAGAL: ${err.message}`;
+        throw err;
+      }
+    },
+  }) as unknown as AgentTool;
 
 /** The tools this user may call: recording counts and reading for admin and staff, the money summary for admin only. */
 function agentTools(db: Db, actor: Actor) {
   const tools = [
-    betaZodTool({
+    tool({
       name: "cari_barang",
       description:
         "Cari produk satu brand yang paling mirip dengan kata-kata staf, untuk mencatat hitungan. Mengembalikan sampai 6 kandidat (id, nama, satuan, skor 0-1), terbaik dulu. Base dan ukuran yang beda tidak ikut.",
@@ -72,9 +86,9 @@ function agentTools(db: Db, actor: Actor) {
         kategori_id: z.string().describe("id brand dari daftar brand di konteks"),
         kata: z.string().describe("nama barang seperti ditulis staf, termasuk base/warna dan ukuran"),
       }),
-      run: guarded(({ kategori_id, kata }) => findProducts(db, kategori_id, kata)),
+      run: ({ kategori_id, kata }) => findProducts(db, kategori_id, kata),
     }),
-    betaZodTool({
+    tool({
       name: "catat_hitungan",
       description:
         "Catat sisa stok fisik ke draf opname brand ini (dibuat otomatis bila belum ada). Menimpa hitungan lama barang yang sama. Hanya untuk barang yang cocoknya jelas.",
@@ -84,22 +98,21 @@ function agentTools(db: Db, actor: Actor) {
           .array(z.object({ product_id: z.string().describe("id dari cari_barang"), jumlah: z.number().int().min(0) }))
           .min(1),
       }),
-      run: guarded(({ kategori_id, barang }) =>
+      run: ({ kategori_id, barang }) =>
         recordCounts(
           db,
           actor,
           kategori_id,
           barang.map((b) => ({ productId: b.product_id, qty: b.jumlah })),
         ),
-      ),
     }),
-    betaZodTool({
+    tool({
       name: "hapus_hitungan",
       description: "Hapus hitungan yang salah dari draf opname brand ini, sehingga barang itu kembali belum dihitung.",
       inputSchema: z.object({ kategori_id: z.string(), product_ids: z.array(z.string()).min(1) }),
-      run: guarded(({ kategori_id, product_ids }) => clearCounts(db, actor, kategori_id, product_ids)),
+      run: ({ kategori_id, product_ids }) => clearCounts(db, actor, kategori_id, product_ids),
     }),
-    betaZodTool({
+    tool({
       name: "cek_stok",
       description:
         "Stok sistem saat ini dan harga jual dari sampai 5 produk yang paling mirip dengan kata-kata pengguna, di semua brand atau satu brand. Tidak mengubah apa pun.",
@@ -107,39 +120,39 @@ function agentTools(db: Db, actor: Actor) {
         kata: z.string().describe("nama barang, base/warna, ukuran"),
         kategori_id: z.string().optional().describe("id brand bila pengguna menyebut brand"),
       }),
-      run: guarded(({ kata, kategori_id }) => stockLookup(db, actor.role, kata, kategori_id)),
+      run: ({ kata, kategori_id }) => stockLookup(db, actor.role, kata, kategori_id),
     }),
-    betaZodTool({
+    tool({
       name: "riwayat_stok",
       description: "Pergerakan stok terbaru satu produk (pembelian, penjualan, opname), terbaru dulu, dengan stok setelah tiap pergerakan.",
       inputSchema: z.object({
         product_id: z.string().describe("id dari cek_stok"),
         jumlah: z.number().int().min(1).max(30).optional().describe("berapa pergerakan, default 10"),
       }),
-      run: guarded(({ product_id, jumlah }) => stockHistory(db, product_id, jumlah)),
+      run: ({ product_id, jumlah }) => stockHistory(db, product_id, jumlah),
     }),
-    betaZodTool({
+    tool({
       name: "cek_piutang",
       description:
         "Faktur penjualan yang belum lunas. Dengan nama pelanggan: rincian fakturnya (sisa, jatuh tempo, lewat berapa hari). Tanpa nama: 10 pelanggan dengan piutang terbesar dan totalnya.",
       inputSchema: z.object({ pelanggan: z.string().optional().describe("nama atau sebagian nama pelanggan") }),
-      run: guarded(({ pelanggan }) => receivables(db, pelanggan)),
+      run: ({ pelanggan }) => receivables(db, pelanggan),
     }),
-    betaZodTool({
+    tool({
       name: "antaran_hari_ini",
       description: "Daftar antaran hari ini: yang menunggu, di jalan, sudah sampai, atau batal, dengan pelanggan, alamat, sopir dan barangnya.",
       inputSchema: z.object({}),
-      run: guarded(() => deliveriesToday(db)),
+      run: () => deliveriesToday(db),
     }),
   ];
   if (actor.role !== "admin") return tools;
   return [
     ...tools,
-    betaZodTool({
+    tool({
       name: "ringkasan_hari_ini",
       description: "Ringkasan hari ini untuk pemilik: penjualan, laba kotor, kas masuk dan keluar, piutang, hutang jatuh tempo, dan saldo tiap akun.",
       inputSchema: z.object({}),
-      run: guarded(() => dailySummary(db, actor.role)),
+      run: () => dailySummary(db, actor.role),
     }),
   ];
 }
@@ -155,17 +168,31 @@ async function context(db: Db, actor: Actor, text: string, lastReply: string) {
   ].join("\n\n");
 }
 
+const NO_REPLY = "Maaf, saya belum bisa memproses pesan itu. Coba tulis ulang.";
+
 /**
- * One Telegram message, one agent run: Claude reads the message (and any photo) with the brands and open
- * drafts, calls the tools above, and returns the reply to send. Only the last reply text carries over.
+ * One Telegram message, one agent run on the configured AI: it reads the message (and any photo) with the
+ * brands and open drafts, calls the tools above, and returns the reply to send. Only the last reply text
+ * carries over between messages.
  */
-export async function runStockAgent({ db, actor, text, lastReply, images = [] }: StockAgentInput, client = new Anthropic()): Promise<string> {
+export async function runStockAgent(input: StockAgentInput, ai: Integrations["ai"]): Promise<string> {
+  if (!ai.apiKey) return `Bot belum siap: kunci API ${aiProviderLabels[ai.provider]} belum diisi. Minta admin mengisinya di billy, Pengaturan, Koneksi.`;
+  if (!ai.model) return `Bot belum siap: model ${aiProviderLabels[ai.provider]} belum dipilih. Minta admin memilihnya di billy, Pengaturan, Koneksi.`;
+  const prompt = await context(input.db, input.actor, input.text, input.lastReply);
+  const tools = agentTools(input.db, input.actor);
+  return ai.provider === "anthropic"
+    ? runClaude(new Anthropic({ apiKey: ai.apiKey }), ai.model, prompt, input.images ?? [], tools)
+    : runOpenAi(new OpenAI({ apiKey: ai.apiKey }), ai.model, prompt, input.images ?? [], tools);
+}
+
+/** Claude through the Anthropic SDK's tool runner: low effort, prompt caching, and a server-side fallback model on refusal. */
+export async function runClaude(client: Anthropic, model: string, prompt: string, images: StockAgentImage[], tools: AgentTool[]) {
   const content: BetaContentBlockParam[] = [
     ...images.map((img): BetaContentBlockParam => ({ type: "image", source: { type: "base64", media_type: img.mediaType, data: img.data } })),
-    { type: "text", text: await context(db, actor, text, lastReply) },
+    { type: "text", text: prompt },
   ];
   const final = await client.beta.messages.toolRunner({
-    model: STOCK_AGENT_MODEL,
+    model,
     max_tokens: 16000,
     max_iterations: 10,
     output_config: { effort: "low" },
@@ -173,7 +200,7 @@ export async function runStockAgent({ db, actor, text, lastReply, images = [] }:
     fallbacks: "default",
     cache_control: { type: "ephemeral" },
     system: SYSTEM,
-    tools: agentTools(db, actor),
+    tools: tools.map((t) => betaZodTool(t)),
     messages: [{ role: "user", content }],
   });
   if (final.stop_reason === "refusal") return "Maaf, pesan ini tidak bisa saya proses. Coba tulis ulang.";
@@ -181,5 +208,51 @@ export async function runStockAgent({ db, actor, text, lastReply, images = [] }:
     .flatMap((block) => (block.type === "text" ? [block.text] : []))
     .join("\n")
     .trim();
-  return reply || "Maaf, saya belum bisa memproses pesan itu. Coba tulis ulang.";
+  return reply || NO_REPLY;
+}
+
+const MAX_OPENAI_ROUNDS = 10;
+
+/** ChatGPT through OpenAI's Chat Completions function calling, the same tools, looped until it answers in text. */
+export async function runOpenAi(client: OpenAI, model: string, prompt: string, images: StockAgentImage[], tools: AgentTool[]) {
+  const byName = new Map(tools.map((t) => [t.name, t]));
+  const content: ChatCompletionContentPart[] = [
+    ...images.map((img): ChatCompletionContentPart => ({ type: "image_url", image_url: { url: `data:${img.mediaType};base64,${img.data}` } })),
+    { type: "text", text: prompt },
+  ];
+  const messages: ChatCompletionMessageParam[] = [
+    { role: "system", content: SYSTEM },
+    { role: "user", content },
+  ];
+  const functions = tools.map((t) => ({
+    type: "function" as const,
+    function: { name: t.name, description: t.description, parameters: z.toJSONSchema(t.inputSchema) as Record<string, unknown> },
+  }));
+  for (let round = 0; round < MAX_OPENAI_ROUNDS; round++) {
+    const response = await client.chat.completions.create({ model, messages, tools: functions });
+    const message = response.choices[0]?.message;
+    if (!message) return NO_REPLY;
+    if (message.refusal) return "Maaf, pesan ini tidak bisa saya proses. Coba tulis ulang.";
+    messages.push(message);
+    const calls = (message.tool_calls ?? []).filter((c) => c.type === "function");
+    if (calls.length === 0) return message.content?.trim() || NO_REPLY;
+    for (const call of calls) {
+      messages.push({ role: "tool", tool_call_id: call.id, content: await runToolCall(byName.get(call.function.name), call.function.arguments) });
+    }
+  }
+  return NO_REPLY;
+}
+
+/** Runs one call the model asked for; a made-up tool or invalid arguments go back to the model as an error it can fix. */
+async function runToolCall(t: AgentTool | undefined, rawArgs: string) {
+  if (!t) return "GAGAL: alat tidak dikenal";
+  let args: unknown;
+  try {
+    args = JSON.parse(rawArgs || "{}");
+  } catch {
+    return "GAGAL: argumen bukan JSON yang valid";
+  }
+  const parsed = t.inputSchema.safeParse(args);
+  if (!parsed.success) return `GAGAL: argumen tidak valid (${parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")})`;
+  return t.run(parsed.data);
 }

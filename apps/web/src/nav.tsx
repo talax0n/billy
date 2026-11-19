@@ -11,6 +11,7 @@ import {
   History,
   LayoutDashboard,
   Lock,
+  PlugZap,
   type LucideIcon,
   Package,
   Receipt,
@@ -48,6 +49,7 @@ const RiwayatKasirPage = lazyRouteComponent(() => import("./routes/riwayat-kasir
 const ShopPage = lazyRouteComponent(() => import("./routes/settings/shop-page.tsx"), "ShopPage");
 const UsersPage = lazyRouteComponent(() => import("./routes/settings/users-page.tsx"), "UsersPage");
 const SecurityPage = lazyRouteComponent(() => import("./routes/settings/security-page.tsx"), "SecurityPage");
+const ConnectionsPage = lazyRouteComponent(() => import("./routes/settings/connections-page.tsx"), "ConnectionsPage");
 const CategoriesPage = lazyRouteComponent(() => import("./routes/categories/categories-page.tsx"), "CategoriesPage");
 const TelegramPage = lazyRouteComponent(() => import("./routes/telegram/telegram-page.tsx"), "TelegramPage");
 const OpnamePage = lazyRouteComponent(() => import("./routes/opname/opname-page.tsx"), "OpnamePage");
@@ -107,6 +109,7 @@ export const navItems: NavItem[] = [
   { group: "hidden", path: "/pengaturan", label: "Pengaturan", tab: "Toko", icon: Settings, page: ShopPage, roles: ["admin"] },
   { group: "hidden", section: "/pengaturan", path: "/pengaturan/pengguna", label: "Pengguna", icon: UserCog, page: UsersPage, roles: ["admin"] },
   { group: "hidden", section: "/pengaturan", path: "/pengaturan/keamanan", label: "Keamanan", icon: Lock, page: SecurityPage, roles: ["admin"] },
+  { group: "hidden", section: "/pengaturan", path: "/pengaturan/koneksi", label: "Koneksi", icon: PlugZap, page: ConnectionsPage, roles: ["admin"] },
 ];
 
 export const canOpen = (item: NavItem, role: Role | undefined) => !item.roles || (!!role && item.roles.includes(role));

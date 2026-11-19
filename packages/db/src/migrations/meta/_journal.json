@@ -71,6 +71,13 @@
       "when": 1795100674626,
       "tag": "0009_telegram_bot",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1795102352863,
+      "tag": "0010_integration_settings",
+      "breakpoints": true
     }
   ]
 }

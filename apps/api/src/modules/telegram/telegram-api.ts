@@ -1,17 +1,7 @@
 import type { Db } from "@billy/db";
+import { type Integrations, loadIntegrations } from "../integrations/config.ts";
 import { runStockAgent } from "./agent.ts";
 import { type BotDeps, handleUpdate, telegramUpdate } from "./bot.ts";
-
-/**
- * Telegram settings, read per call so a deploy picks up new env values. TELEGRAM_BOT_TOKEN talks to
- * Telegram; TELEGRAM_WEBHOOK_SECRET is the header Telegram sends back on every webhook call;
- * TELEGRAM_BOT_USERNAME builds the t.me link shown in Pengaturan.
- */
-export const telegramConfig = () => ({
-  token: process.env.TELEGRAM_BOT_TOKEN,
-  webhookSecret: process.env.TELEGRAM_WEBHOOK_SECRET,
-  username: process.env.TELEGRAM_BOT_USERNAME,
-});
 
 const LONG_POLL_SECONDS = 25;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -21,9 +11,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * instead of hanging the bot. A network failure is retried up to `attempts` times; an answer from
  * Telegram saying no is not.
  */
-async function call(method: string, body: Record<string, unknown>, { timeoutMs = 15_000, attempts = 3 } = {}) {
-  const { token } = telegramConfig();
-  if (!token) throw new Error("TELEGRAM_BOT_TOKEN is not set");
+export async function telegramCall(token: string, method: string, body: Record<string, unknown>, { timeoutMs = 15_000, attempts = 3 } = {}) {
   for (let attempt = 1; ; attempt++) {
     let res: Response;
     try {
@@ -44,40 +32,52 @@ async function call(method: string, body: Record<string, unknown>, { timeoutMs =
   }
 }
 
-export const liveBotDeps: BotDeps = {
-  send: async (chatId, text) => void (await call("sendMessage", { chat_id: chatId, text })),
-  typing: async (chatId) => void (await call("sendChatAction", { chat_id: chatId, action: "typing" })),
-  agent: (input) => runStockAgent(input),
-  download: async (fileId, mediaType) => {
-    const file = (await call("getFile", { file_id: fileId })) as { file_path: string };
-    const res = await fetch(`https://api.telegram.org/file/bot${telegramConfig().token}/${file.file_path}`, { signal: AbortSignal.timeout(30_000) });
-    if (!res.ok) throw new Error(`Telegram file download: ${res.status}`);
-    return { mediaType, data: Buffer.from(await res.arrayBuffer()).toString("base64") };
-  },
-};
+/** The bot's live connections for one update: this token for Telegram, the configured AI for the agent. */
+export function liveBotDeps(integrations: Integrations): BotDeps {
+  const token = integrations.telegram.token!;
+  return {
+    send: async (chatId, text) => void (await telegramCall(token, "sendMessage", { chat_id: chatId, text })),
+    typing: async (chatId) => void (await telegramCall(token, "sendChatAction", { chat_id: chatId, action: "typing" })),
+    agent: (input) => runStockAgent(input, integrations.ai),
+    download: async (fileId, mediaType) => {
+      const file = (await telegramCall(token, "getFile", { file_id: fileId })) as { file_path: string };
+      const res = await fetch(`https://api.telegram.org/file/bot${token}/${file.file_path}`, { signal: AbortSignal.timeout(30_000) });
+      if (!res.ok) throw new Error(`Telegram file download: ${res.status}`);
+      return { mediaType, data: Buffer.from(await res.arrayBuffer()).toString("base64") };
+    },
+  };
+}
 
 /**
- * Local development has no public URL for the webhook, so `dev.ts` long-polls instead when a bot token
- * is set. getUpdates refuses while a webhook is registered, so this drops it first: do not run it with
- * the production bot's token.
+ * Local development has no public URL for the webhook, so `dev.ts` long-polls instead. It reads the token
+ * each round, so a token saved in the web starts the bot without a restart. getUpdates refuses while a
+ * webhook is registered, so polling drops it first: do not poll with the production bot's token.
  */
 export async function pollTelegram(db: Db) {
   let offset = 0;
-  let webhookCleared = false;
+  let pollingToken: string | null = null;
   for (;;) {
     try {
-      if (!webhookCleared) {
-        await call("deleteWebhook", {});
-        webhookCleared = true;
+      const integrations = await loadIntegrations(db);
+      const { token } = integrations.telegram;
+      if (!token) {
+        pollingToken = null;
+        await sleep(15_000);
+        continue;
+      }
+      if (token !== pollingToken) {
+        await telegramCall(token, "deleteWebhook", {});
+        pollingToken = token;
+        offset = 0;
         console.log("Telegram bot: polling for messages");
       }
-      const updates = (await call("getUpdates", { offset, timeout: LONG_POLL_SECONDS }, { timeoutMs: (LONG_POLL_SECONDS + 10) * 1000, attempts: 1 })) as {
+      const updates = (await telegramCall(token, "getUpdates", { offset, timeout: LONG_POLL_SECONDS }, { timeoutMs: (LONG_POLL_SECONDS + 10) * 1000, attempts: 1 })) as {
         update_id: number;
       }[];
       for (const raw of updates) {
         offset = raw.update_id + 1;
         const update = telegramUpdate.safeParse(raw);
-        if (update.success) await handleUpdate(db, update.data, liveBotDeps);
+        if (update.success) await handleUpdate(db, update.data, liveBotDeps(integrations));
       }
     } catch (err) {
       console.error("Telegram polling failed, retrying in 2s:", err instanceof Error ? (err.cause ?? err.message) : err);

@@ -27,6 +27,7 @@ export const auditActions = {
   "settings.limits.update": { entity: "settings", label: "Batas kasir diubah" },
   "settings.watchdog.update": { entity: "settings", label: "Pengaturan pengawasan diubah" },
   "settings.announcement.update": { entity: "settings", label: "Pengumuman diubah" },
+  "settings.integrations.update": { entity: "settings", label: "Koneksi AI dan Telegram diubah" },
   "approval_pin.set": { entity: "user", label: "PIN persetujuan diatur" },
   "category.create": { entity: "category", label: "Kategori dibuat" },
   "category.update": { entity: "category", label: "Kategori diubah" },
