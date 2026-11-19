@@ -1,7 +1,7 @@
 import { DomainError } from "@billy/core";
 import type { Db } from "@billy/db";
 import OpenAI from "openai";
-import type { NamespaceTool, ResponseInputContent, ResponseInputItem } from "openai/resources/responses/responses";
+import type { NamespaceTool, Response, ResponseInputContent, ResponseInputItem, ResponseStreamEvent } from "openai/resources/responses/responses";
 import { z } from "zod";
 import type { Actor } from "../../env.ts";
 import { ChatgptSignInRequired } from "../../lib/chatgpt-oauth.ts";
@@ -52,7 +52,7 @@ Catylac glow 3, yang mana?
 1. CATYLAC GLOW BASE A GALON
 2. CATYLAC GLOW BASE B GALON
 
-Piutang satu pelanggan: baris pertama nama dan total, lalu satu baris per faktur: nomor, sisa, jatuh tempo, lewat berapa hari.
+Piutang satu pelanggan: baris pertama nama, total, jumlah faktur dan total lewat tempo; lalu satu baris per faktur dari hasil alat: nomor, sisa, lewat berapa hari.
 
 Kalau ada yang perlu diperhatikan (harga Rp 1, stok minus), tulis satu baris pendek di akhir.
 Kalau pesan di luar pekerjaan ini, jawab satu kalimat apa yang bisa kamu bantu.`;
@@ -154,7 +154,7 @@ function agentTools(db: Db, actor: Actor) {
     tool({
       name: "cek_piutang",
       description:
-        "Faktur penjualan yang belum lunas. Dengan nama pelanggan: rincian fakturnya (sisa, jatuh tempo, lewat berapa hari). Tanpa nama: 10 pelanggan dengan piutang terbesar dan totalnya.",
+        "Faktur penjualan yang belum lunas. Dengan nama pelanggan: total, jumlah faktur, total lewat tempo, dan 8 faktur paling lama lewat tempo. Tanpa nama: 10 pelanggan dengan piutang terbesar.",
       inputSchema: z.object({ pelanggan: z.string().optional().describe("nama atau sebagian nama pelanggan") }),
       run: ({ pelanggan }) => receivables(db, pelanggan),
     }),
@@ -231,19 +231,41 @@ export async function runChatgpt(client: OpenAI, model: string, prompt: string, 
     tools: tools.map((t) => ({ type: "function", name: t.name, description: t.description, parameters: z.toJSONSchema(t.inputSchema), strict: false })),
   };
   for (let round = 0; round < MAX_ROUNDS; round++) {
-    const response = await client.responses
-      .stream({ model, instructions: SYSTEM, input, tools: [namespace], store: false, include: ["reasoning.encrypted_content"] })
-      .finalResponse();
-    if (response.status !== "completed") return NO_REPLY;
+    const response = await finalResponse(
+      await client.responses.create({
+        model,
+        instructions: SYSTEM,
+        input,
+        tools: [namespace],
+        reasoning: { effort: "low" },
+        store: false,
+        stream: true,
+        include: ["reasoning.encrypted_content"],
+      }),
+    );
+    if (response?.status !== "completed") return NO_REPLY;
     const calls = response.output.filter((item) => item.type === "function_call");
     if (calls.length === 0) {
       const refused = response.output.some((item) => item.type === "message" && item.content.some((c) => c.type === "refusal"));
-      return refused ? "Maaf, pesan ini tidak bisa saya proses. Coba tulis ulang." : response.output_text.trim() || NO_REPLY;
+      if (refused) return "Maaf, pesan ini tidak bisa saya proses. Coba tulis ulang.";
+      const text = response.output.flatMap((item) => (item.type === "message" ? item.content.flatMap((c) => (c.type === "output_text" ? [c.text] : [])) : []));
+      return text.join("\n").trim() || NO_REPLY;
     }
     input.push(...(response.output as ResponseInputItem[]));
     for (const call of calls) input.push({ type: "function_call_output", call_id: call.call_id, output: await runToolCall(byName.get(call.name), call.arguments) });
   }
   return NO_REPLY;
+}
+
+/**
+ * The finished response from the raw event stream. Read raw because ChatGPT plan responses add events
+ * (such as `response.metadata`) that the SDK's stream helper rejects; only the final event matters here.
+ */
+async function finalResponse(events: AsyncIterable<ResponseStreamEvent>): Promise<Response | null> {
+  for await (const event of events) {
+    if (event.type === "response.completed" || event.type === "response.incomplete" || event.type === "response.failed") return event.response;
+  }
+  return null;
 }
 
 /** Runs one call the model asked for; a made-up tool or invalid arguments go back to the model as an error it can fix. */

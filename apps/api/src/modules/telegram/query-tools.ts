@@ -13,6 +13,7 @@ import { listMovements } from "../stock/service.ts";
  * bot and billy never disagree. Nothing here writes. Cost prices and money totals are admin only.
  */
 
+const DETAIL_INVOICES = 8;
 const words = (s: string) => s.toLowerCase().split(/\s+/).filter(Boolean);
 const daysBetween = (from: string, to: string) => Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000);
 
@@ -68,7 +69,10 @@ export async function stockHistory(db: Db, productId: string, limit = 10) {
   }));
 }
 
-/** Unpaid faktur grouped by customer, largest balance first; with a name, only customers whose name holds every word. */
+/**
+ * Unpaid faktur grouped by customer, largest balance first. With a name, only customers whose name holds
+ * every word, each with its total, overdue total and its 8 most overdue faktur.
+ */
 export async function receivables(db: Db, customer?: string) {
   const today = businessDate();
   const open = (await invoicesWithState(db, isNull(salesInvoices.voidedAt))).filter((r) => r.state.outstanding > 0);
@@ -86,7 +90,18 @@ export async function receivables(db: Db, customer?: string) {
     per_tanggal: today,
     jumlah_pelanggan: customers.length,
     total_piutang: customers.reduce((n, c) => n + c.total, 0),
-    pelanggan: customers.slice(0, customer ? 5 : 10).map((c) => (customer ? c : { pelanggan: c.pelanggan, total: c.total, jumlah_faktur: c.faktur.length })),
+    pelanggan: customers.slice(0, customer ? 5 : 10).map((c) =>
+      customer
+        ? {
+            pelanggan: c.pelanggan,
+            total: c.total,
+            jumlah_faktur: c.faktur.length,
+            lewat_tempo: c.faktur.reduce((n, f) => n + (f.lewat_hari > 0 ? f.sisa : 0), 0),
+            // A big customer has hundreds of faktur; the most overdue are the ones to chase.
+            faktur_paling_lama: [...c.faktur].sort((a, b) => b.lewat_hari - a.lewat_hari).slice(0, DETAIL_INVOICES),
+          }
+        : { pelanggan: c.pelanggan, total: c.total, jumlah_faktur: c.faktur.length },
+    ),
   };
 }
 

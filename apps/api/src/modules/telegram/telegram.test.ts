@@ -112,7 +112,13 @@ describe("the bot's read-only answers", () => {
     expect(res.status).toBe(201);
     expect(await receivables(db)).toMatchObject({ total_piutang: 100_000, pelanggan: [{ pelanggan: "Toko Bangun Jaya", total: 100_000, jumlah_faktur: 1 }] });
     expect((await receivables(db, "bangun")).pelanggan).toEqual([
-      { pelanggan: "Toko Bangun Jaya", total: 100_000, faktur: [expect.objectContaining({ tanggal: "2026-11-01", jatuh_tempo: "2026-11-08", sisa: 100_000 })] },
+      {
+        pelanggan: "Toko Bangun Jaya",
+        total: 100_000,
+        jumlah_faktur: 1,
+        lewat_tempo: 100_000,
+        faktur_paling_lama: [expect.objectContaining({ tanggal: "2026-11-01", jatuh_tempo: "2026-11-08", sisa: 100_000 })],
+      },
     ]);
     expect((await receivables(db, "tidak ada")).pelanggan).toEqual([]);
   });
