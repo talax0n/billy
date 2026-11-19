@@ -92,6 +92,7 @@ export function DataTable<Row extends { id: string }>({
   search = true,
   searchPlaceholder,
   toolbar,
+  body,
 }: {
   paged: PagedQuery<Paginated<Row>>;
   columns: Column<Row>[];
@@ -101,6 +102,8 @@ export function DataTable<Row extends { id: string }>({
   searchPlaceholder?: string;
   /** Extra controls on the right of the search box (filters). */
   toolbar?: ReactNode;
+  /** Renders the page's rows in place of the table, e.g. a timeline; search, pager and states stay. */
+  body?: (rows: Row[]) => ReactNode;
 }) {
   const { data, isPending, isError, error } = paged.query;
   const total = data?.total ?? 0;
@@ -116,44 +119,46 @@ export function DataTable<Row extends { id: string }>({
         </div>
       )}
       <div className="overflow-x-auto rounded-xl border border-line">
-        {data && <MobileCards rows={data.rows} columns={columns} onRowClick={onRowClick} />}
-        <table className="w-full min-w-[520px] border-collapse max-md:hidden">
-          <thead className="sticky top-0 bg-panel">
-            <tr className="border-b border-line">
-              {columns.map((col) => (
-                <th
-                  key={col.header}
-                  aria-sort={col.sort && paged.sort?.key === col.sort ? (paged.sort.dir === "asc" ? "ascending" : "descending") : undefined}
-                  className={cx(
-                    "px-4 py-2.5 text-left text-xs font-normal text-muted",
-                    col.align === "right" && "text-right",
-                    col.className,
-                  )}
-                >
-                  {col.sort ? <SortButton column={col} sortKey={col.sort} paged={paged} /> : col.header}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {data?.rows.map((row) => (
-              <tr
-                key={row.id}
-                onClick={onRowClick && (() => onRowClick(row))}
-                className={cx("border-b border-line-2 last:border-b-0", onRowClick && "cursor-pointer hover:bg-line-2")}
-              >
+        {body ? data && body(data.rows) : data && <MobileCards rows={data.rows} columns={columns} onRowClick={onRowClick} />}
+        {!body && (
+          <table className="w-full min-w-[520px] border-collapse max-md:hidden">
+            <thead className="sticky top-0 bg-panel">
+              <tr className="border-b border-line">
                 {columns.map((col) => (
-                  <td
+                  <th
                     key={col.header}
-                    className={cx("px-4 py-2.5", col.align === "right" && "text-right tabular-nums", col.className)}
+                    aria-sort={col.sort && paged.sort?.key === col.sort ? (paged.sort.dir === "asc" ? "ascending" : "descending") : undefined}
+                    className={cx(
+                      "px-4 py-2.5 text-left text-xs font-normal text-muted",
+                      col.align === "right" && "text-right",
+                      col.className,
+                    )}
                   >
-                    {col.cell(row)}
-                  </td>
+                    {col.sort ? <SortButton column={col} sortKey={col.sort} paged={paged} /> : col.header}
+                  </th>
                 ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {data?.rows.map((row) => (
+                <tr
+                  key={row.id}
+                  onClick={onRowClick && (() => onRowClick(row))}
+                  className={cx("border-b border-line-2 last:border-b-0", onRowClick && "cursor-pointer hover:bg-line-2")}
+                >
+                  {columns.map((col) => (
+                    <td
+                      key={col.header}
+                      className={cx("px-4 py-2.5", col.align === "right" && "text-right tabular-nums", col.className)}
+                    >
+                      {col.cell(row)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
         {isPending && <Loading />}
         {isError && <p className="px-4 py-10 text-center text-down">{error.message}</p>}
         {data?.rows.length === 0 && (paged.q ? <EmptyState title="Tidak ada yang cocok" description={`Tidak ada hasil untuk “${paged.q}”.`} /> : empty)}
