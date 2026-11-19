@@ -13,17 +13,35 @@ export const telegramConfig = () => ({
   username: process.env.TELEGRAM_BOT_USERNAME,
 });
 
-async function call(method: string, body: Record<string, unknown>) {
+const LONG_POLL_SECONDS = 25;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * One Bot API call with a deadline, so a connection that stalls (seen on flaky links to Telegram) fails
+ * instead of hanging the bot. A network failure is retried up to `attempts` times; an answer from
+ * Telegram saying no is not.
+ */
+async function call(method: string, body: Record<string, unknown>, { timeoutMs = 15_000, attempts = 3 } = {}) {
   const { token } = telegramConfig();
   if (!token) throw new Error("TELEGRAM_BOT_TOKEN is not set");
-  const res = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const json = (await res.json()) as { ok: boolean; description?: string; result?: unknown };
-  if (!json.ok) throw new Error(`Telegram ${method}: ${json.description ?? res.status}`);
-  return json.result;
+  for (let attempt = 1; ; attempt++) {
+    let res: Response;
+    try {
+      res = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+    } catch (err) {
+      if (attempt >= attempts) throw err;
+      await sleep(1000 * attempt);
+      continue;
+    }
+    const json = (await res.json()) as { ok: boolean; description?: string; result?: unknown };
+    if (!json.ok) throw new Error(`Telegram ${method}: ${json.description ?? res.status}`);
+    return json.result;
+  }
 }
 
 export const liveBotDeps: BotDeps = {
@@ -47,15 +65,17 @@ export async function pollTelegram(db: Db) {
         webhookCleared = true;
         console.log("Telegram bot: polling for messages");
       }
-      const updates = (await call("getUpdates", { offset, timeout: 30 })) as { update_id: number }[];
+      const updates = (await call("getUpdates", { offset, timeout: LONG_POLL_SECONDS }, { timeoutMs: (LONG_POLL_SECONDS + 10) * 1000, attempts: 1 })) as {
+        update_id: number;
+      }[];
       for (const raw of updates) {
         offset = raw.update_id + 1;
         const update = telegramUpdate.safeParse(raw);
         if (update.success) await handleUpdate(db, update.data, liveBotDeps);
       }
     } catch (err) {
-      console.error("Telegram polling failed, retrying in 5s", err);
-      await new Promise((r) => setTimeout(r, 5000));
+      console.error("Telegram polling failed, retrying in 2s:", err instanceof Error ? (err.cause ?? err.message) : err);
+      await sleep(2000);
     }
   }
 }
