@@ -15,7 +15,7 @@ export function BulkPaymentDialog({ customerName, invoices, onClose }: { custome
   const form = useForm(bulkSalesPaymentInput, {
     invoiceIds: invoices.map((inv) => inv.id),
     accountId: "",
-    amount: owed,
+    amount: 0,
     method: "transfer",
     date: businessDate(),
     proofUrl: "",
