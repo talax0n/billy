@@ -77,7 +77,7 @@ export function TxDiscountDialog({ discount, onSave, onClose }: { discount: Disc
   );
 }
 
-/** Which account each method pays into, the receipt paper, and on desktop the receipt printer. Stored on this device only. */
+/** Which account each method pays into, and on desktop the receipt printer. Stored on this device only. */
 export function PreferencesDialog({
   prefs,
   accounts,
@@ -90,7 +90,6 @@ export function PreferencesDialog({
   onClose: () => void;
 }) {
   const [draft, setDraft] = useState<PosPreferences>(() => ({
-    paper: prefs.paper,
     accounts: Object.fromEntries(posMethods.map((m) => [m, accountFor(m, prefs, accounts)?.id])),
   }));
   const printers = useQuery({
@@ -124,14 +123,6 @@ export function PreferencesDialog({
             )}
           </Field>
         ))}
-        <Field label="Lebar kertas struk">
-          {(p) => (
-            <Select {...p} value={draft.paper} onChange={(e) => setDraft({ ...draft, paper: Number(e.target.value) === 58 ? 58 : 80 })}>
-              <option value={80}>80 mm</option>
-              <option value={58}>58 mm</option>
-            </Select>
-          )}
-        </Field>
         {desktop && (
           <Field label="Printer struk">
             {(p) => (

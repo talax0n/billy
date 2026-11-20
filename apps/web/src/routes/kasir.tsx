@@ -307,7 +307,7 @@ function Register({ catalog }: { catalog: Catalog }) {
     if (revising) void queryClient.invalidateQueries({ queryKey: catalogQuery.queryKey });
     if (activeDraft) void queryClient.invalidateQueries({ queryKey: openDraftsQuery.queryKey });
     await write("lastReceipt", item.receipt);
-    printReceipt(item.receipt, shop, prefs.paper);
+    printReceipt(item.receipt, shop);
     setBlocked(null);
     reset();
     focusSearch();
@@ -378,7 +378,7 @@ function Register({ catalog }: { catalog: Catalog }) {
     focusSearch();
   }
 
-  const reprint = (receipt: ReceiptData) => printReceipt(receipt, shop, prefs.paper);
+  const reprint = (receipt: ReceiptData) => printReceipt(receipt, shop);
 
   async function reprintLast() {
     const last = await read("lastReceipt");

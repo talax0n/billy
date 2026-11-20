@@ -41,8 +41,6 @@ export interface ReceiptShop {
   receiptFooter: string;
 }
 
-export type PaperWidth = 58 | 80;
-
 export const methodLabels: Record<PosMethod, string> = { cash: "Tunai", qris: "QRIS", transfer: "Transfer" };
 
 type StoredSale = InferResponseType<(typeof api.pos.sales)[":id"]["$get"], 200>;
@@ -80,19 +78,16 @@ const n = (value: number) => idr.format(value);
 const stamp = new Intl.DateTimeFormat("id-ID", { dateStyle: "short", timeStyle: "short", timeZone: "Asia/Jakarta" });
 
 /**
- * A thermal receipt (58 or 80 mm). Monospace and black on white whatever the theme, because
- * it is paper.
+ * A thermal receipt. Monospace and black on white whatever the theme, because it is paper.
+ * It fills the printer driver's paper, 58 or 80 mm: a fixed width wider than the paper gets
+ * shrunk to fit and prints tiny. The 5 mm sides are what thermal heads cannot reach.
  */
-export function Receipt({ receipt: r, shop, width = 80 }: { receipt: ReceiptData; shop: ReceiptShop; width?: PaperWidth }) {
+export function Receipt({ receipt: r, shop }: { receipt: ReceiptData; shop: ReceiptShop }) {
   const row = "flex justify-between gap-2";
   return (
-    <div
-      className="bg-white p-[3mm] font-mono text-[11px] leading-snug text-black"
-      style={{ width: `${width}mm` }}
-      data-testid="receipt"
-    >
+    <div className="w-full bg-white px-[5mm] py-[3mm] font-mono text-[12px] leading-snug text-black" data-testid="receipt">
       <div className="text-center">
-        <div className="text-[13px] font-bold">{shop.shopName}</div>
+        <div className="text-[15px] font-bold">{shop.shopName}</div>
         {shop.address && <div>{shop.address}</div>}
         {shop.phone && <div>Telp {shop.phone}</div>}
       </div>
@@ -160,7 +155,7 @@ export function Receipt({ receipt: r, shop, width = 80 }: { receipt: ReceiptData
           <span>{n(r.shippingFee)}</span>
         </div>
       )}
-      <div className={`${row} text-[13px] font-bold`}>
+      <div className={`${row} text-[15px] font-bold`}>
         <span>TOTAL</span>
         <span>{n(r.total)}</span>
       </div>
@@ -197,15 +192,14 @@ export function Receipt({ receipt: r, shop, width = 80 }: { receipt: ReceiptData
 interface PrintJob {
   receipt: ReceiptData;
   shop: ReceiptShop;
-  width: PaperWidth;
 }
 
 let job: PrintJob | null = null;
 const listeners = new Set<() => void>();
 
 /** Prints a receipt: silently in the desktop app, else through the browser dialog. Mount `<ReceiptPrinter />` once on the page. */
-export function printReceipt(receipt: ReceiptData, shop: ReceiptShop, width: PaperWidth = 80) {
-  job = { receipt, shop, width };
+export function printReceipt(receipt: ReceiptData, shop: ReceiptShop) {
+  job = { receipt, shop };
   for (const listener of listeners) listener();
 }
 
@@ -230,13 +224,13 @@ export function ReceiptPrinter() {
       <style>{`
         #pos-receipt { display: none; }
         @media print {
-          @page { size: ${current.width}mm auto; margin: 0; }
+          @page { margin: 0; }
           body > #root { display: none; }
           body { background: #fff; }
           #pos-receipt { display: block; }
         }
       `}</style>
-      <Receipt receipt={current.receipt} shop={current.shop} width={current.width} />
+      <Receipt receipt={current.receipt} shop={current.shop} />
     </div>,
     document.body,
   );

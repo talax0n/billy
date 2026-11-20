@@ -1,12 +1,10 @@
 import type { PosMethod } from "@billy/core";
 import { useState } from "react";
 import type { Catalog } from "./local.ts";
-import type { PaperWidth } from "./receipt.tsx";
 
-/** Per-device cashier setup: which account each payment method pays into, and the paper width. */
+/** Per-device cashier setup: which account each payment method pays into. */
 export interface PosPreferences {
   accounts: Partial<Record<PosMethod, string>>;
-  paper: PaperWidth;
 }
 
 const KEY = "pos-preferences";
@@ -18,7 +16,7 @@ function load(): PosPreferences {
   } catch {
     // Unreadable or blocked storage: start from the defaults.
   }
-  return { accounts: {}, paper: 80 };
+  return { accounts: {} };
 }
 
 export function usePosPreferences() {

@@ -39,6 +39,16 @@ test("sells online and offline; the offline sale syncs and reaches Riwayat Kasir
   await expect(page.getByRole("combobox", { name: "Cari pelanggan" })).toHaveValue("Umum");
   await expect(page.getByTestId("sync-pending")).toHaveText("");
 
+  // On 58 mm paper the receipt fits the page; wider gets shrunk to fit and prints tiny.
+  const viewport = page.viewportSize()!;
+  await page.emulateMedia({ media: "print" });
+  await page.setViewportSize({ width: 219, height: viewport.height });
+  const receipt = page.getByTestId("receipt");
+  await expect(receipt).toContainText("TOTAL");
+  expect((await receipt.boundingBox())!.width).toBeLessThanOrEqual(219);
+  await page.emulateMedia({ media: "screen" });
+  await page.setViewportSize(viewport);
+
   // The cached stock drops as soon as the sale is made.
   await search(page).fill("thinner super 1");
   await expect(results(page).getByRole("option").first()).toContainText("stok 46");
