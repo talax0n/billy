@@ -7,7 +7,15 @@ const num = (value: number) => value.toLocaleString("id-ID");
 async function addLine(form: Locator, line: number, search: string, product: string, qty: string) {
   const picker = form.getByPlaceholder("Ketik nama barang…").last();
   await picker.fill(search);
-  await expect(form.getByRole("listbox").getByRole("option").first()).toContainText(product);
+  const option = form.getByRole("listbox").getByRole("option").first();
+  await expect(option).toContainText(product);
+  expect(
+    await option.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      return document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)?.closest("[role=option]") === el;
+    }),
+    "dropdown option is visible and clickable, not clipped by the line table",
+  ).toBe(true);
   await picker.press("Enter");
   const qtyInput = form.getByLabel(`Jumlah baris ${line}`);
   await expect(qtyInput).toBeFocused();

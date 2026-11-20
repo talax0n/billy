@@ -299,8 +299,8 @@ export function InvoiceForm({
       </section>
 
       <section className="flex flex-col gap-2">
-        <div className="overflow-x-auto rounded-xl border border-line">
-          <table className={cx("w-full min-w-[640px] border-collapse", lineTable.table)}>
+        <div className="rounded-xl border border-line">
+          <table className={cx("w-full border-collapse", lineTable.table)}>
             <thead className={lineTable.head}>
               <tr className="border-b border-line text-left text-xs text-muted">
                 <th className="w-8 px-3 py-2 font-normal">#</th>
