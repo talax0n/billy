@@ -209,7 +209,7 @@ function Register({ catalog }: { catalog: Catalog }) {
     if (!canPay || !account || paying.current) return;
     paying.current = true;
     try {
-      const item = buildSale(account, await peekNumber(shop.deviceCode, catalog.lastNumber));
+      let item = buildSale(account, await peekNumber(shop.deviceCode, catalog.lastNumber));
       if (activeDraft || revising) return await payOnline(item);
       const limits = catalog.limits ?? { kasirMaxDiscountBp: 500, allowBelowCost: false };
       const breaches = me?.role === "admin" ? [] : saleLimitBreaches(cart.lines, cart.discount, limits);
@@ -220,7 +220,11 @@ function Register({ catalog }: { catalog: Catalog }) {
         else await complete(item, false);
         return;
       }
-      const result = await sendSale(item.sale, 6_000);
+      let result = await sendSale(item.sale, 6_000);
+      if (result.status === 409) {
+        item = await renumbered(item);
+        result = await sendSale(item.sale, 6_000);
+      }
       if (result.status >= 200 && result.status < 300) await complete(item, true);
       else if (result.needsApproval) setBlocked({ item, message: result.error, offline: false, ...saleTarget(item) });
       else if (uploadOutcome(result.status) !== "retry") toast(result.error, "down");
@@ -236,25 +240,39 @@ function Register({ catalog }: { catalog: Catalog }) {
     send: (approval) => sendSale({ ...item.sale, ...(approval && { approval }) }),
   });
 
+  /**
+   * Every Kasir device numbers with the shop's one code, so another device may have taken this
+   * number since the catalog loaded: the next one after the server's latest.
+   */
+  async function renumbered(item: QueuedSale): Promise<QueuedSale> {
+    const fresh = await queryClient.fetchQuery({ ...catalogQuery, staleTime: 0 });
+    const number = await peekNumber(shop.deviceCode, fresh.lastNumber);
+    return { sale: { ...item.sale, number }, receipt: { ...item.receipt, number } };
+  }
+
   /** Paying a nota sementara or saving a revisi needs the server; neither is ever queued. */
   async function payOnline(item: QueuedSale) {
-    let target: SaleTarget;
+    const first = await onlineTarget(item).send();
+    if (first.status === 409) item = await renumbered(item);
+    const target = onlineTarget(item);
+    const result = first.status === 409 ? await target.send() : first;
+    if (result.status >= 200 && result.status < 300) await complete(item, true);
+    else if (result.needsApproval) setBlocked({ item, message: result.error, offline: false, ...target });
+    else toast(result.status === 0 ? `${revising ? "Revisi" : "Nota sementara"} hanya bisa disimpan saat online` : result.error, "down");
+  }
+
+  function onlineTarget(item: QueuedSale): SaleTarget {
     if (revising) {
       const { soldAt: _, cashierId: _c, ...sale } = item.sale;
       const revision = { ...sale, reason: revising.reason };
       const originalId = revising.original.id;
-      target = {
+      return {
         request: { action: "pos.revise", originalId, revision },
         send: (approval) => sendRevision(originalId, { ...revision, ...(approval && { approval }) }),
       };
-    } else {
-      const draftId = activeDraft!.id;
-      target = { ...saleTarget(item), send: (approval) => sendDraftPayment(draftId, { ...item.sale, ...(approval && { approval }) }) };
     }
-    const result = await target.send();
-    if (result.status >= 200 && result.status < 300) await complete(item, true);
-    else if (result.needsApproval) setBlocked({ item, message: result.error, offline: false, ...target });
-    else toast(result.status === 0 ? `${revising ? "Revisi" : "Nota sementara"} hanya bisa disimpan saat online` : result.error, "down");
+    const draftId = activeDraft!.id;
+    return { ...saleTarget(item), send: (approval) => sendDraftPayment(draftId, { ...item.sale, ...(approval && { approval }) }) };
   }
 
   function buildSale(account: { id: string; name: string }, number: string): QueuedSale {
