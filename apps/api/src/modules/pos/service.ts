@@ -15,6 +15,7 @@ import {
   type posSaleInput,
   type posVoidInput,
   rupiah,
+  rupiahOrNull,
   type Rupiah,
   saleLimitBreaches,
 } from "@billy/core";
@@ -429,7 +430,9 @@ const selectSales = (db: Db) =>
     .leftJoin(deliveries, or(eq(deliveries.posSaleId, posSales.id), eq(deliveries.posSaleId, posSales.revisionOf)));
 
 export async function listSales(db: Db, user: Viewer, { q, page, pageSize }: PaginationQuery) {
-  const where = and(visibleTo(user), q ? ilike(posSales.number, likePattern(q)) : undefined);
+  const total = rupiahOrNull(q);
+  const search = q ? or(ilike(posSales.number, likePattern(q)), total === null ? undefined : eq(posSales.total, total)) : undefined;
+  const where = and(visibleTo(user), search);
   const [rows, [counted]] = await Promise.all([
     selectSales(db)
       .where(where)

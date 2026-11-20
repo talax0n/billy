@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatRupiah, parseRupiah, rupiah, sumRupiah } from "./money.ts";
+import { formatRupiah, parseRupiah, rupiah, rupiahOrNull, sumRupiah } from "./money.ts";
 
 describe("rupiah", () => {
   it("rejects fractions and unsafe integers", () => {
@@ -31,6 +31,10 @@ describe("rupiah", () => {
     expect(parseRupiah("Rp. 3.460.000")).toBe(3460000);
     expect(parseRupiah("10.020.000")).toBe(10020000);
     expect(() => parseRupiah("Rp. 3.460.000,50")).toThrow(SyntaxError);
+  });
+
+  it("reads search text as an amount only when it is one", () => {
+    expect([rupiahOrNull("Rp 221.400"), rupiahOrNull("221400"), rupiahOrNull("K1-261120"), rupiahOrNull("9".repeat(20))]).toEqual([221400, 221400, null, null]);
   });
 
   it("sums exactly", () => {

@@ -1,6 +1,6 @@
 import { rupiah, type Rupiah } from "@billy/core";
 import { Search } from "lucide-react";
-import { type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, useId } from "react";
+import { type ComponentProps, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, useId } from "react";
 import { cx } from "../../lib/cx.ts";
 
 export const controlClass = cx(
@@ -51,7 +51,7 @@ export function Select({ className, children, ...props }: SelectHTMLAttributes<H
   );
 }
 
-export function SearchInput({ className, ...props }: Omit<InputHTMLAttributes<HTMLInputElement>, "type">) {
+export function SearchInput({ className, ...props }: Omit<ComponentProps<"input">, "type">) {
   return (
     <div className={cx("relative w-full max-w-xs max-md:max-w-none", className)}>
       <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-faint" />

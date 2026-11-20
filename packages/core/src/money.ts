@@ -37,3 +37,12 @@ export function parseRupiah(input: string): Rupiah {
   }
   return rupiah(Number(digits));
 }
+
+/** `parseRupiah` for free text such as a search box: null when it is not an amount. */
+export function rupiahOrNull(input: string): Rupiah | null {
+  try {
+    return parseRupiah(input);
+  } catch {
+    return null;
+  }
+}

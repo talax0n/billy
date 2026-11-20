@@ -63,6 +63,16 @@ test("a paid nota is revised up and down", async ({ browser }) => {
   const history = kasir.getByRole("dialog", { name: "Riwayat kasir" });
   await expect(history.getByText(`revisi dari ${higher}`)).toBeVisible();
   await expect(history.getByText("Direvisi")).toHaveCount(2);
+  const historySearch = history.getByLabel("Cari riwayat kasir");
+  const historyRow = (number: string) => history.getByText(new RegExp(`^${number}`));
+  await expect(historySearch).toBeFocused();
+  await historySearch.fill("Rp 64.000");
+  await expect(historyRow(higher)).toBeVisible();
+  await expect(historyRow(original)).toBeHidden();
+  await historySearch.fill(original.slice(-4));
+  await expect(historyRow(original)).toBeVisible();
+  await expect(historyRow(higher)).toBeHidden();
+  await historySearch.fill("");
   await history.getByRole("button", { name: "Cetak ulang" }).first().click();
   await expect(kasir.getByTestId("receipt")).toContainText("SALINAN");
   await kasir.keyboard.press("Escape");

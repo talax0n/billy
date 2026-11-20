@@ -1,10 +1,10 @@
-import { BASIS_POINTS, type Discount, entryKey, type PosMethod, posMethods, type Rupiah } from "@billy/core";
-import { useQuery } from "@tanstack/react-query";
-import { type FormEvent, type ReactNode, useState } from "react";
+import { BASIS_POINTS, type Discount, entryKey, type PosMethod, posMethods, type Rupiah, rupiahOrNull } from "@billy/core";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { type FormEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { Badge } from "../components/ui/badge.tsx";
 import { Button } from "../components/ui/button.tsx";
 import { Dialog } from "../components/ui/dialog.tsx";
-import { Field, Input, MoneyInput, Select } from "../components/ui/field.tsx";
+import { Field, Input, MoneyInput, SearchInput, Select } from "../components/ui/field.tsx";
 import { Loading } from "../components/ui/page.tsx";
 import { toast } from "../components/ui/toast.tsx";
 import { api, unwrap } from "../lib/api.ts";
@@ -238,11 +238,26 @@ export function HistoryDialog({
   onRevise: (saleId: string) => void;
   onClose: () => void;
 }) {
+  const [q, setQ] = useState("");
+  const [search, setSearch] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
+  // autoFocus loses to showModal(), which runs after this dialog's children mount.
+  useEffect(() => void requestAnimationFrame(() => searchRef.current?.focus()), []);
+  useEffect(() => {
+    const timer = setTimeout(() => setSearch(q.trim()), 250);
+    return () => clearTimeout(timer);
+  }, [q]);
   const sales = useQuery({
-    queryKey: ["pos", "sales", "mine"],
-    queryFn: () => unwrap(api.pos.sales.$get({ query: { pageSize: "30" } })),
+    queryKey: ["pos", "sales", "mine", search],
+    queryFn: () => unwrap(api.pos.sales.$get({ query: { q: search, pageSize: "30" } })),
+    placeholderData: keepPreviousData,
     networkMode: "always",
   });
+  const typedTotal = rupiahOrNull(search);
+  const queued = pending
+    .flatMap((item) => ("sale" in item ? [item] : []))
+    .filter((item) => item.sale.number.toLowerCase().includes(search.toLowerCase()) || item.receipt.total === typedTotal)
+    .reverse();
   const [voiding, setVoiding] = useState<{ id: string; number: string } | null>(null);
   const reprint = async (id: string) => {
     try {
@@ -255,8 +270,16 @@ export function HistoryDialog({
   if (voiding) return <VoidSaleDialog sale={voiding} onClose={() => setVoiding(null)} />;
   return (
     <Dialog open onClose={onClose} title="Riwayat kasir" className="max-w-xl">
+      <SearchInput
+        className="mb-2 max-w-none"
+        placeholder="Cari nomor struk atau total…"
+        aria-label="Cari riwayat kasir"
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        ref={searchRef}
+      />
       <div className="flex flex-col">
-        {pending.flatMap((q) => ("sale" in q ? [q] : [])).reverse().map((q) => (
+        {queued.map((q) => (
           <div key={q.sale.id} className={row}>
             <span>
               {q.sale.number}
@@ -303,7 +326,9 @@ export function HistoryDialog({
         ))}
         {sales.isPending && <Loading className="py-6" />}
         {sales.isError && <p className="py-6 text-center text-muted">Riwayat server tidak bisa dimuat saat offline.</p>}
-        {sales.data?.rows.length === 0 && pending.length === 0 && <p className="py-6 text-center text-muted">Belum ada transaksi.</p>}
+        {sales.data?.rows.length === 0 && queued.length === 0 && (
+          <p className="py-6 text-center text-muted">{search ? `Tidak ada struk untuk "${search}".` : "Belum ada transaksi."}</p>
+        )}
       </div>
     </Dialog>
   );

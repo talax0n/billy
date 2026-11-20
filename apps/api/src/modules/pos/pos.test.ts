@@ -232,6 +232,17 @@ describe("history, reprint and void", () => {
     expect(all.total).toBe(2);
   });
 
+  it("finds a kasir's old receipt by its total, typed with or without Rp and thousands dots", async () => {
+    const search = async (q: string) =>
+      (await (await call(`/api/pos/sales?q=${encodeURIComponent(q)}`, { cookie: kasir })).json()) as { rows: { number: string; total: number }[] };
+    for (const q of ["221.400", "Rp 221.400", "221400"]) {
+      const { rows } = await search(q);
+      expect(rows.map((r) => r.number)).toContain("K1-261113-0010");
+      expect(new Set(rows.map((r) => r.total))).toEqual(new Set([221_400]));
+    }
+    expect((await search("221.401")).rows).toEqual([]);
+  });
+
   it("answers a kasir replaying another cashier's sale id with 404, like GET", async () => {
     const res = await post(kasir, other);
     expect([res.status, await res.json()]).toEqual([404, { error: "Struk tidak ditemukan" }]);
