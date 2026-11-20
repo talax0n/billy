@@ -83,7 +83,8 @@ const stamp = new Intl.DateTimeFormat("id-ID", { dateStyle: "short", timeStyle: 
  * shrunk to fit and prints tiny. The 5 mm sides are what thermal heads cannot reach.
  */
 export function Receipt({ receipt: r, shop }: { receipt: ReceiptData; shop: ReceiptShop }) {
-  const row = "flex justify-between gap-2";
+  // On 58 mm a row that does not fit drops its right value to the next line, whole and right-aligned.
+  const row = "flex flex-wrap justify-between gap-x-2 *:whitespace-nowrap *:last:ml-auto";
   return (
     <div className="w-full bg-white px-[5mm] py-[3mm] font-mono text-[12px] leading-snug text-black" data-testid="receipt">
       <div className="text-center">
