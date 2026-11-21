@@ -79,7 +79,7 @@ export function PrintLayout({
       <article className="mx-auto flex w-[176mm] flex-col gap-3 bg-white p-[8mm] font-['Times_New_Roman',Times,serif] text-[12pt] leading-tight text-black shadow print:m-0 print:p-0 print:shadow-none">
         <header className="flex items-start justify-between gap-6">
           <div>
-            <div className="max-w-[85mm] text-[20pt] leading-none font-bold uppercase">{shop?.shopName}</div>
+            <div className="text-[20pt] leading-none font-bold whitespace-nowrap uppercase">{shop?.shopName}</div>
             {shop?.address && <div className="mt-4 max-w-[70mm]">{shop.address}</div>}
             <div className="mt-2">
               {shop?.phone && (
