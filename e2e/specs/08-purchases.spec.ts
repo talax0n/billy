@@ -26,8 +26,11 @@ test("buys stock with PPN and pays part of it; a purchase needs a supplier", asy
   await expect(form.getByLabel("Harga satuan baris 1")).toHaveValue("24.500");
 
   await expect(form.getByText(`Subtotal${rp(245_000)}`)).toBeVisible();
+  await expect(form.getByLabel("PPN (%)")).toHaveValue("0");
+  await expect(form.getByText(`Total${rp(245_000)}`, { exact: true })).toBeVisible();
+  await form.getByLabel("PPN (%)").fill("11");
   await expect(form.getByText(`PPN 11%${rp(26_950)}`)).toBeVisible();
-  await expect(form.getByText(`Total${rp(271_950)}`)).toBeVisible();
+  await expect(form.getByText(`Total${rp(271_950)}`, { exact: true })).toBeVisible();
   await form.getByRole("button", { name: "Simpan faktur" }).click();
   await expect(page.getByText(`Faktur ${number} disimpan`)).toBeVisible();
 
@@ -40,4 +43,30 @@ test("buys stock with PPN and pays part of it; a purchase needs a supplier", asy
   await pay.getByRole("button", { name: "Simpan pembayaran" }).click();
   await expect(page.getByText(`Sisa hutang ${rp(171_950)}`)).toBeVisible();
   await expect(sheet.getByText("Sebagian")).toBeVisible();
+});
+
+test("a line discount typed as a percent follows qty and cost", async ({ page }) => {
+  await login(page, ADMIN);
+  await page.goto("/pembelian");
+  await page.getByRole("button", { name: "Pembelian baru" }).click();
+  const form = page.getByRole("dialog", { name: "Pembelian baru" });
+  await form.getByPlaceholder("Cari nama atau kode pemasok").fill("uji");
+  await form.getByRole("option", { name: /PT Uji Pemasok/ }).click();
+
+  const entry = form.getByPlaceholder("Ketik nama barang, Enter untuk menambah");
+  await entry.fill("thinner super 1");
+  await expect(form.getByRole("listbox").getByRole("option").first()).toContainText("Thinner Super 1 L");
+  await entry.press("Enter");
+  await form.getByLabel("Qty baris 1").fill("10");
+
+  await form.getByRole("button", { name: "+ diskon baris" }).click();
+  await form.getByLabel("Jenis diskon baris 1").selectOption("percent");
+  await form.getByLabel("Diskon persen baris 1").fill("10");
+  await expect(form.getByText(`Subtotal${rp(220_500)}`)).toBeVisible();
+
+  await form.getByLabel("Qty baris 1").fill("20");
+  await expect(form.getByText(`Subtotal${rp(441_000)}`)).toBeVisible();
+  await expect(form.getByText(`Total${rp(441_000)}`, { exact: true })).toBeVisible();
+
+  await form.getByRole("button", { name: "Batal" }).click();
 });

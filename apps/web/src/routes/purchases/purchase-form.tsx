@@ -1,11 +1,13 @@
 import {
   addDays,
+  applyBasisPoints,
   businessDate,
   computeTotals,
   DomainError,
   formatDate,
   type PurchaseInput,
   purchaseInput,
+  purchaseLineInput,
   rupiah,
   type Totals,
 } from "@billy/core";
@@ -16,7 +18,7 @@ import { useId, useState } from "react";
 import { z } from "zod";
 import { Button } from "../../components/ui/button.tsx";
 import { Combobox } from "../../components/ui/combobox.tsx";
-import { DateInput, Field, Input, MoneyInput } from "../../components/ui/field.tsx";
+import { DateInput, Field, Input, MoneyInput, Select } from "../../components/ui/field.tsx";
 import { lineTable } from "../../components/ui/line-table.ts";
 import { Amount } from "../../components/ui/page.tsx";
 import { cx } from "../../lib/cx.ts";
@@ -28,13 +30,19 @@ import { formatPercent, paymentMethodLabels, Segmented, TotalsPanel } from "./bi
 import { AccountSelect } from "../cash/account-select.tsx";
 import { LookupPicker, lookups, type Product, type Contact, useLookup } from "../../components/lookup-picker.tsx";
 
-type Line = PurchaseInput["lines"][number];
 type Purchase = InferResponseType<(typeof api.purchases)[":id"]["$get"], 200>;
 type LineProduct = Pick<Product, "name" | "variant" | "unit">;
 
-/** The create form's fields plus the reason an Ubah needs; the server requires it on an edit. */
-const purchaseForm = purchaseInput.extend({ reason: z.string().trim().max(500).optional() });
+/**
+ * The create form's fields plus the reason an Ubah needs; the server requires it on an edit.
+ * A line discount may be typed as a percent ("2,5"); the server stores only the rupiah it comes to.
+ */
+const purchaseForm = purchaseInput.extend({
+  reason: z.string().trim().max(500).optional(),
+  lines: z.array(purchaseLineInput.extend({ discountPercent: z.string().nullable() })).min(1, "Tambahkan minimal satu barang"),
+});
 type PurchaseFormInput = z.input<typeof purchaseForm>;
+type Line = PurchaseFormInput["lines"][number];
 
 const emptyPurchase = (): PurchaseFormInput => ({
   supplierId: "",
@@ -43,7 +51,7 @@ const emptyPurchase = (): PurchaseFormInput => ({
   termsDays: 60,
   discountKind: "none",
   discountValue: 0,
-  taxRateBp: 1_100,
+  taxRateBp: 0,
   note: "",
   lines: [],
 });
@@ -58,7 +66,7 @@ const purchaseValues = (p: Purchase): PurchaseFormInput => ({
   discountValue: p.discountValue,
   taxRateBp: p.taxRateBp,
   note: p.note,
-  lines: p.lines.map(({ productId, qty, unitCost, discountAmount, note }) => ({ productId, qty, unitCost, discountAmount, note })),
+  lines: p.lines.map(({ productId, qty, unitCost, discountAmount, note }) => ({ productId, qty, unitCost, discountAmount, discountPercent: null, note })),
   reason: "",
 });
 
@@ -77,6 +85,10 @@ function previewTotals(v: PurchaseFormInput): { totals: Totals | null; problem?:
 
 /** "11,5" → 1150 basis points. */
 const percentToBp = (text: string) => Math.round(Number(text.replace(",", ".") || 0) * 100);
+
+/** A percent line discount follows qty and cost, so it is recomputed on every change to the line. */
+const withPercentDiscount = (line: Line): Line =>
+  line.discountPercent == null ? line : { ...line, discountAmount: applyBasisPoints(rupiah(line.qty * line.unitCost), percentToBp(line.discountPercent)) };
 
 const focusSoon = (id: string) => requestAnimationFrame(() => document.getElementById(id)?.focus());
 
@@ -97,7 +109,7 @@ export function PurchaseForm({ onSaved, onCancel, edit }: { onSaved: (id: string
     Object.fromEntries((edit?.lines ?? []).map((l) => [l.productId, { name: l.productName, variant: l.variant, unit: l.unit }])),
   );
   const [lineDiscounts, setLineDiscounts] = useState(() => edit?.lines.some((l) => l.discountAmount > 0) ?? false);
-  const [taxText, setTaxText] = useState(edit ? percentText(edit.taxRateBp) : "11");
+  const [taxText, setTaxText] = useState(edit ? percentText(edit.taxRateBp) : "0");
   const [discountText, setDiscountText] = useState(edit?.discountKind === "percent" ? percentText(edit.discountValue) : "");
   const entry = useLookup("product", lookups.product);
   const server = useServerError();
@@ -107,18 +119,19 @@ export function PurchaseForm({ onSaved, onCancel, edit }: { onSaved: (id: string
   const qtyId = (index: number) => `${formId}-qty-${index}`;
 
   const setLine = (index: number, patch: Partial<Line>) =>
-    form.set("lines", v.lines.map((line, i) => (i === index ? { ...line, ...patch } : line)));
+    form.set("lines", v.lines.map((line, i) => (i === index ? withPercentDiscount({ ...line, ...patch }) : line)));
 
   function addLine(product: Product) {
     setProductsById((known) => ({ ...known, [product.id]: product }));
-    form.set("lines", [...v.lines, { productId: product.id, qty: 1, unitCost: product.costPrice, discountAmount: 0, note: "" }]);
+    form.set("lines", [...v.lines, { productId: product.id, qty: 1, unitCost: product.costPrice, discountAmount: 0, discountPercent: null, note: "" }]);
     entry.setQuery("");
     focusSoon(qtyId(v.lines.length));
   }
 
   const setPayment = (patch: Partial<NonNullable<PurchaseInput["payment"]>>) => form.set("payment", { ...v.payment!, ...patch });
 
-  const submit = form.onSubmit(async ({ reason, payment: entered, ...input }) => {
+  const submit = form.onSubmit(async ({ reason, payment: entered, lines: formLines, ...header }) => {
+    const input = { ...header, lines: formLines.map(({ discountPercent: _, ...line }) => line) };
     const payment = entered && { ...entered, date: input.date };
     const saved = await server.guard(
       edit
@@ -195,7 +208,7 @@ export function PurchaseForm({ onSaved, onCancel, edit }: { onSaved: (id: string
                 <th className="px-2 py-2 text-left font-normal">Barang</th>
                 <th className="w-24 px-2 py-2 text-right font-normal">Qty</th>
                 <th className="w-40 px-2 py-2 text-right font-normal">Harga satuan</th>
-                {lineDiscounts && <th className="w-36 px-2 py-2 text-right font-normal">Diskon baris</th>}
+                {lineDiscounts && <th className="w-44 px-2 py-2 text-right font-normal">Diskon baris</th>}
                 <th className="w-36 px-2 py-2 text-right font-normal">Jumlah</th>
                 <th className="w-10" />
               </tr>
@@ -238,11 +251,34 @@ export function PurchaseForm({ onSaved, onCancel, edit }: { onSaved: (id: string
                     </td>
                     {lineDiscounts && (
                       <td data-label="Diskon" className={cx("px-2 py-1.5", lineTable.field)}>
-                        <MoneyInput
-                          aria-label={`Diskon baris ${i + 1}`}
-                          value={line.discountAmount}
-                          onChange={(value) => setLine(i, { discountAmount: value })}
-                        />
+                        <div className="flex gap-1">
+                          <Select
+                            className="w-14 shrink-0 px-1.5"
+                            aria-label={`Jenis diskon baris ${i + 1}`}
+                            value={line.discountPercent == null ? "amount" : "percent"}
+                            onChange={(ev) => setLine(i, ev.target.value === "percent" ? { discountPercent: "" } : { discountPercent: null, discountAmount: 0 })}
+                          >
+                            <option value="amount">Rp</option>
+                            <option value="percent">%</option>
+                          </Select>
+                          {line.discountPercent == null ? (
+                            <MoneyInput
+                              aria-label={`Diskon baris ${i + 1}`}
+                              className="flex-1"
+                              value={line.discountAmount}
+                              onChange={(value) => setLine(i, { discountAmount: value })}
+                            />
+                          ) : (
+                            <Input
+                              aria-label={`Diskon persen baris ${i + 1}`}
+                              inputMode="decimal"
+                              className="text-right tabular-nums"
+                              placeholder="0 %"
+                              value={line.discountPercent}
+                              onChange={(ev) => setLine(i, { discountPercent: ev.target.value.replace(/[^\d,]/g, "") })}
+                            />
+                          )}
+                        </div>
                       </td>
                     )}
                     <td data-label="Jumlah" className={cx("px-2 py-2.5 text-right tabular-nums", lineTable.field)}>{lineTotal === undefined ? "—" : <Amount value={lineTotal} />}</td>
