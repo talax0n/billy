@@ -79,6 +79,7 @@ export async function getCatalog(db: Db) {
       address: settings.address,
       phone: settings.phone,
       receiptFooter: settings.receiptFooter,
+      invoiceBankText: settings.invoiceBankText,
       deviceCode: settings.posDeviceCode,
     })
     .from(settings);

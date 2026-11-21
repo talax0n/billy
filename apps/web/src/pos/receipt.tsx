@@ -39,6 +39,8 @@ export interface ReceiptShop {
   address: string;
   phone: string;
   receiptFooter: string;
+  /** "Rekening di faktur", printed on a transfer struk. A catalog cached by an older version has none. */
+  invoiceBankText?: string;
 }
 
 export const methodLabels: Record<PosMethod, string> = { cash: "Tunai", qris: "QRIS", transfer: "Transfer" };
@@ -178,6 +180,11 @@ export function Receipt({ receipt: r, shop }: { receipt: ReceiptData; shop: Rece
             <span>Kembali</span>
             <span>{n(r.change)}</span>
           </div>
+          {r.method === "transfer" && shop.invoiceBankText && (
+            <div className="mt-1.5 text-center whitespace-pre-line" data-testid="receipt-bank">
+              {shop.invoiceBankText}
+            </div>
+          )}
         </>
       )}
       {shop.receiptFooter && (
