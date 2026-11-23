@@ -82,7 +82,7 @@ test("sells on an invoice, takes a partial and a final payment, prints it", asyn
   await expect(print.getByText(number)).toBeVisible();
   await expect(print.getByText("CV Uji Pelanggan")).toBeVisible();
   await expect(print.getByRole("row", { name: /Thinner Super 1 L\s+3 botol/ })).toContainText(num(96_000));
-  await expect(print.getByText(`Rp. ${num(466_000)}`)).toBeVisible();
+  await expect(print.locator("article")).toContainText(`Total${rp(466_000)}`);
 
   const pdf = (await print.pdf({ format: "A4", path: process.env.E2E_PDF_OUT })).toString("latin1");
   expect(pdf.match(/\/Type\s*\/Page\b/g)?.length, "a short faktur takes one page").toBe(1);
