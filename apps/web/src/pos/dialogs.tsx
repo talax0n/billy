@@ -256,7 +256,11 @@ export function HistoryDialog({
   const typedTotal = rupiahOrNull(search);
   const queued = pending
     .flatMap((item) => ("sale" in item ? [item] : []))
-    .filter((item) => item.sale.number.toLowerCase().includes(search.toLowerCase()) || item.receipt.total === typedTotal)
+    .filter((item) => {
+      const terms = search.toLowerCase().split(/\s+/).filter(Boolean);
+      const hit = (text: string) => terms.every((t) => text.toLowerCase().includes(t));
+      return hit(item.sale.number) || item.receipt.total === typedTotal || item.receipt.lines.some((l) => hit(l.name));
+    })
     .reverse();
   const [voiding, setVoiding] = useState<{ id: string; number: string } | null>(null);
   const reprint = async (id: string) => {
@@ -272,7 +276,7 @@ export function HistoryDialog({
     <Dialog open onClose={onClose} title="Riwayat kasir" className="max-w-xl">
       <SearchInput
         className="mb-2 max-w-none"
-        placeholder="Cari nomor struk atau total…"
+        placeholder="Cari nomor, total, barang, atau pelanggan…"
         aria-label="Cari riwayat kasir"
         value={q}
         onChange={(e) => setQ(e.target.value)}

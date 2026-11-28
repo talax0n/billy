@@ -34,7 +34,7 @@ import {
   stockMovements,
   users,
 } from "@billy/db";
-import { and, asc, count, desc, eq, getTableColumns, ilike, inArray, isNull, like, ne, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, exists, getTableColumns, ilike, inArray, isNull, like, ne, or, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { z } from "zod";
 import type { Actor } from "../../env.ts";
@@ -42,7 +42,7 @@ import { authorize, pinApprover, type Requirement } from "../../lib/approval.ts"
 import { logPriceChanges } from "../../lib/price-changes.ts";
 import { audit } from "../../lib/audit.ts";
 import { costAsOf } from "../../lib/cost-as-of.ts";
-import { likePattern } from "../../lib/search.ts";
+import { likePattern, matchAllTerms } from "../../lib/search.ts";
 import { stockByProduct } from "../products/service.ts";
 import { queueDelivery } from "../deliveries/service.ts";
 import { settleDraft } from "./drafts.ts";
@@ -432,7 +432,20 @@ const selectSales = (db: Db) =>
 
 export async function listSales(db: Db, user: Viewer, { q, page, pageSize }: PaginationQuery) {
   const total = rupiahOrNull(q);
-  const search = q ? or(ilike(posSales.number, likePattern(q)), total === null ? undefined : eq(posSales.total, total)) : undefined;
+  const search = q
+    ? or(
+        ilike(posSales.number, likePattern(q)),
+        total === null ? undefined : eq(posSales.total, total),
+        exists(
+          db
+            .select({ hit: sql`1` })
+            .from(posLines)
+            .innerJoin(products, eq(products.id, posLines.productId))
+            .where(and(eq(posLines.saleId, posSales.id), matchAllTerms(sql`${products.name} || ' ' || ${products.variant}`, q))),
+        ),
+        exists(db.select({ hit: sql`1` }).from(contacts).where(and(eq(contacts.id, posSales.customerId), ilike(contacts.name, likePattern(q))))),
+      )
+    : undefined;
   const where = and(visibleTo(user), search);
   const [rows, [counted]] = await Promise.all([
     selectSales(db)

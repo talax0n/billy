@@ -243,6 +243,15 @@ describe("history, reprint and void", () => {
     expect((await search("221.401")).rows).toEqual([]);
   });
 
+  it("finds a receipt by a product on it or by the customer's name", async () => {
+    const numbers = async (q: string) =>
+      ((await (await call(`/api/pos/sales?q=${encodeURIComponent(q)}`, { cookie: staff })).json()) as { rows: { number: string }[] }).rows.map((r) => r.number);
+    expect(await numbers("thinner super")).toContain("K1-261113-0010");
+    expect(await numbers("enamel kilau")).toContain("K1-261113-0011");
+    expect(await numbers("bangun jaya")).toEqual(["K1-261113-0007"]);
+    expect(await numbers("cat lama")).toEqual([]);
+  });
+
   it("answers a kasir replaying another cashier's sale id with 404, like GET", async () => {
     const res = await post(kasir, other);
     expect([res.status, await res.json()]).toEqual([404, { error: "Struk tidak ditemukan" }]);

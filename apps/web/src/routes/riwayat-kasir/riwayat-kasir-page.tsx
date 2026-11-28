@@ -34,7 +34,7 @@ export function RiwayatKasirPage() {
       <PageBody>
         <DataTable
           paged={paged}
-          searchPlaceholder="Cari nomor struk…"
+          searchPlaceholder="Cari nomor, total, barang, atau pelanggan…"
           onRowClick={(row) => openSale(row.id)}
           empty={<EmptyState title="Belum ada transaksi kasir" />}
           columns={[
