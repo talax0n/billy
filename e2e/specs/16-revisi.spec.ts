@@ -50,7 +50,7 @@ test("a paid nota is revised up and down", async ({ browser }) => {
   // Down: back to one, 32.000 refunded from the drawer with the admin's PIN.
   const lower = await nextNumber(kasir);
   await startRevisi(kasir, higher, "Batal satu");
-  await kasir.getByLabel("Cari produk atau scan barcode").press("-");
+  await kasir.getByLabel("Cari produk atau scan barcode").press("Delete");
   await expect(kasir.getByTestId("pos-difference")).toContainText("Dikembalikan tunai dari laci");
   await kasir.getByRole("button", { name: /Simpan revisi & cetak struk/ }).click();
   const approval = kasir.getByRole("dialog", { name: "Butuh persetujuan admin" });

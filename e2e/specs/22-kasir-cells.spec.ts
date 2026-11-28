@@ -14,9 +14,10 @@ test("kasir picks from the Produk view and edits qty and discount right in the c
   await expect(product.locator("td").last()).toHaveText("2");
   await page.screenshot({ path: "test-results/kasir-produk-view.png" });
 
-  await page.getByRole("tab", { name: "Nota · 1" }).click();
+  await page.getByRole("tab", { name: "Nota · 2" }).click();
+  await expect(page.getByLabel("Qty baris 2"), "a re-added product gets its own line").toHaveValue("1");
   const qty = page.getByLabel("Qty baris 1");
-  await expect(qty).toHaveValue("2");
+  await expect(qty).toHaveValue("1");
   await qty.fill("5");
   await qty.press("Tab");
   const discount = page.getByLabel("Diskon baris 1");
@@ -27,9 +28,10 @@ test("kasir picks from the Produk view and edits qty and discount right in the c
   await discount.fill("10000");
   await discount.press("Enter");
   await expect(search).toBeFocused();
-  await expect(page.getByTestId("pos-total")).toContainText("380.000");
+  await expect(page.getByTestId("pos-total")).toContainText("458.000");
   await page.screenshot({ path: "test-results/kasir-cells.png" });
 
+  await page.getByRole("button", { name: "Hapus baris 2" }).click();
   await page.getByRole("button", { name: "Hapus baris 1" }).click();
   await expect(page.getByText("Keranjang kosong")).toBeVisible();
 });

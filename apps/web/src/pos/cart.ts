@@ -12,7 +12,7 @@ export interface CartLine {
   listPrice?: Rupiah;
   qty: number;
   discountAmount: Rupiah;
-  /** Tinting colour code; a line with a note or a changed price is not merged with a plain one. */
+  /** Tinting colour code. */
   note: string;
 }
 
@@ -42,10 +42,6 @@ export type CartAction =
 /** The price typed from the tinting machine differs from the catalog price. */
 export const priceChanged = (line: CartLine) => line.listPrice !== undefined && line.unitPrice !== line.listPrice;
 
-/** A re-added product only adds to a plain line of it: no colour code, catalog price. */
-export const plainLineOf = (lines: readonly CartLine[], productId: string) =>
-  lines.findIndex((l) => l.productId === productId && !l.note && !priceChanged(l));
-
 const patch = (cart: Cart, index: number, change: Partial<CartLine>): Cart => ({
   ...cart,
   lines: cart.lines.map((line, i) => (i === index ? { ...line, ...change } : line)),
@@ -55,8 +51,7 @@ export function cartReducer(cart: Cart, action: CartAction): Cart {
   switch (action.type) {
     case "add": {
       const p = action.product;
-      const existing = plainLineOf(cart.lines, p.id);
-      if (existing >= 0) return { ...patch(cart, existing, { qty: cart.lines[existing]!.qty + 1 }), selected: existing };
+      // Every add is its own line: three gallons of one base get three colour codes.
       const line: CartLine = {
         productId: p.id,
         name: p.name,

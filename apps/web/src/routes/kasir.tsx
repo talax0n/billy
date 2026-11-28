@@ -24,7 +24,7 @@ import { api, ApiError, unwrap } from "../lib/api.ts";
 import { meQuery, useLogout } from "../lib/auth.ts";
 import { cx } from "../lib/cx.ts";
 import { setTheme } from "../lib/theme.ts";
-import { cartReducer, emptyCart, plainLineOf } from "../pos/cart.ts";
+import { cartReducer, emptyCart } from "../pos/cart.ts";
 import { CartTable, focusCell } from "../pos/cart-table.tsx";
 import { CustomerPicker } from "../pos/customer-picker.tsx";
 import {
@@ -191,13 +191,12 @@ function Register({ catalog }: { catalog: Catalog }) {
   const add = (productIndex: number, thenQty: boolean) => {
     const product = exactMatch(catalog.products, query) ?? results[productIndex];
     if (!product) return;
-    const existing = plainLineOf(cart.lines, product.id);
     dispatch({ type: "add", product });
     setQuery("");
     setHighlight(0);
     setRowMode(false);
     if (thenQty) setView("nota");
-    if (thenQty) focusCell(existing >= 0 ? existing : cart.lines.length, "qty");
+    if (thenQty) focusCell(cart.lines.length, "qty");
   };
 
   /**
