@@ -5,7 +5,7 @@ import { Button } from "../../components/ui/button.tsx";
 import { cx } from "../../lib/cx.ts";
 import { settingsQuery } from "../../lib/settings.ts";
 
-type Shop = Awaited<ReturnType<NonNullable<(typeof settingsQuery)["queryFn"]>>>;
+export type Shop = Awaited<ReturnType<NonNullable<(typeof settingsQuery)["queryFn"]>>>;
 
 /** Paper always prints light: swap the theme for the print job and put the user's choice back after. */
 function usePrintInLight() {

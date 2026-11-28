@@ -86,7 +86,17 @@ test("sells on an invoice, takes a partial and a final payment, prints it", asyn
 
   const pdf = (await print.pdf({ format: "A4", path: process.env.E2E_PDF_OUT })).toString("latin1");
   expect(pdf.match(/\/Type\s*\/Page\b/g)?.length, "a short faktur takes one page").toBe(1);
+  await print.locator("article").screenshot({ path: "test-results/faktur.png" });
   await print.close();
+
+  const [note] = await Promise.all([page.waitForEvent("popup"), sheet.getByRole("button", { name: "Cetak surat jalan" }).click()]);
+  await expect(note.getByRole("heading", { name: "Surat jalan" })).toBeVisible();
+  await expect(note.getByText(number.replace(/^SO-/, "SJ-"))).toBeVisible();
+  await expect(note.getByRole("row", { name: /Thinner Super 1 L\s+3 botol/ })).not.toContainText(num(96_000));
+  const boxed = await note.locator("td").evaluateAll((cells) => cells.some((td) => getComputedStyle(td).borderLeftWidth !== "0px"));
+  expect(boxed, "the surat jalan has no boxed cells, like the faktur").toBe(false);
+  await note.locator("article").screenshot({ path: "test-results/surat-jalan.png" });
+  await note.close();
 });
 
 test("leaves a second invoice open for tukar faktur", async ({ page }) => {
